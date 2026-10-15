@@ -1,0 +1,8 @@
+name = "santkabir-eye-camp-fleet"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-01"
+
+# Optional Cloudflare KV binding for persistent device history:
+# [[kv_namespaces]]
+# binding = "FLEET_KV"
+# id = "<YOUR_KV_NAMESPACE_ID>"

@@ -1,0 +1,181 @@
+// Default Eye Hospital Fleet & Camp Data for Sant Kabir Eye Hospital (PIECS)
+
+export const BASE_HOSPITAL = {
+  id: 'BASE-HOSPITAL',
+  name: 'Sant Kabir Eye Hospital',
+  organization: 'Pragati India Eye Care Society (PIECS)',
+  address: 'Bansi Road, near Pindari Hospital, Katra, Basti, UP 272001',
+  lat: 26.8048,
+  lon: 82.7628,
+  phone: '+91 94151 40719',
+  isBase: true,
+};
+
+export const INITIAL_CAMPS = [
+  {
+    id: 'CAMP-HARRAIYA',
+    name: 'Harraiya Community Eye Camp',
+    location: 'Block Primary Health Centre, Harraiya',
+    district: 'Basti',
+    lat: 26.7950,
+    lon: 82.4630,
+    radiusMeters: 500,
+    targetScreening: 250,
+    currentScreened: 174,
+    cataractIdentified: 38,
+    status: 'active',
+    assignedTeam: 'Team Alpha',
+    assignedVehicleId: 'SK-VAN-01',
+    leadDoctor: 'Dr. S. K. Verma',
+    schedule: '09:00 AM - 04:00 PM',
+  },
+  {
+    id: 'CAMP-BANSI',
+    name: 'Bansi Rural Vision & Cataract Camp',
+    location: 'Gram Panchayat Hall, Bansi',
+    district: 'Siddharthnagar',
+    lat: 27.1740,
+    lon: 82.9320,
+    radiusMeters: 600,
+    targetScreening: 300,
+    currentScreened: 242,
+    cataractIdentified: 56,
+    status: 'boarding_patients', // Transporting patients to base hospital for surgery
+    assignedTeam: 'Team Beta',
+    assignedVehicleId: 'SK-SHUTTLE-02',
+    leadDoctor: 'Optom. Priya Singh',
+    schedule: '08:30 AM - 03:30 PM',
+  },
+  {
+    id: 'CAMP-KHALILABAD',
+    name: 'Sant Kabir Nagar Outreach Clinic',
+    location: 'Kisan Inter College Ground, Khalilabad',
+    district: 'Sant Kabir Nagar',
+    lat: 26.7780,
+    lon: 83.0720,
+    radiusMeters: 500,
+    targetScreening: 200,
+    currentScreened: 198,
+    cataractIdentified: 43,
+    status: 'concluded',
+    assignedTeam: 'Team Gamma',
+    assignedVehicleId: 'SK-VISION-03',
+    leadDoctor: 'Dr. Anand Tiwari',
+    schedule: '09:00 AM - 02:00 PM',
+  },
+  {
+    id: 'CAMP-DOMARIYAGANJ',
+    name: 'Domariyaganj Eye Screening Camp',
+    location: 'CHC Domariyaganj Community Centre',
+    district: 'Siddharthnagar',
+    lat: 27.2050,
+    lon: 82.6850,
+    radiusMeters: 500,
+    targetScreening: 180,
+    currentScreened: 112,
+    cataractIdentified: 29,
+    status: 'active',
+    assignedTeam: 'Paramedic Unit',
+    assignedVehicleId: 'SK-AMBULANCE-04',
+    leadDoctor: 'Dr. R. C. Maurya',
+    schedule: '10:00 AM - 05:00 PM',
+  },
+];
+
+export const INITIAL_VEHICLES = [
+  {
+    id: 'SK-VAN-01',
+    name: 'Mobile Screening Van 1',
+    type: 'van',
+    equipment: 'Slit Lamp, Auto-Refractor, Tonometer',
+    plate: 'UP-51-AT-4211',
+    assignedDoctor: 'Dr. S. K. Verma',
+    driverName: 'Ramesh Yadav',
+    driverPhone: '+91 94151 40719',
+    assignedCampId: 'CAMP-HARRAIYA',
+    destinationName: 'Harraiya Community Eye Camp',
+    status: 'moving',
+    speed: 46,
+    bearing: 78,
+    batt: 89,
+    lat: 26.7990,
+    lon: 82.5310,
+    patientsOnboard: 0,
+    lastSeen: Date.now() - 10000,
+  },
+  {
+    id: 'SK-SHUTTLE-02',
+    name: 'Cataract Surgical Shuttle A',
+    type: 'shuttle',
+    equipment: '15-Seater Patient Carrier, First Aid',
+    plate: 'UP-51-B-8930',
+    assignedDoctor: 'Optom. Priya Singh',
+    driverName: 'Manoj Kumar',
+    driverPhone: '+91 93364 66677',
+    assignedCampId: 'CAMP-BANSI',
+    destinationName: 'Bansi Rural Vision & Cataract Camp',
+    status: 'at_camp',
+    speed: 0,
+    bearing: 15,
+    batt: 76,
+    lat: 27.1740,
+    lon: 82.9320,
+    patientsOnboard: 18, // 18 cataract patients boarded for surgery at Basti base hospital
+    lastSeen: Date.now() - 25000,
+  },
+  {
+    id: 'SK-VISION-03',
+    name: 'Vision Outreach Bus 2',
+    type: 'bus',
+    equipment: '32-Seater Complete Mobile Eye Clinic',
+    plate: 'UP-51-E-1044',
+    assignedDoctor: 'Dr. Anand Tiwari',
+    driverName: 'Suresh Maurya',
+    driverPhone: '+91 98380 12345',
+    assignedCampId: 'CAMP-KHALILABAD',
+    destinationName: 'Sant Kabir Eye Hospital (Returning to Base)',
+    status: 'returning',
+    speed: 51,
+    bearing: 255,
+    batt: 64,
+    lat: 26.7910,
+    lon: 82.8850,
+    patientsOnboard: 22,
+    lastSeen: Date.now() - 5000,
+  },
+  {
+    id: 'SK-AMBULANCE-04',
+    name: 'Emergency Outreach Ambulance',
+    type: 'ambulance',
+    equipment: 'Emergency Ophthalmic Trauma & General BLS',
+    plate: 'UP-51-G-0012',
+    assignedDoctor: 'Paramedic Unit Delta',
+    driverName: 'Deepak Shukla',
+    driverPhone: '+91 94500 98765',
+    assignedCampId: 'BASE-HOSPITAL',
+    destinationName: 'Sant Kabir Eye Hospital Base',
+    status: 'at_base',
+    speed: 0,
+    bearing: 0,
+    batt: 98,
+    lat: 26.8048,
+    lon: 82.7628,
+    patientsOnboard: 0,
+    lastSeen: Date.now() - 3000,
+  },
+];
+
+// Calculate Distance in Kilometers between two coordinates
+export function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+}
