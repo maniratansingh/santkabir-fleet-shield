@@ -5,7 +5,7 @@ import VehicleSidebar from './components/VehicleSidebar';
 import DriverSetupModal from './components/DriverSetupModal';
 import { INITIAL_VEHICLES, INITIAL_CAMPS, calculateDistanceKm, BASE_HOSPITAL } from './data/mockData';
 import { playCampArrivalChime, playAlertTone } from './utils/audio';
-import { CheckCircle2, AlertTriangle, X, Eye, Users, User, Clock, Phone, MapPin } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, X, Eye, Users, User, Clock, Phone, MapPin, Glasses, Stethoscope } from 'lucide-react';
 
 export default function App() {
   const [vehicles, setVehicles] = useState(INITIAL_VEHICLES);
@@ -16,10 +16,12 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isAutoTour, setIsAutoTour] = useState(false);
   const [fitTrigger, setFitTrigger] = useState(0);
   const [toast, setToast] = useState(null);
 
   const prevCampStatusRef = useRef({});
+  const tourIndexRef = useRef(0);
 
   // Show temporary toast notification
   const showToast = (message, type = 'info') => {
@@ -34,11 +36,45 @@ export default function App() {
         setSelectedVehicleId(null);
         setSelectedCamp(null);
         setIsDriverModalOpen(false);
+        setIsAutoTour(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // TV Kiosk Auto-Tour Mode (Cycles focus across active fleet and camps every 10 seconds)
+  useEffect(() => {
+    if (!isAutoTour) return;
+
+    const tourItems = [
+      ...vehicles.map(v => ({ type: 'vehicle', id: v.id, name: v.name })),
+      ...camps.map(c => ({ type: 'camp', id: c.id, camp: c, name: c.name })),
+      { type: 'all', name: 'Fleet Overview' },
+    ];
+
+    const tourInterval = setInterval(() => {
+      tourIndexRef.current = (tourIndexRef.current + 1) % tourItems.length;
+      const current = tourItems[tourIndexRef.current];
+
+      if (current.type === 'vehicle') {
+        setSelectedCamp(null);
+        setSelectedVehicleId(current.id);
+        showToast(`🎥 Auto-Tour: Focusing ${current.name}`, 'info');
+      } else if (current.type === 'camp') {
+        setSelectedVehicleId(null);
+        setSelectedCamp(current.camp);
+        showToast(`🎥 Auto-Tour: Viewing ${current.name}`, 'info');
+      } else {
+        setSelectedVehicleId(null);
+        setSelectedCamp(null);
+        setFitTrigger(prev => prev + 1);
+        showToast('🎥 Auto-Tour: Overview', 'info');
+      }
+    }, 10000);
+
+    return () => clearInterval(tourInterval);
+  }, [isAutoTour, vehicles, camps]);
 
   // Fetch real data from Cloudflare Pages API when not in simulation
   useEffect(() => {
@@ -150,6 +186,7 @@ export default function App() {
   const handleFitMap = () => {
     setSelectedVehicleId(null);
     setSelectedCamp(null);
+    setIsAutoTour(false);
     setFitTrigger((prev) => prev + 1);
   };
 
@@ -169,6 +206,14 @@ export default function App() {
     });
   };
 
+  const handleToggleAutoTour = () => {
+    setIsAutoTour((prev) => {
+      const next = !prev;
+      showToast(next ? 'TV Auto-Tour Kiosk Mode Started' : 'Auto-Tour Stopped', 'info');
+      return next;
+    });
+  };
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#060d17] text-slate-100">
       {/* Top Operations Header */}
@@ -183,6 +228,8 @@ export default function App() {
         onOpenDriverModal={() => setIsDriverModalOpen(true)}
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+        isAutoTour={isAutoTour}
+        onToggleAutoTour={handleToggleAutoTour}
       />
 
       {/* Main Real-Time Operations Canvas */}
@@ -249,24 +296,43 @@ export default function App() {
                 />
               </div>
 
-              <div className="mt-2.5 pt-2 border-t border-slate-850 flex items-center justify-between text-xs">
-                <span className="text-amber-400 font-semibold flex items-center gap-1">
-                  <Users className="w-3.5 h-3.5" />
-                  {selectedCamp.cataractIdentified} Cataracts Found
-                </span>
-                <span className="text-[11px] text-slate-400">PM-JAY Scheme</span>
+              {/* Clinical Breakdown */}
+              <div className="mt-3 grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-800/80 text-center">
+                <div className="p-1.5 rounded-lg bg-amber-950/40 border border-amber-500/20">
+                  <span className="text-[9px] text-amber-300/70 block uppercase font-semibold">Cataract</span>
+                  <span className="text-xs font-bold text-amber-400 font-mono">{selectedCamp.cataractIdentified}</span>
+                </div>
+                <div className="p-1.5 rounded-lg bg-sky-950/40 border border-sky-500/20">
+                  <span className="text-[9px] text-sky-300/70 block uppercase font-semibold">Glasses</span>
+                  <span className="text-xs font-bold text-sky-400 font-mono">{selectedCamp.refractiveErrors || 50}</span>
+                </div>
+                <div className="p-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/20">
+                  <span className="text-[9px] text-emerald-300/70 block uppercase font-semibold">Glaucoma</span>
+                  <span className="text-xs font-bold text-emerald-400 font-mono">{selectedCamp.glaucomaSuspects || 10}</span>
+                </div>
               </div>
             </div>
 
-            {/* Doctor and Team */}
+            {/* Doctor and Field Coordinator */}
             <div className="mt-3 space-y-1.5 text-xs text-slate-300">
               <div className="flex items-center gap-2">
                 <User className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 <span>Doctor: <strong>{selectedCamp.leadDoctor}</strong></span>
               </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span>Schedule: {selectedCamp.schedule}</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>Hours: {selectedCamp.schedule}</span>
+                </div>
+                {selectedCamp.coordinatorPhone && (
+                  <a 
+                    href={`tel:${selectedCamp.coordinatorPhone}`}
+                    className="flex items-center gap-1 text-[11px] text-emerald-400 hover:underline"
+                  >
+                    <Phone className="w-3 h-3" />
+                    Call Lead
+                  </a>
+                )}
               </div>
             </div>
 
@@ -277,7 +343,7 @@ export default function App() {
                   setSelectedVehicleId(selectedCamp.assignedVehicleId);
                   setSelectedCamp(null);
                 }}
-                className="mt-3 w-full py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                className="mt-3 w-full py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-lg"
               >
                 Track Assigned Van ({selectedCamp.assignedVehicleId})
               </button>

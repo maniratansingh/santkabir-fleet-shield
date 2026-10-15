@@ -174,12 +174,69 @@ export default function MapView({
     map.setStyle(MAP_STYLES[key].style);
 
     map.once('style.load', () => {
-      addGeofenceLayers(map);
+      addCustomLayers(map);
     });
   };
 
-  const addGeofenceLayers = (map) => {
+  // Add Route lines and Geofences
+  const addCustomLayers = (map) => {
     try {
+      // 1. Add Highway Route Corridors from Base Hospital to each Eye Camp
+      if (map.getSource('camp-routes')) {
+        map.removeLayer('camp-routes-casing');
+        map.removeLayer('camp-routes-line');
+        map.removeSource('camp-routes');
+      }
+
+      const routeFeatures = camps
+        .filter((c) => c.routeWaypoints && c.routeWaypoints.length > 0)
+        .map((c) => ({
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: c.routeWaypoints,
+          },
+          properties: {
+            campId: c.id,
+            name: c.name,
+          },
+        }));
+
+      map.addSource('camp-routes', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: routeFeatures,
+        },
+      });
+
+      // Outer glow for routes
+      map.addLayer({
+        id: 'camp-routes-casing',
+        type: 'line',
+        source: 'camp-routes',
+        paint: {
+          'line-color': '#06b6d4',
+          'line-width': 4,
+          'line-opacity': 0.18,
+          'line-blur': 2,
+        },
+      });
+
+      // Inner dashed active corridor
+      map.addLayer({
+        id: 'camp-routes-line',
+        type: 'line',
+        source: 'camp-routes',
+        paint: {
+          'line-color': '#38bdf8',
+          'line-width': 1.8,
+          'line-opacity': 0.65,
+          'line-dasharray': [3, 2.5],
+        },
+      });
+
+      // 2. Add Geofence rings around each Camp Site
       if (map.getSource('camp-geofences')) {
         map.removeLayer('camp-geofence-fill');
         map.removeSource('camp-geofences');
@@ -218,14 +275,14 @@ export default function MapView({
             15, 140
           ],
           'circle-color': '#06b6d4',
-          'circle-opacity': 0.18,
+          'circle-opacity': 0.16,
           'circle-stroke-width': 2,
           'circle-stroke-color': '#22d3ee',
           'circle-stroke-opacity': 0.7,
         },
       });
     } catch (e) {
-      console.warn('Geofence layer error:', e);
+      console.warn('Custom layer registration error:', e);
     }
   };
 
@@ -246,7 +303,7 @@ export default function MapView({
 
     map.on('load', () => {
       map.resize();
-      addGeofenceLayers(map);
+      addCustomLayers(map);
 
       setTimeout(() => {
         map.resize();
@@ -277,7 +334,6 @@ export default function MapView({
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      // Clean up markers
       Object.values(markersRef.current).forEach(({ marker }) => marker.remove());
       Object.values(campMarkersRef.current).forEach((marker) => marker.remove());
       if (baseMarkerRef.current) baseMarkerRef.current.remove();
@@ -325,7 +381,6 @@ export default function MapView({
     if (!map) return;
 
     const currentCampIds = new Set(camps.map(c => c.id));
-    // Clean up removed camps
     Object.keys(campMarkersRef.current).forEach((id) => {
       if (!currentCampIds.has(id)) {
         campMarkersRef.current[id].remove();
@@ -370,13 +425,12 @@ export default function MapView({
     });
   }, [camps, onSelectCamp]);
 
-  // Update Vehicle Markers with Live Position, Bearing, and ghost cleanup
+  // Update Vehicle Markers with Live Position & Bearing
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const currentVehIds = new Set(vehicles.map(v => v.id));
-    // Clean up removed vehicles
     Object.keys(markersRef.current).forEach((id) => {
       if (!currentVehIds.has(id)) {
         markersRef.current[id].marker.remove();
@@ -406,7 +460,6 @@ export default function MapView({
         markerObj.marker.setLngLat([v.lon, v.lat]);
       }
 
-      // Clean displayName
       const shortName = v.name
         .replace('Mobile Screening ', '')
         .replace('Cataract Surgical ', '');
@@ -478,6 +531,12 @@ export default function MapView({
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
           <span className="text-slate-300 font-medium">Moving Outreach Van</span>
+        </div>
+
+        {/* Route Corridor Indicator */}
+        <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-slate-700">
+          <span className="w-4 h-0.5 border-t-2 border-dashed border-sky-400"></span>
+          <span className="text-slate-400 text-[10px]">Camp Corridor</span>
         </div>
 
         {/* Map Layer Switcher */}

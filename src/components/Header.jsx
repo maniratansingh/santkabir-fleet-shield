@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Eye, 
-  Activity, 
-  Tv, 
   Maximize2, 
   Minimize2, 
   Volume2, 
   VolumeX, 
-  Radio, 
   Smartphone,
   Crosshair,
-  Calendar,
   Sparkles,
   PanelRightClose,
   PanelRightOpen,
-  Menu
+  Sun,
+  RotateCw
 } from 'lucide-react';
 
 export default function Header({ 
@@ -27,7 +24,9 @@ export default function Header({
   onToggleSound,
   onOpenDriverModal,
   isSidebarOpen,
-  onToggleSidebar
+  onToggleSidebar,
+  isAutoTour,
+  onToggleAutoTour
 }) {
   const [time, setTime] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -65,7 +64,7 @@ export default function Header({
   const movingCount = vehicles.filter(v => v.status === 'moving' || v.status === 'returning').length;
 
   return (
-    <header className="glass-panel border-b border-cyan-500/20 px-3 md:px-4 py-2.5 flex items-center justify-between z-30 relative select-none">
+    <header className="glass-panel border-b border-cyan-500/20 px-3 md:px-4 py-2 flex items-center justify-between z-30 relative select-none">
       {/* Hospital Identity */}
       <div className="flex items-center gap-2.5 md:gap-3">
         <div className="relative flex items-center justify-center w-10 h-10 md:w-11 md:h-11 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20 ring-1 ring-white/20 shrink-0">
@@ -96,18 +95,18 @@ export default function Header({
       </div>
 
       {/* Hospital Impact Metrics (Big Screen Optimized) */}
-      <div className="hidden xl:flex items-center gap-3">
-        <div className="px-3.5 py-1.5 rounded-lg bg-slate-900/60 border border-slate-700/50 flex items-center gap-3">
+      <div className="hidden xl:flex items-center gap-2.5">
+        <div className="px-3 py-1.5 rounded-lg bg-slate-900/60 border border-slate-700/50 flex items-center gap-2.5">
           <div className="flex flex-col">
             <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Outreach Fleet</span>
             <span className="text-sm font-bold text-white flex items-center gap-1.5">
               <span className="text-cyan-400">{vehicles.length} Units</span>
-              <span className="text-slate-500 font-normal">({movingCount} en route)</span>
+              <span className="text-slate-500 font-normal text-xs">({movingCount} en route)</span>
             </span>
           </div>
         </div>
 
-        <div className="px-3.5 py-1.5 rounded-lg bg-slate-900/60 border border-slate-700/50 flex items-center gap-3">
+        <div className="px-3 py-1.5 rounded-lg bg-slate-900/60 border border-slate-700/50 flex items-center gap-2.5">
           <div className="flex flex-col">
             <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Active Camps</span>
             <span className="text-sm font-bold text-emerald-400">
@@ -116,7 +115,7 @@ export default function Header({
           </div>
         </div>
 
-        <div className="px-3.5 py-1.5 rounded-lg bg-slate-900/60 border border-slate-700/50 flex items-center gap-3">
+        <div className="px-3 py-1.5 rounded-lg bg-slate-900/60 border border-slate-700/50 flex items-center gap-2.5">
           <div className="flex flex-col">
             <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider">Patients Screened</span>
             <span className="text-sm font-bold text-sky-400">
@@ -125,12 +124,21 @@ export default function Header({
           </div>
         </div>
 
-        <div className="px-3.5 py-1.5 rounded-lg bg-amber-950/40 border border-amber-500/30 flex items-center gap-3">
+        <div className="px-3 py-1.5 rounded-lg bg-amber-950/40 border border-amber-500/30 flex items-center gap-2.5">
           <div className="flex flex-col">
             <span className="text-[10px] uppercase font-semibold text-amber-300/80 tracking-wider">Cataract Identified</span>
             <span className="text-sm font-bold text-amber-400">
               {totalCataracts} <span className="text-xs text-amber-200/70 font-normal">PM-JAY</span>
             </span>
+          </div>
+        </div>
+
+        {/* Live Weather / Field Conditions Pill */}
+        <div className="px-3 py-1.5 rounded-lg bg-slate-900/40 border border-slate-800 flex items-center gap-2 text-xs text-slate-300">
+          <Sun className="w-4 h-4 text-amber-400 shrink-0" />
+          <div className="flex flex-col leading-tight">
+            <span className="text-[10px] text-slate-400">Basti Weather</span>
+            <span className="font-semibold text-slate-200">28°C • Clear Field</span>
           </div>
         </div>
       </div>
@@ -165,6 +173,19 @@ export default function Header({
         >
           <Sparkles className="w-3.5 h-3.5 text-emerald-400 animate-spin shrink-0" style={{ animationDuration: '6s' }} />
           <span className="hidden lg:inline">{isSimulation ? 'Sim Moving' : 'Run Demo'}</span>
+        </button>
+
+        {/* TV Auto-Tour Mode Toggle */}
+        <button
+          onClick={onToggleAutoTour}
+          title={isAutoTour ? "Stop TV Auto-Tour Kiosk Mode" : "Start TV Auto-Tour (Cycles between fleet & camps every 10s)"}
+          className={`p-1.5 md:p-2 rounded-lg border transition-colors cursor-pointer ${
+            isAutoTour
+              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              : 'text-slate-300 bg-slate-800/80 hover:bg-slate-700 border-slate-700'
+          }`}
+        >
+          <RotateCw className={`w-4 h-4 ${isAutoTour ? 'animate-spin text-amber-400' : 'text-slate-300'}`} style={{ animationDuration: '4s' }} />
         </button>
 
         {/* Re-center Map button */}
@@ -202,7 +223,7 @@ export default function Header({
           )}
         </button>
 
-        {/* Fleet Sidebar Toggle (Vital on Mobile / Tablets) */}
+        {/* Fleet Sidebar Toggle */}
         <button
           onClick={onToggleSidebar}
           title={isSidebarOpen ? "Collapse Fleet Sidebar" : "Open Fleet Sidebar"}
