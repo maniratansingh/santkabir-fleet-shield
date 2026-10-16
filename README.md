@@ -172,7 +172,7 @@ npm run preview
 
 1. **Install Client**: Open the dashboard's **Driver Provisioning** modal (`Tab 2`) and download `santkabir-fleet-shield-v1.0.apk`.
 2. **Transfer to Device**: Send the APK to the driver's Android device via WhatsApp or USB and install.
-3. **Scan Provisioning QR**: Open the app, point the camera at the **Admin Provisioning QR Code** displayed on the command dashboard (`Tab 1`).
+3. **Set Ambulance Asset ID**: In the app, tap **Master Admin Authorization**, enter `8722`, tap **Ambulance Asset ID**, and type the assigned vehicle code (e.g. `SK-AMB-01`).
 4. **Grant Permissions**: Allow background location permissions (*"Allow all the time"*).
 5. **Locked & Streaming**: The app starts background tracking. Settings remain locked to prevent tampering. Enter your admin code (`8722`) anytime you need to tune intervals or device parameters.
 

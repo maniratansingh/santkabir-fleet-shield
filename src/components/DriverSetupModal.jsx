@@ -37,11 +37,13 @@ export default function DriverSetupModal({ isOpen, onClose }) {
     timestamp: Date.now(),
   };
 
-  const payloadString = JSON.stringify(payload, null, 2);
+  const apkDownloadUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/downloads/santkabir-fleet-shield-v1.0.apk`
+    : 'https://fleet.mrps.in/downloads/santkabir-fleet-shield-v1.0.apk';
 
   useEffect(() => {
     if (!isOpen) return;
-    QRCode.toDataURL(JSON.stringify(payload), {
+    QRCode.toDataURL(apkDownloadUrl, {
       width: 240,
       margin: 1.5,
       color: {
@@ -51,12 +53,12 @@ export default function DriverSetupModal({ isOpen, onClose }) {
     })
       .then(url => setQrDataUrl(url))
       .catch(err => console.error('QR generation error:', err));
-  }, [isOpen, effectiveId, driverName, serverEndpoint]);
+  }, [isOpen, apkDownloadUrl]);
 
   if (!isOpen) return null;
 
   const copyPayload = () => {
-    navigator.clipboard.writeText(payloadString);
+    navigator.clipboard.writeText(apkDownloadUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -133,7 +135,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             <div className="p-3 rounded-2xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200/80 dark:border-sky-800/60 flex items-start gap-2.5">
               <Lock className="w-4 h-4 text-sky-600 dark:text-cyan-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>Driver Provisioning:</strong> Configure the permanent <strong>Ambulance Asset ID</strong> and <strong>Driver Name</strong> below. Enter these into the app or point the driver's phone camera at this QR code on install to stream GPS telemetry directly to the hospital base.
+                <strong>Driver Provisioning:</strong> Scan this QR code with the driver's phone camera to download <strong>santkabir-fleet-shield-v1.0.apk</strong>. On install, unlock the app using code <strong>8722</strong> and enter the <strong>Ambulance Asset ID</strong> below into the app.
               </div>
             </div>
 
@@ -214,21 +216,21 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                 <span className="mt-2 text-[11px] font-mono font-bold text-sky-600 dark:text-cyan-400">
                   {effectiveId} • {driverName}
                 </span>
-                <span className="text-[10px] text-slate-400">Scan via Fleet Shield Camera</span>
+                <span className="text-[10px] text-slate-400">Scan with Phone Camera to Download APK</span>
               </div>
             </div>
 
             {/* Payload preview button */}
             <div className="pt-1 flex items-center justify-between">
               <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                Encrypted configuration payload ready
+                Direct download link encoded in QR
               </span>
               <button
                 onClick={copyPayload}
                 className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'Copied JSON' : 'Copy JSON'}</span>
+                <span>{copied ? 'Copied Link' : 'Copy Download Link'}</span>
               </button>
             </div>
           </div>
