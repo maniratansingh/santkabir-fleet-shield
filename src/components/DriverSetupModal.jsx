@@ -240,7 +240,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-start gap-2.5">
               <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>Private Internal Release:</strong> The <strong>Sant Kabir Fleet Shield APK</strong> is compiled with your default Cloudflare server endpoint and signed by Mani Ratan Singh. It can be distributed directly to drivers via WhatsApp or private file transfer.
+                <strong>Master Admin PIN Protected:</strong> The <strong>Sant Kabir Fleet Shield APK</strong> locks settings on launch. Drivers cannot stop tracking or alter configurations. To tune frequency, accuracy, or Asset ID, tap <em>"Master Admin PIN Authorization"</em> and enter <strong><code>1234</code></strong> (or <code>8722</code>).
               </div>
             </div>
 

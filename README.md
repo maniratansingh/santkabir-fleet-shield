@@ -55,7 +55,8 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 - **Standby Fallback**: When zero ambulances are actively reporting, smoothly docks on the Sant Kabir Eye Hospital base in Basti.
 
 ### 4. Custom Driver Android APK (`santkabir-fleet-shield-v1.0.apk`)
-- **Preconfigured Defaults**: Pre-tuned for 5-second real-time GPS updates and high accuracy.
+- **Master Admin PIN Protection**: Settings are locked on start to prevent drivers from stopping tracking or altering endpoints.
+- **Admin Tuning**: Enter Master Admin PIN `1234` (or `8722`) under *"Master Admin PIN Authorization"* to unlock and tune update frequency (e.g. 5s–30s for low-end devices), accuracy, or server URL.
 - **Default Telemetry Endpoint**: Preconfigured with your server endpoint (`https://fleet.mrps.in/api/location`).
 - **Background Daemon**: Runs as an Android Foreground Service with `START_STICKY` and `BootCompletedReceiver`.
 - **Direct Download**: Hosted directly at `/downloads/santkabir-fleet-shield-v1.0.apk` with strict MIME enforcement (`application/vnd.android.package-archive`).
@@ -173,7 +174,7 @@ npm run preview
 2. **Transfer to Device**: Send the APK to the driver's Android device via WhatsApp or USB and install.
 3. **Scan Provisioning QR**: Open the app, point the camera at the **Admin Provisioning QR Code** displayed on the command dashboard (`Tab 1`).
 4. **Grant Permissions**: Allow background location permissions (*"Allow all the time"*).
-5. **Active Telemetry**: The app starts background tracking and streams live GPS telemetry back to the base hospital.
+5. **Locked & Streaming**: The app starts background tracking. Settings remain locked to prevent tampering. Enter PIN `1234` anytime you need to tune intervals or device parameters.
 
 ---
 
