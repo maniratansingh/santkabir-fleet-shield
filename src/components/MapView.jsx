@@ -179,38 +179,84 @@ function createGeoJSONCircle(center, radiusInKm, points = 64) {
   };
 }
 
-// Compute road navigation trail originating from Sant Kabir Eye Hospital (Base) to the ambulance
-function getNavigationTrailCoords(v, camps) {
+// Closest segment projection for road corridor waypoint snapping
+function findClosestSegmentIndex(p, waypoints) {
+  let minDistance = Infinity;
+  let bestIdx = 0;
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const a = waypoints[i];
+    const b = waypoints[i + 1];
+    const abX = b[0] - a[0];
+    const abY = b[1] - a[1];
+    const l2 = abX * abX + abY * abY;
+    if (l2 === 0) continue;
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * abX + (p[1] - a[1]) * abY) / l2));
+    const projX = a[0] + t * abX;
+    const projY = a[1] + t * abY;
+    const dist = Math.hypot(p[0] - projX, p[1] - projY);
+    if (dist < minDistance) {
+      minDistance = dist;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+// Compute Zomato/Swiggy-style split navigation lines:
+// 1. upcomingRoute: animated delivery corridor leading into the user/camp destination ("coming to my location")
+// 2. completedTrail: solid navigation trail behind ambulance to the base hospital
+function getDeliveryRouteSplit(v, camps) {
   const baseCoord = [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat];
   const vehCoord = [v.lon, v.lat];
 
-  if (!campCoordValid(v)) return [baseCoord, vehCoord];
-
   const camp = camps.find(c => c.id === v.assignedCampId);
   if (!camp || !camp.routeWaypoints || camp.routeWaypoints.length < 2) {
-    return [baseCoord, vehCoord];
+    return {
+      upcomingRoute: [vehCoord, [camp?.lon || BASE_HOSPITAL.lon, camp?.lat || BASE_HOSPITAL.lat]],
+      completedTrail: [baseCoord, vehCoord],
+    };
   }
 
   const wps = camp.routeWaypoints;
-  const trail = [baseCoord];
+  const k = findClosestSegmentIndex(vehCoord, wps);
 
-  // Radial distance of vehicle from base
-  const distVehToBase = Math.hypot(v.lon - BASE_HOSPITAL.lon, v.lat - BASE_HOSPITAL.lat);
-
-  for (let i = 1; i < wps.length; i++) {
-    const wp = wps[i];
-    const distWpToBase = Math.hypot(wp[0] - BASE_HOSPITAL.lon, wp[1] - BASE_HOSPITAL.lat);
-    if (distWpToBase < distVehToBase) {
-      trail.push(wp);
+  if (v.status === 'returning') {
+    // Returning to Base Hospital
+    // upcomingRoute: from vehicle to Base Hospital along remaining waypoints
+    const upcoming = [vehCoord];
+    for (let i = k; i >= 0; i--) {
+      upcoming.push(wps[i]);
     }
+    // completedTrail: from Camp to vehicle
+    const completed = [];
+    for (let i = wps.length - 1; i > k; i--) {
+      completed.push(wps[i]);
+    }
+    completed.push(vehCoord);
+    return {
+      upcomingRoute: upcoming.length > 1 ? upcoming : [vehCoord, baseCoord],
+      completedTrail: completed.length > 1 ? completed : [[camp.lon, camp.lat], vehCoord],
+    };
   }
 
-  trail.push(vehCoord);
-  return trail;
-}
+  // Moving to Camp Destination ("coming to my location" like Zomato / Swiggy)
+  // completedTrail: from Base Hospital through passed waypoints to current vehicle position
+  const completed = [];
+  for (let i = 0; i <= k; i++) {
+    completed.push(wps[i]);
+  }
+  completed.push(vehCoord);
 
-function campCoordValid(v) {
-  return typeof v.lon === 'number' && typeof v.lat === 'number';
+  // upcomingRoute: from current vehicle position through upcoming waypoints to Camp Destination
+  const upcoming = [vehCoord];
+  for (let i = k + 1; i < wps.length; i++) {
+    upcoming.push(wps[i]);
+  }
+
+  return {
+    upcomingRoute: upcoming.length > 1 ? upcoming : [vehCoord, [camp.lon, camp.lat]],
+    completedTrail: completed.length > 1 ? completed : [baseCoord, vehCoord],
+  };
 }
 
 // Apple-style beautiful medical ambulance glyph generator for AirTag pins
@@ -423,69 +469,130 @@ export default function MapView({
         },
       });
 
-      // 2. Solid Blue Navigation Trail Corridor from Sant Kabir Eye Hospital to each Ambulance
+      // 2. Zomato/Swiggy-style Delivery Navigation Corridors
+      // Clean up previous sources if present
+      if (map.getSource('delivery-incoming-routes')) {
+        if (map.getLayer('delivery-incoming-casing')) map.removeLayer('delivery-incoming-casing');
+        if (map.getLayer('delivery-incoming-road')) map.removeLayer('delivery-incoming-road');
+        if (map.getLayer('delivery-incoming-flow')) map.removeLayer('delivery-incoming-flow');
+        map.removeSource('delivery-incoming-routes');
+      }
+      if (map.getSource('delivery-trail-routes')) {
+        if (map.getLayer('delivery-trail-line')) map.removeLayer('delivery-trail-line');
+        map.removeSource('delivery-trail-routes');
+      }
       if (map.getSource('base-distance-vectors')) {
         if (map.getLayer('base-navigation-trail-casing')) map.removeLayer('base-navigation-trail-casing');
         if (map.getLayer('base-distance-vectors-line')) map.removeLayer('base-distance-vectors-line');
         map.removeSource('base-distance-vectors');
       }
 
-      const distanceLineFeatures = vehicles
-        .filter((v) => v.status !== 'at_base')
-        .map((v) => ({
+      const activeVehicles = vehicles.filter((v) => v.status !== 'at_base');
+
+      const incomingFeatures = activeVehicles.map((v) => {
+        const split = getDeliveryRouteSplit(v, camps);
+        return {
           type: 'Feature',
           geometry: {
             type: 'LineString',
-            coordinates: getNavigationTrailCoords(v, camps),
+            coordinates: split.upcomingRoute,
           },
           properties: {
             vehicleId: v.id,
-            distanceKm: calculateDistanceKm(v.lat, v.lon, BASE_HOSPITAL.lat, BASE_HOSPITAL.lon),
+            isSelected: v.id === selectedVehicleId,
+            status: v.status,
+          },
+        };
+      });
+
+      const trailFeatures = activeVehicles.map((v) => {
+        const split = getDeliveryRouteSplit(v, camps);
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: split.completedTrail,
+          },
+          properties: {
+            vehicleId: v.id,
             isSelected: v.id === selectedVehicleId,
           },
-        }));
+        };
+      });
 
-      map.addSource('base-distance-vectors', {
+      // A. Completed Road Trail Behind Vehicle (Solid subtle highway trail)
+      map.addSource('delivery-trail-routes', {
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
-          features: distanceLineFeatures,
+          features: trailFeatures,
         },
       });
 
-      // Apple Maps navigation soft blue casing/glow
       map.addLayer({
-        id: 'base-navigation-trail-casing',
+        id: 'delivery-trail-line',
         type: 'line',
-        source: 'base-distance-vectors',
+        source: 'delivery-trail-routes',
         layout: {
           visibility: showDistanceLines ? 'visible' : 'none',
           'line-cap': 'round',
           'line-join': 'round',
         },
         paint: {
-          'line-color': isDark ? '#0284c7' : '#007AFF',
+          'line-color': isDark ? '#38bdf8' : '#0284c7',
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            10,
-            6,
+            3.5,
+            2.4,
+          ],
+          'line-opacity': isDark ? 0.45 : 0.4,
+          'line-dasharray': [3, 2],
+        },
+      });
+
+      // B. Upcoming Delivery Route Leading to Destination ("Lines coming to my location")
+      map.addSource('delivery-incoming-routes', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: incomingFeatures,
+        },
+      });
+
+      // 1) Soft Glowing Ambient Delivery Corridor
+      map.addLayer({
+        id: 'delivery-incoming-casing',
+        type: 'line',
+        source: 'delivery-incoming-routes',
+        layout: {
+          visibility: showDistanceLines ? 'visible' : 'none',
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': isDark ? '#00e5ff' : '#007AFF',
+          'line-width': [
+            'case',
+            ['get', 'isSelected'],
+            12,
+            7.5,
           ],
           'line-opacity': [
             'case',
             ['get', 'isSelected'],
             0.5,
-            0.28,
+            0.3,
           ],
           'line-blur': 3,
         },
       });
 
-      // Apple Maps solid vibrant blue navigation ribbon
+      // 2) Solid Apple Maps Blue Navigation Ribbon
       map.addLayer({
-        id: 'base-distance-vectors-line',
+        id: 'delivery-incoming-road',
         type: 'line',
-        source: 'base-distance-vectors',
+        source: 'delivery-incoming-routes',
         layout: {
           visibility: showDistanceLines ? 'visible' : 'none',
           'line-cap': 'round',
@@ -496,20 +603,33 @@ export default function MapView({
             'case',
             ['get', 'isSelected'],
             '#007AFF',
-            isDark ? '#38bdf8' : '#0066FF',
+            isDark ? '#0284c7' : '#0066FF',
           ],
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            5,
-            3.5,
+            5.5,
+            4,
           ],
-          'line-opacity': [
-            'case',
-            ['get', 'isSelected'],
-            1.0,
-            0.88,
-          ],
+          'line-opacity': 0.95,
+        },
+      });
+
+      // 3) Zomato/Swiggy Animated Dash Flow (Streaming pulses towards destination)
+      map.addLayer({
+        id: 'delivery-incoming-flow',
+        type: 'line',
+        source: 'delivery-incoming-routes',
+        layout: {
+          visibility: showDistanceLines ? 'visible' : 'none',
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': '#FFFFFF',
+          'line-width': 2.2,
+          'line-opacity': 0.95,
+          'line-dasharray': [1.5, 2.5],
         },
       });
 
@@ -624,8 +744,10 @@ export default function MapView({
     const visibility = showDistanceLines ? 'visible' : 'none';
     if (map.getLayer('base-range-rings-line')) map.setLayoutProperty('base-range-rings-line', 'visibility', visibility);
     if (map.getLayer('base-range-rings-fill')) map.setLayoutProperty('base-range-rings-fill', 'visibility', visibility);
-    if (map.getLayer('base-navigation-trail-casing')) map.setLayoutProperty('base-navigation-trail-casing', 'visibility', visibility);
-    if (map.getLayer('base-distance-vectors-line')) map.setLayoutProperty('base-distance-vectors-line', 'visibility', visibility);
+    if (map.getLayer('delivery-incoming-casing')) map.setLayoutProperty('delivery-incoming-casing', 'visibility', visibility);
+    if (map.getLayer('delivery-incoming-road')) map.setLayoutProperty('delivery-incoming-road', 'visibility', visibility);
+    if (map.getLayer('delivery-incoming-flow')) map.setLayoutProperty('delivery-incoming-flow', 'visibility', visibility);
+    if (map.getLayer('delivery-trail-line')) map.setLayoutProperty('delivery-trail-line', 'visibility', visibility);
 
     Object.values(distanceMarkersRef.current).forEach(({ element }) => {
       element.style.display = showDistanceLines ? 'flex' : 'none';
@@ -635,38 +757,84 @@ export default function MapView({
     });
   }, [showDistanceLines]);
 
+  // Zomato/Swiggy Delivery Dash Flow Animation (Streaming forward pulses into destination)
+  useEffect(() => {
+    let step = 0;
+    const dashPatterns = [
+      [0.2, 2.5, 2.3],
+      [0.7, 2.5, 1.8],
+      [1.2, 2.5, 1.3],
+      [1.7, 2.5, 0.8],
+      [2.2, 2.5, 0.3],
+      [2.5, 2.5, 0.0],
+    ];
+
+    const animInterval = setInterval(() => {
+      const map = mapRef.current;
+      if (!map || !map.isStyleLoaded() || !map.getLayer('delivery-incoming-flow')) return;
+      step = (step + 1) % dashPatterns.length;
+      try {
+        map.setPaintProperty('delivery-incoming-flow', 'line-dasharray', dashPatterns[step]);
+      } catch (e) {}
+    }, 120);
+
+    return () => clearInterval(animInterval);
+  }, []);
+
   // Update Road Navigation Trail geometry and Midpoint Distance Badges
   const updateDistanceVectors = (map) => {
-    if (!map || !map.getSource('base-distance-vectors')) return;
+    if (!map) return;
 
     const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
+    const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
 
-    const distanceLineFeatures = vehicles
-      .filter(v => v.status !== 'at_base')
-      .map(v => {
-        const trailCoords = getNavigationTrailCoords(v, camps);
-        const dist = calculateDistanceKm(v.lat, v.lon, BASE_HOSPITAL.lat, BASE_HOSPITAL.lon);
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: trailCoords,
-          },
-          properties: {
-            vehicleId: v.id,
-            distanceKm: dist,
-            isSelected: v.id === selectedVehicleId,
-          },
-        };
-      });
-
-    map.getSource('base-distance-vectors').setData({
-      type: 'FeatureCollection',
-      features: distanceLineFeatures,
+    const incomingFeatures = activeVehicles.map((v) => {
+      const split = getDeliveryRouteSplit(v, camps);
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: split.upcomingRoute,
+        },
+        properties: {
+          vehicleId: v.id,
+          isSelected: v.id === selectedVehicleId,
+          status: v.status,
+        },
+      };
     });
 
+    const trailFeatures = activeVehicles.map((v) => {
+      const split = getDeliveryRouteSplit(v, camps);
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: split.completedTrail,
+        },
+        properties: {
+          vehicleId: v.id,
+          isSelected: v.id === selectedVehicleId,
+        },
+      };
+    });
+
+    if (map.getSource('delivery-incoming-routes')) {
+      map.getSource('delivery-incoming-routes').setData({
+        type: 'FeatureCollection',
+        features: incomingFeatures,
+      });
+    }
+
+    if (map.getSource('delivery-trail-routes')) {
+      map.getSource('delivery-trail-routes').setData({
+        type: 'FeatureCollection',
+        features: trailFeatures,
+      });
+    }
+
     // Update midpoint distance badges on the map
-    const activeVehIds = new Set(vehicles.filter(v => v.status !== 'at_base').map(v => v.id));
+    const activeVehIds = new Set(activeVehicles.map(v => v.id));
 
     // Remove deleted vehicle distance badges
     Object.keys(distanceMarkersRef.current).forEach((id) => {
@@ -676,13 +844,18 @@ export default function MapView({
       }
     });
 
-    vehicles.filter(v => v.status !== 'at_base').forEach((v) => {
-      const trailCoords = getNavigationTrailCoords(v, camps);
-      const midIdx = Math.max(0, Math.floor(trailCoords.length / 2));
-      const midPoint = trailCoords[midIdx] || [v.lon, v.lat];
+    activeVehicles.forEach((v) => {
+      const split = getDeliveryRouteSplit(v, camps);
+      const upcomingCoords = split.upcomingRoute;
+      const midIdx = Math.max(0, Math.floor(upcomingCoords.length / 2));
+      const midPoint = upcomingCoords[midIdx] || [v.lon, v.lat];
       const midLon = (midPoint[0] + v.lon) / 2;
       const midLat = (midPoint[1] + v.lat) / 2;
-      const dist = calculateDistanceKm(v.lat, v.lon, BASE_HOSPITAL.lat, BASE_HOSPITAL.lon);
+
+      const targetCamp = camps.find(c => c.id === v.assignedCampId);
+      const targetName = v.status === 'returning' ? 'Base Hospital' : (targetCamp?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '') || 'Camp');
+      const distRemaining = v.distRemainingKm || Math.round(calculateDistanceKm(v.lat, v.lon, targetCamp?.lat || BASE_HOSPITAL.lat, targetCamp?.lon || BASE_HOSPITAL.lon));
+      const eta = v.etaMins || 14;
       const isSelected = v.id === selectedVehicleId;
 
       let badgeObj = distanceMarkersRef.current[v.id];
@@ -704,13 +877,13 @@ export default function MapView({
       }
 
       badgeObj.element.innerHTML = `
-        <div class="px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold tracking-tight shadow-md flex items-center gap-1.5 ${
+        <div class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold tracking-tight shadow-lg flex items-center gap-1.5 ${
           isSelected 
-            ? (isDark ? 'bg-cyan-950 text-cyan-200 border-cyan-400 scale-110 shadow-cyan-500/30' : 'bg-blue-600 text-white border-blue-700 scale-110 shadow-blue-500/30')
+            ? (isDark ? 'bg-cyan-950 text-cyan-200 border-cyan-400 scale-110 shadow-cyan-500/40' : 'bg-blue-600 text-white border-blue-700 scale-110 shadow-blue-500/30')
             : (isDark ? 'bg-slate-950/95 text-cyan-300 border-cyan-500/40' : 'bg-white/95 text-blue-900 border-blue-200 shadow-sm')
         }">
-          <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : (isDark ? 'bg-cyan-400' : 'bg-blue-600')} animate-pulse"></span>
-          <span>${dist} km from Base</span>
+          <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : (isDark ? 'bg-cyan-400' : 'bg-emerald-500')} animate-pulse"></span>
+          <span>⚡ ~${eta}m • ${distRemaining} km to ${targetName}</span>
         </div>
       `;
     });
@@ -913,6 +1086,8 @@ export default function MapView({
         campMarkersRef.current[camp.id].remove();
       }
 
+      const incomingVehicle = vehicles.find((v) => v.assignedCampId === camp.id && v.status === 'moving');
+
       const el = document.createElement('div');
       el.className = 'relative flex flex-col items-center justify-center cursor-pointer group select-none';
       el.onclick = (e) => {
@@ -927,15 +1102,31 @@ export default function MapView({
         .replace(' Eye Screening Camp', '');
 
       el.innerHTML = `
+        ${incomingVehicle ? `
+          <!-- Zomato/Swiggy Delivery Destination Header -->
+          <div class="mb-1 whitespace-nowrap px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-bold shadow-md border border-white/50 flex items-center gap-1 animate-bounce-subtle pointer-events-none">
+            <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+            <span>Destination (Camp)</span>
+          </div>
+        ` : ''}
+
         <div class="relative flex items-center justify-center">
           <!-- Gentle Sonar Ripple Ring -->
           <div class="absolute w-14 h-14 rounded-full ${isDark ? 'bg-cyan-400/20' : 'bg-sky-500/15'} radar-ring pointer-events-none"></div>
+
+          ${incomingVehicle ? `
+            <!-- Zomato/Swiggy Destination Beacon Pulse Rings -->
+            <div class="absolute -inset-3 rounded-full bg-emerald-500/30 animate-ping pointer-events-none"></div>
+            <div class="absolute -inset-6 rounded-full bg-teal-500/15 animate-pulse pointer-events-none"></div>
+          ` : ''}
           
           <!-- Apple Maps Circular POI Disc -->
           <div class="w-8 h-8 rounded-full ${
-            isDark 
-              ? 'bg-gradient-to-tr from-cyan-600 to-sky-400 border-2 border-white/90 shadow-[0_4px_14px_rgba(6,182,212,0.5)] text-white' 
-              : 'bg-gradient-to-tr from-sky-600 to-cyan-500 border-2 border-white shadow-[0_4px_12px_rgba(2,132,199,0.3)] text-white'
+            incomingVehicle
+              ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 border-2 border-white shadow-[0_4px_14px_rgba(16,185,129,0.5)] text-white'
+              : (isDark 
+                  ? 'bg-gradient-to-tr from-cyan-600 to-sky-400 border-2 border-white/90 shadow-[0_4px_14px_rgba(6,182,212,0.5)] text-white' 
+                  : 'bg-gradient-to-tr from-sky-600 to-cyan-500 border-2 border-white shadow-[0_4px_12px_rgba(2,132,199,0.3)] text-white')
           } flex items-center justify-center hover:scale-110 transition-transform">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
               <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
@@ -950,7 +1141,7 @@ export default function MapView({
             ? 'bg-slate-950/95 border border-cyan-500/40 text-cyan-200 shadow-md' 
             : 'bg-white/95 border border-slate-200 text-slate-800 shadow-xs'
         } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          <span class="w-1.5 h-1.5 rounded-full ${incomingVehicle ? 'bg-emerald-400 animate-ping' : 'bg-emerald-500'}"></span>
           <span>${shortCampName}</span>
           <span class="${isDark ? 'text-cyan-400/90 font-mono' : 'text-sky-600 font-mono'} font-semibold">(${camp.currentScreened || 0})</span>
         </div>
@@ -966,7 +1157,7 @@ export default function MapView({
 
   useEffect(() => {
     updateCampMarkers();
-  }, [camps, theme]);
+  }, [camps, theme, vehicles]);
 
   // Update Vehicle Markers with Apple AirTag Platter Style
   const updateVehicleMarkers = () => {
@@ -1021,6 +1212,14 @@ export default function MapView({
 
       markerObj.element.innerHTML = `
         <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-200 ${isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'}">
+          <!-- Zomato/Swiggy Live ETA Bubble Floating Above Vehicle -->
+          ${v.status === 'moving' && v.speed > 0 ? `
+            <div class="mb-2.5 whitespace-nowrap px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md flex items-center gap-1.5 bg-gradient-to-r from-blue-600 via-sky-600 to-indigo-600 text-white border-white/60 text-[9.5px] font-mono font-bold tracking-tight pointer-events-none">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+              <span>⚡ ~${v.etaMins || 14}m to Camp</span>
+            </div>
+          ` : ''}
+
           <!-- Live Heading Chevron (Apple Maps navigation style) -->
           ${v.speed > 1 ? `
             <div style="transform: rotate(${v.bearing || 0}deg);" class="absolute -top-3.5 transition-transform duration-300 pointer-events-none">

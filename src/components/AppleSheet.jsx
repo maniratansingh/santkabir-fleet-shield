@@ -149,6 +149,39 @@ export default function AppleSheet({
                 </div>
               </div>
 
+              {/* Zomato / Swiggy Delivery Status Platter */}
+              {selectedVehicle.status !== 'at_base' && (
+                <div className="my-2 p-3 rounded-2xl bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent border border-blue-500/25 dark:border-blue-400/20 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-cyan-400 font-mono">
+                        {selectedVehicle.status === 'returning' ? 'Patient Return Transit' : 'Live Delivery to Camp'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-extrabold text-blue-700 dark:text-cyan-300 font-mono">
+                        ~{selectedVehicle.etaMins || 14} MINS
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Route Corridor Progress Tracker Bar */}
+                  <div className="mt-2.5 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                    <span className="truncate max-w-[95px]">Sant Kabir Base</span>
+                    <span className="font-mono text-blue-600 dark:text-cyan-400 font-bold">{selectedVehicle.distRemainingKm || 12} km away</span>
+                    <span className="truncate max-w-[105px] text-right">{camps.find(c => c.id === selectedVehicle.assignedCampId)?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '') || 'Camp'}</span>
+                  </div>
+
+                  <div className="relative mt-1 w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                    <div 
+                      className="h-full rounded-full bg-gradient-to-r from-blue-600 via-sky-400 to-emerald-400 transition-all duration-500"
+                      style={{ width: `${Math.min(95, Math.max(15, Math.round(((selectedVehicle.routeStep || 1.8) / 4) * 100)))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Apple Signature 4-Column Action Platter */}
               <div className="grid grid-cols-4 gap-2 my-2 py-2.5 px-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
                 {/* 1. Play Chime */}

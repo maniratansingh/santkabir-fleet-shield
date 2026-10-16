@@ -4,7 +4,7 @@ import DynamicIsland from './components/DynamicIsland';
 import FloatingControls from './components/FloatingControls';
 import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
-import { INITIAL_VEHICLES, INITIAL_CAMPS, BASE_HOSPITAL } from './data/mockData';
+import { INITIAL_VEHICLES, INITIAL_CAMPS, BASE_HOSPITAL, calculateDistanceKm } from './data/mockData';
 import { playCampArrivalChime, playAlertTone } from './utils/audio';
 import { CheckCircle2, AlertTriangle, X, Eye, User, Clock, Phone, MapPin } from 'lucide-react';
 
@@ -171,7 +171,7 @@ export default function App() {
     }
   }, [isSimulation]);
 
-  // Live Vehicle Simulation Engine (Demonstrates moving fleet on Basti roads)
+  // Live Vehicle Simulation Engine (Demonstrates moving fleet along actual Basti road corridors)
   useEffect(() => {
     if (!isSimulation) return;
 
@@ -180,24 +180,25 @@ export default function App() {
         prev.map((v) => {
           if (v.status === 'at_base') return v;
 
-          // Find assigned camp coordinates
           const targetCamp = camps.find((c) => c.id === v.assignedCampId);
-          let targetLat = targetCamp ? targetCamp.lat : BASE_HOSPITAL.lat;
-          let targetLon = targetCamp ? targetCamp.lon : BASE_HOSPITAL.lon;
+          const waypoints = targetCamp?.routeWaypoints;
+          if (!waypoints || waypoints.length < 2) return v;
 
-          if (v.status === 'returning') {
-            targetLat = BASE_HOSPITAL.lat;
-            targetLon = BASE_HOSPITAL.lon;
-          }
+          const maxIndex = waypoints.length - 1;
+          let currentStep = typeof v.routeStep === 'number' ? v.routeStep : 0;
+          let currentStatus = v.status;
+          let currentSpeed = v.speed;
 
-          // Compute step towards target
-          const dLat = targetLat - v.lat;
-          const dLon = targetLon - v.lon;
-          const dist = Math.sqrt(dLat * dLat + dLon * dLon);
+          if (currentStatus === 'moving') {
+            // Advancing along road to camp
+            const stepDelta = 0.07;
+            currentStep += stepDelta;
 
-          // Close to target (< 300m)
-          if (dist < 0.005) {
-            if (v.status === 'moving') {
+            if (currentStep >= maxIndex) {
+              currentStep = maxIndex;
+              currentStatus = 'at_camp';
+              currentSpeed = 0;
+
               if (!prevCampStatusRef.current[v.id]) {
                 prevCampStatusRef.current[v.id] = true;
                 if (soundEnabled) playCampArrivalChime();
@@ -209,42 +210,84 @@ export default function App() {
                   camp: targetCamp,
                 });
               }
+            } else {
+              currentSpeed = Math.floor(42 + Math.random() * 8);
+            }
+          } else if (currentStatus === 'returning') {
+            // Returning along road back to Base Hospital
+            const stepDelta = 0.07;
+            currentStep -= stepDelta;
+
+            if (currentStep <= 0) {
+              currentStep = 0;
+              currentStatus = 'at_base';
+              currentSpeed = 0;
+            } else {
+              currentSpeed = Math.floor(44 + Math.random() * 8);
+            }
+          } else if (currentStatus === 'at_camp') {
+            // After staying at camp for screening, cycle to returning with boarded patients
+            const stayCounter = (v.stayTicks || 0) + 1;
+            if (stayCounter > 8) {
               return {
                 ...v,
-                status: 'at_camp',
-                speed: 0,
-                lastSeen: Date.now(),
+                status: 'returning',
+                stayTicks: 0,
+                patientsOnboard: Math.floor(12 + Math.random() * 10),
+                routeStep: maxIndex - 0.05,
               };
             }
-            if (v.status === 'returning') {
-              return {
-                ...v,
-                status: 'at_base',
-                speed: 0,
-                lastSeen: Date.now(),
-              };
+            return { ...v, stayTicks: stayCounter };
+          }
+
+          // Interpolate coordinate along road segment
+          const segIdx = Math.max(0, Math.min(Math.floor(currentStep), maxIndex - 1));
+          const t = Math.max(0, Math.min(currentStep - segIdx, 1));
+          const pA = waypoints[segIdx];
+          const pB = waypoints[segIdx + 1];
+
+          const lon = pA[0] + t * (pB[0] - pA[0]);
+          const lat = pA[1] + t * (pB[1] - pA[1]);
+
+          // Compute road tangent angle
+          const dLon = pB[0] - pA[0];
+          const dLat = pB[1] - pA[1];
+          let bearing = Math.round(((Math.atan2(dLon, dLat) * 180) / Math.PI + 360) % 360);
+          if (currentStatus === 'returning') {
+            bearing = (bearing + 180) % 360;
+          }
+
+          // Calculate remaining road distance to destination
+          let distRemainingKm = 0;
+          if (currentStatus === 'moving') {
+            distRemainingKm = calculateDistanceKm(lat, lon, pB[1], pB[0]);
+            for (let j = segIdx + 1; j < maxIndex; j++) {
+              distRemainingKm += calculateDistanceKm(waypoints[j][1], waypoints[j][0], waypoints[j + 1][1], waypoints[j + 1][0]);
+            }
+          } else if (currentStatus === 'returning') {
+            distRemainingKm = calculateDistanceKm(lat, lon, pA[1], pA[0]);
+            for (let j = segIdx - 1; j >= 0; j--) {
+              distRemainingKm += calculateDistanceKm(waypoints[j + 1][1], waypoints[j + 1][0], waypoints[j][1], waypoints[j][0]);
             }
           }
 
-          // Move along vector
-          const step = 0.0006;
-          const angle = Math.atan2(dLon, dLat);
-          const bearing = Math.round(((angle * 180) / Math.PI + 360) % 360);
-          const nextLat = v.lat + Math.cos(angle) * step;
-          const nextLon = v.lon + Math.sin(angle) * step;
-          const randomSpeed = Math.floor(40 + Math.random() * 12);
+          const etaMins = currentSpeed > 0 ? Math.max(1, Math.round((distRemainingKm / currentSpeed) * 60)) : 0;
 
           return {
             ...v,
-            lat: nextLat,
-            lon: nextLon,
-            speed: randomSpeed,
-            bearing: bearing,
+            lat,
+            lon,
+            speed: currentSpeed,
+            bearing,
+            routeStep: currentStep,
+            status: currentStatus,
+            distRemainingKm: Math.round(distRemainingKm * 10) / 10,
+            etaMins,
             lastSeen: Date.now(),
           };
         })
       );
-    }, 2000);
+    }, 1500);
 
     return () => clearInterval(simInterval);
   }, [isSimulation, camps, soundEnabled]);
