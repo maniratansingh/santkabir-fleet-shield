@@ -77,14 +77,31 @@ const DRIVERS = [
   { name: 'Anand Upadhyay', phone: '+91 98383 66778' }
 ];
 
+// Calculate bearing along highway waypoints
+function getRoadHeading(coord1, coord2) {
+  if (!coord1 || !coord2) return 0;
+  const [lon1, lat1] = coord1;
+  const [lon2, lat2] = coord2;
+  const y = Math.sin(((lon2 - lon1) * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180);
+  const x =
+    Math.cos((lat1 * Math.PI) / 180) * Math.sin((lat2 * Math.PI) / 180) -
+    Math.sin((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.cos(((lon2 - lon1) * Math.PI) / 180);
+  const brng = (Math.atan2(y, x) * 180) / Math.PI;
+  return Math.round((brng + 360) % 360);
+}
+
 export const INITIAL_VEHICLES = Array.from({ length: 35 }).map((_, i) => {
   const corridor = CORRIDOR_CONFIGS[i % CORRIDOR_CONFIGS.length];
   const wps = roadRoutesData[corridor.id]?.coordinates || [];
   const driver = DRIVERS[i % DRIVERS.length];
   const carIdxInCorridor = Math.floor(i / CORRIDOR_CONFIGS.length);
-  const ratio = Math.min(0.92, Math.max(0.12, 0.15 + carIdxInCorridor * 0.18));
+  const ratio = Math.min(0.95, Math.max(0.18, 0.18 + carIdxInCorridor * 0.19));
   const wpIndex = Math.min(wps.length - 1, Math.floor(wps.length * ratio));
   const pos = wps[wpIndex] || [82.718401, 26.797313];
+  const nextWp = wps[Math.min(wps.length - 1, wpIndex + 2)] || pos;
+  const heading = (pos[0] === nextWp[0] && pos[1] === nextWp[1]) ? 0 : getRoadHeading(pos, nextWp);
   const idNum = String(i + 1).padStart(2, '0');
   const speed = 36 + ((i * 7) % 28);
   const roadDist = Number((corridor.totalKm * ratio).toFixed(1));
@@ -99,7 +116,7 @@ export const INITIAL_VEHICLES = Array.from({ length: 35 }).map((_, i) => {
     highwayName: corridor.name,
     status: 'moving',
     speed: speed,
-    bearing: (i * 53) % 360,
+    bearing: heading,
     roadDistFromBaseKm: roadDist,
     totalRoadKm: corridor.totalKm,
     routeWaypoints: wps,

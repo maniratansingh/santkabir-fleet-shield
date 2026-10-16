@@ -143,8 +143,8 @@ export default function AppleSheet({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                      {selectedVehicle.name}
+                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white truncate font-mono">
+                      {selectedVehicle.id}
                     </h3>
                     {/* Battery Pill */}
                     <div className="flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/40">
@@ -152,13 +152,13 @@ export default function AppleSheet({
                       <span>{selectedVehicle.battery ?? selectedVehicle.batt ?? 100}%</span>
                     </div>
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate font-mono">
-                    Plate: <strong className="text-slate-800 dark:text-slate-200">{selectedVehicle.plate || selectedVehicle.id}</strong>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate font-medium">
+                    Driver: <strong className="text-slate-800 dark:text-slate-200">{selectedVehicle.driverName || 'Assigned Driver'}</strong>
                   </div>
                   <div className="text-[11px] text-sky-600 dark:text-cyan-400 font-medium flex items-center gap-1 mt-1 truncate">
                     <MapPin className="w-3 h-3 shrink-0" />
                     <span className="truncate">
-                      Sector: {selectedVehicle.sector || selectedVehicle.highwayName || 'Rural Outreach'}
+                      Sector: {selectedVehicle.highwayName || selectedVehicle.sector || 'Rural Outreach Sector'}
                     </span>
                   </div>
                 </div>
@@ -403,8 +403,8 @@ export default function AppleSheet({
 
                       {/* Right: Driver + Call & Maps Shortcuts */}
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline max-w-[70px] truncate">
-                          {v.driverName ? v.driverName.split(' ')[0] : ''}
+                        <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium max-w-[80px] sm:max-w-[110px] truncate">
+                          {v.driverName || 'Driver'}
                         </span>
 
                         {v.driverPhone && (

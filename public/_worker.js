@@ -184,7 +184,7 @@ export default {
 
       const record = {
         id: vehId,
-        name: existing.name || `Ambulance ${vehId}`,
+        name: vehId,
         type: 'ambulance',
         driverName: driver ? String(driver).trim() : (existing.driverName || 'Driver'),
         driverPhone: existing.driverPhone || '',
@@ -204,6 +204,7 @@ export default {
         trail: updatedTrail,
         lastSeen: timestamp,
         updatedAt: Date.now(),
+        isLive: true,
       };
 
       // Store in edge memory cache

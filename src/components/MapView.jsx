@@ -191,83 +191,118 @@ function getHighwayTrail(v) {
 }
 
 // Authentic 3D Isometric Ambulance with specular lighting, dual headlights, and drop shadow
-function get3DAmbulanceSvg(isDark, status, isSelected) {
+// Authentic 3D Isometric Ambulance with specular lighting, dual headlights, forward road beams, Sant Kabir emblem, and beacon
+function get3DAmbulanceSvg(isDark, status, isSelected, vColor = '#007AFF', vId = '') {
   const isMoving = status === 'moving' || status === 'returning';
-  const sirenColor = isMoving ? '#EF4444' : '#F59E0B';
   const uniqueId = Math.random().toString(36).substr(2, 6);
 
   return `
-    <svg width="48" height="56" class="w-12 h-14 select-none drop-shadow-2xl" viewBox="0 0 52 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="54" height="68" class="w-[52px] h-[66px] select-none filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.45)]" viewBox="0 0 54 68" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
+        <!-- Windshield gradient with reflective sky tint -->
         <linearGradient id="ambWindshield_${uniqueId}" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stop-color="#38BDF8"/>
           <stop offset="100%" stop-color="#0284C7"/>
         </linearGradient>
+        <!-- Slanted aerodynamic hood gradient -->
         <linearGradient id="ambHood_${uniqueId}" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stop-color="#FFFFFF"/>
-          <stop offset="100%" stop-color="#E2E8F0"/>
+          <stop offset="60%" stop-color="#F8FAFC"/>
+          <stop offset="100%" stop-color="#CBD5E1"/>
         </linearGradient>
+        <!-- Clinical white roof deck gradient -->
         <linearGradient id="ambRoof_${uniqueId}" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="${isDark ? '#F8FAFC' : '#FFFFFF'}"/>
+          <stop offset="0%" stop-color="${isDark ? '#FFFFFF' : '#FFFFFF'}"/>
           <stop offset="100%" stop-color="${isDark ? '#E2E8F0' : '#F1F5F9'}"/>
         </linearGradient>
+        <!-- High-intensity forward road illumination beam -->
         <linearGradient id="headlightBeam_${uniqueId}" x1="0%" y1="100%" x2="0%" y2="0%">
-          <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.6"/>
+          <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.65"/>
+          <stop offset="60%" stop-color="#FEF08A" stop-opacity="0.25"/>
           <stop offset="100%" stop-color="#FEF08A" stop-opacity="0"/>
         </linearGradient>
-        <filter id="shadowBlur_${uniqueId}" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" />
+        <!-- Soft ambient chassis contact shadow -->
+        <filter id="chassisShadow_${uniqueId}" x="-25%" y="-25%" width="150%" height="150%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="2.2" />
         </filter>
       </defs>
 
-      <!-- 3D Ground Drop Shadow Beneath Chassis -->
-      <ellipse cx="26" cy="40" rx="17" ry="19" fill="#000000" opacity="${isDark ? '0.55' : '0.35'}" filter="url(#shadowBlur_${uniqueId})" />
+      <!-- 1. Deep 3D Ground Drop Shadow on Asphalt -->
+      <ellipse cx="27" cy="42" rx="19" ry="22" fill="#000000" opacity="${isDark ? '0.65' : '0.4'}" filter="url(#chassisShadow_${uniqueId})" />
 
+      <!-- 2. Dual Forward 3D Headlight Beams illuminating road pavement -->
       ${isMoving ? `
-        <!-- Forward 3D Headlight Beams illuminating road pavement ahead -->
-        <polygon points="17,16 6,0 20,0 19,16" fill="url(#headlightBeam_${uniqueId})" />
-        <polygon points="33,16 32,0 46,0 35,16" fill="url(#headlightBeam_${uniqueId})" />
+        <polygon points="17,17 4,0 21,0 20,17" fill="url(#headlightBeam_${uniqueId})" />
+        <polygon points="37,17 33,0 50,0 40,17" fill="url(#headlightBeam_${uniqueId})" />
       ` : ''}
 
-      <!-- 3D Lower Chassis Underbody & Bumpers -->
-      <rect x="13" y="15" width="26" height="36" rx="6" fill="#0F172A" />
-      <rect x="15" y="49" width="22" height="3.5" rx="1.5" fill="#475569" />
-      <rect x="15" y="14" width="22" height="3" rx="1.5" fill="#CBD5E1" />
+      <!-- 3. Heavy Dark Underbody Chassis & Wheels -->
+      <rect x="13" y="16" width="28" height="42" rx="6" fill="#0F172A" />
+      <!-- Tires & Wheel Arches -->
+      <rect x="10.5" y="21" width="3.5" height="8" rx="1.5" fill="#1E293B" stroke="#0F172A" stroke-width="0.8" />
+      <rect x="40" y="21" width="3.5" height="8" rx="1.5" fill="#1E293B" stroke="#0F172A" stroke-width="0.8" />
+      <rect x="10.5" y="44" width="3.5" height="9" rx="1.5" fill="#1E293B" stroke="#0F172A" stroke-width="0.8" />
+      <rect x="40" y="44" width="3.5" height="9" rx="1.5" fill="#1E293B" stroke="#0F172A" stroke-width="0.8" />
 
-      <!-- Dual Chrome Headlights -->
-      <circle cx="17.5" cy="15.5" r="2" fill="#FEF08A" stroke="#EAB308" stroke-width="0.8" />
-      <circle cx="34.5" cy="15.5" r="2" fill="#FEF08A" stroke="#EAB308" stroke-width="0.8" />
+      <!-- 4. Front Chrome & Amber Aerodynamic Bumper -->
+      <rect x="15" y="15" width="24" height="3.5" rx="1.5" fill="#E2E8F0" stroke="#94A3B8" stroke-width="0.8" />
+      <line x1="18" y1="16.5" x2="36" y2="16.5" stroke="#475569" stroke-width="1" stroke-linecap="round" />
 
-      <!-- 3D Main Body Shell with Depth Extrusion -->
-      <rect x="14" y="16" width="24" height="33" rx="5" fill="url(#ambRoof_${uniqueId})" stroke="#64748B" stroke-width="1.2" />
+      <!-- 5. Dual Chrome Headlamp Clusters -->
+      <circle cx="18" cy="17" r="2.4" fill="#FEF08A" stroke="#EAB308" stroke-width="0.9" />
+      <circle cx="18" cy="17" r="1.1" fill="#FFFFFF" />
+      <circle cx="36" cy="17" r="2.4" fill="#FEF08A" stroke="#EAB308" stroke-width="0.9" />
+      <circle cx="36" cy="17" r="1.1" fill="#FFFFFF" />
 
-      <!-- 3D Extruded Left & Right Flank Shadow Facets -->
-      <path d="M14 20 L16 22 L16 47 L14 46 Z" fill="#CBD5E1" />
-      <path d="M38 20 L36 22 L36 47 L38 46 Z" fill="#94A3B8" />
+      <!-- 6. 3D Main Body Shell with Clinical Depth Extrusion -->
+      <rect x="14" y="17" width="26" height="38" rx="5.5" fill="url(#ambRoof_${uniqueId})" stroke="#64748B" stroke-width="1.2" />
 
-      <!-- Aerodynamic Slanted Cab Hood -->
-      <path d="M16 16 L36 16 L34 22 L18 22 Z" fill="url(#ambHood_${uniqueId})" stroke="#94A3B8" stroke-width="0.8" />
+      <!-- 7. Left & Right 3D Shading Flank Facets -->
+      <path d="M14 22 L16.5 24 L16.5 53 L14 52 Z" fill="#CBD5E1" />
+      <path d="M40 22 L37.5 24 L37.5 53 L40 52 Z" fill="#94A3B8" />
 
-      <!-- 3D Curved Reflective Windshield Glass -->
-      <path d="M17.5 22 L34.5 22 L33 28 L19 28 Z" fill="url(#ambWindshield_${uniqueId})" stroke="#0284C7" stroke-width="0.8" />
-      <line x1="20" y1="23" x2="28" y2="27" stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round" opacity="0.9" />
+      <!-- 8. Dynamic Livery Side Accent Stripe (Matching Fleet Color) -->
+      <line x1="14.5" y1="36" x2="14.5" y2="50" stroke="${vColor}" stroke-width="1.8" stroke-linecap="round" />
+      <line x1="39.5" y1="36" x2="39.5" y2="50" stroke="${vColor}" stroke-width="1.8" stroke-linecap="round" />
 
-      <!-- 3D Emergency Roof Light Bar (Siren) -->
-      <rect x="19" y="27" width="14" height="4" rx="2" fill="#1E293B" stroke="#0F172A" stroke-width="0.5" />
-      <rect x="19.5" y="27.5" width="6" height="3" rx="1.5" fill="${sirenColor}" />
-      <rect x="26.5" y="27.5" width="6" height="3" rx="1.5" fill="#3B82F6" />
-      ${isMoving ? `<circle cx="26" cy="29" r="6" fill="${sirenColor}" opacity="0.6" class="animate-ping" />` : ''}
+      <!-- 9. Aerodynamic Slanted Hood with Center Crease -->
+      <path d="M16 17 L38 17 L36 24 L18 24 Z" fill="url(#ambHood_${uniqueId})" stroke="#94A3B8" stroke-width="0.8" />
+      <line x1="27" y1="17.5" x2="27" y2="23.5" stroke="#FFFFFF" stroke-width="0.8" opacity="0.8" />
 
-      <!-- 3D Raised Patient Compartment Roof -->
-      <rect x="17" y="31" width="18" height="16" rx="3" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="0.8" />
+      <!-- 10. 3D Panoramic Windshield Glass with Specular Glare -->
+      <path d="M17.5 24 L36.5 24 L35 30 L19 30 Z" fill="url(#ambWindshield_${uniqueId})" stroke="#0284C7" stroke-width="0.8" />
+      <line x1="20" y1="25" x2="29" y2="29" stroke="#FFFFFF" stroke-width="1.3" stroke-linecap="round" opacity="0.85" />
 
-      <!-- Bold Medical Red Cross (✚) on 3D Roof -->
-      <rect x="24.5" y="34" width="3" height="10" rx="0.6" fill="#EF4444" />
-      <rect x="21" y="37.5" width="10" height="3" rx="0.6" fill="#EF4444" />
+      <!-- 11. Dual Side Mirrors -->
+      <rect x="11.5" y="24" width="2.5" height="3.5" rx="1" fill="#0F172A" />
+      <rect x="40" y="24" width="2.5" height="3.5" rx="1" fill="#0F172A" />
 
-      <!-- Rear Amber Tail Emergency Lights -->
-      <circle cx="17.5" cy="48" r="1.5" fill="#F59E0B" />
-      <circle cx="34.5" cy="48" r="1.5" fill="#F59E0B" />
+      <!-- 12. 3D Emergency Roof Light Bar (Flashing Siren Beacon) -->
+      <rect x="19" y="29" width="16" height="4.5" rx="2" fill="#0F172A" stroke="#334155" stroke-width="0.5" />
+      <!-- Left Red Emergency Beacon -->
+      <rect x="19.5" y="29.5" width="7" height="3.5" rx="1.5" fill="#EF4444" />
+      <!-- Right Blue Emergency Beacon -->
+      <rect x="27.5" y="29.5" width="7" height="3.5" rx="1.5" fill="#3B82F6" />
+      <!-- Flashing Beacon Flare -->
+      ${isMoving ? `
+        <circle cx="23" cy="31" r="5" fill="#EF4444" opacity="0.75" class="animate-ping" />
+        <circle cx="31" cy="31" r="5" fill="#3B82F6" opacity="0.75" class="animate-ping" />
+      ` : ''}
+
+      <!-- 13. Raised Clinical Patient Compartment Deck -->
+      <rect x="17" y="34" width="20" height="18" rx="3.5" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="0.9" />
+
+      <!-- 14. Sant Kabir Eye Hospital Red Medical Cross (✚) Emblem -->
+      <circle cx="27" cy="43" r="7.5" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="0.8" />
+      <rect x="25.2" y="38" width="3.6" height="10" rx="0.8" fill="#EF4444" />
+      <rect x="22" y="41.2" width="10" height="3.6" rx="0.8" fill="#EF4444" />
+
+      <!-- 15. Rear Diamond Plate Step Bumper & Amber/Red Taillights -->
+      <rect x="16" y="54" width="22" height="3.5" rx="1.2" fill="#475569" stroke="#334155" stroke-width="0.7" />
+      <circle cx="18" cy="53" r="1.6" fill="#EF4444" />
+      <circle cx="36" cy="53" r="1.6" fill="#EF4444" />
+      <circle cx="20.5" cy="53" r="1.2" fill="#F59E0B" />
+      <circle cx="33.5" cy="53" r="1.2" fill="#F59E0B" />
     </svg>
   `;
 }
@@ -717,6 +752,9 @@ export default function MapView({
       updateBaseMarker(map);
       updateDistanceVectors(map);
       updateVehicleMarkers(map);
+      map.on('zoomend', () => {
+        updateVehicleMarkers(map);
+      });
 
       setTimeout(() => {
         map.resize();
@@ -799,7 +837,11 @@ export default function MapView({
       }
     });
 
-    // Anti-collision decluttering: fan out overlapping ambulances within 220m
+    // Anti-collision decluttering: zoom-adaptive radial fan-out so ambulances never collide
+    const zoom = map.getZoom ? map.getZoom() : 11;
+    const thresholdDeg = zoom < 11.5 ? 0.0055 : (zoom < 13 ? 0.0035 : 0.0016);
+    const baseRadius = zoom < 11.5 ? 0.0042 : (zoom < 13 ? 0.0026 : 0.0011);
+
     const declutterGroups = [];
     vehicles.forEach((v) => {
       const lat = Number(v.lat || 0);
@@ -807,7 +849,7 @@ export default function MapView({
       let matched = null;
       for (const grp of declutterGroups) {
         const rep = grp[0];
-        if (Math.hypot(lat - rep.lat, lon - rep.lon) < 0.0022) {
+        if (Math.hypot(lat - rep.lat, lon - rep.lon) < thresholdDeg) {
           matched = grp;
           break;
         }
@@ -821,11 +863,13 @@ export default function MapView({
       if (grp.length === 1) {
         declutteredCoords.set(grp[0].id, [grp[0].lon, grp[0].lat]);
       } else {
-        const radius = 0.00075 + (grp.length * 0.0001);
+        const centerLon = grp.reduce((acc, c) => acc + c.lon, 0) / grp.length;
+        const centerLat = grp.reduce((acc, c) => acc + c.lat, 0) / grp.length;
+        const radius = Math.max(baseRadius, 0.0032 + (grp.length * 0.0006));
         grp.forEach((item, idx) => {
           const angle = (idx * (2 * Math.PI / grp.length)) - (Math.PI / 2);
-          const oLon = item.lon + (radius * Math.cos(angle) * 1.15);
-          const oLat = item.lat + (radius * Math.sin(angle));
+          const oLon = centerLon + (radius * Math.cos(angle) * 1.45);
+          const oLat = centerLat + (radius * Math.sin(angle));
           declutteredCoords.set(item.id, [Number(oLon.toFixed(6)), Number(oLat.toFixed(6))]);
         });
       }
@@ -845,28 +889,22 @@ export default function MapView({
       const innerContent = `
         <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
           <!-- Concise Single Capsule: Identifier • Speed • Distance -->
-          <div class="px-2 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[9.5px] font-bold font-mono transition-all backdrop-blur-md"
-            style="background: ${isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${vColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 2px 8px ${vColor}35;">
-            <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: ${vColor};"></span>
-            <span class="font-extrabold text-[10px]" style="color: ${vColor};">${v.id}</span>
+          <div class="mb-1 px-2.5 py-1 rounded-full border shadow-lg flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono transition-all backdrop-blur-md pointer-events-auto"
+            style="background: ${isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${vColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 14px ${vColor}35;">
+            <span class="w-2 h-2 rounded-full shrink-0" style="background-color: ${vColor}; box-shadow: 0 0 6px ${vColor};"></span>
+            <span class="font-extrabold text-[10.5px]" style="color: ${vColor};">${v.id}</span>
             <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
             <span>${speedStr}</span>
             <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
             <span class="text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
           </div>
 
-          <!-- Compact Directional Ambulance Indicator (26px) -->
-          <div class="mt-0.5 relative flex items-center justify-center transition-transform duration-300" style="transform: rotate(${v.bearing || 0}deg);">
-            <svg width="26" height="32" viewBox="0 0 28 36" fill="none" class="drop-shadow-md">
-              <ellipse cx="14" cy="24" rx="10" ry="8" fill="#000000" opacity="0.35" />
-              <rect x="6" y="8" width="16" height="22" rx="4" fill="#0F172A" />
-              <rect x="7" y="9" width="14" height="20" rx="3.5" fill="#FFFFFF" stroke="${vColor}" stroke-width="1.6" />
-              <path d="M8 12 L20 12 L19 16 L9 16 Z" fill="#0284C7" />
-              <rect x="12.5" y="19" width="3" height="7" rx="0.5" fill="#EF4444" />
-              <rect x="10.5" y="21" width="7" height="3" rx="0.5" fill="#EF4444" />
-              <circle cx="8.5" cy="9.5" r="1.2" fill="#FEF08A" />
-              <circle cx="19.5" cy="9.5" r="1.2" fill="#FEF08A" />
-            </svg>
+          <!-- Big 3D Isometric Ambulance with Logo, Beacons, Headlights, and Drop Shadow -->
+          <div class="mt-0.5 relative flex items-center justify-center transition-transform duration-300 pointer-events-auto" style="transform: rotate(${v.bearing || 0}deg);">
+            ${isSelected ? `
+              <div class="absolute w-16 h-18 rounded-full ${isDark ? 'bg-sky-400/30 ring-2 ring-sky-400/50' : 'bg-sky-500/25 ring-2 ring-sky-500/40'} animate-ping pointer-events-none"></div>
+            ` : ''}
+            ${get3DAmbulanceSvg(isDark, v.status, isSelected, vColor, v.id)}
           </div>
         </div>
       `;

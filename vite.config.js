@@ -80,20 +80,24 @@ function telemetryDevPlugin() {
           const prevTrail = Array.isArray(existing.trail) ? existing.trail : [];
           const updatedTrail = [...prevTrail.slice(-29), [lon, lat]];
 
+          let bearing = parseFloat(parsedUrl.searchParams.get('bearing') || parsedUrl.searchParams.get('heading') || '0');
           const record = {
             id: vehId,
-            name: `Ambulance ${vehId}`,
+            name: vehId,
             type: 'ambulance',
             driverName: driver,
             status: speedKmH > 3 ? 'moving' : (distKm < 0.25 ? 'at_base' : 'in_field'),
             lat,
             lon,
             speed: speedKmH,
+            bearing: Math.round(((bearing % 360) + 360) % 360),
             batt,
             battery: batt,
             distFromBaseKm: distKm,
+            roadDistFromBaseKm: Math.round(distKm * 1.15 * 10) / 10,
             trail: updatedTrail,
             updatedAt: Date.now(),
+            isLive: true,
           };
           liveVehicles.set(vehId, record);
 

@@ -122,6 +122,22 @@ export default function App() {
     return () => clearInterval(tourInterval);
   }, [isAutoTour]);
 
+const FLEET_COLORS = [
+  { line: '#007AFF', glow: '#38BDF8' },
+  { line: '#10B981', glow: '#34D399' },
+  { line: '#F59E0B', glow: '#FBBF24' },
+  { line: '#8B5CF6', glow: '#A78BFA' },
+  { line: '#EC4899', glow: '#F472B6' },
+  { line: '#06B6D4', glow: '#22D3EE' },
+  { line: '#14B8A6', glow: '#2DD4BF' },
+];
+
+function getDynamicColor(id = '') {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffffffff;
+  return FLEET_COLORS[Math.abs(hash) % FLEET_COLORS.length];
+}
+
   // Fetch real data from Cloudflare Pages API
   useEffect(() => {
     const fetchRealData = async () => {
@@ -129,15 +145,41 @@ export default function App() {
         const vehRes = await fetch('/api/vehicles').catch(() => null);
         if (vehRes && vehRes.ok) {
           const vehData = await vehRes.json();
-          const list = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
-          const prev = vehiclesRef.current || [];
-          const hasChanged = prev.length !== list.length || 
-            list.some((v, idx) => {
-              const p = prev[idx];
-              return !p || p.id !== v.id || p.lat !== v.lat || p.lon !== v.lon || p.speed !== v.speed || p.status !== v.status;
+          const liveList = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
+          if (liveList.length > 0) {
+            setVehicles(prevVehicles => {
+              const liveMap = new Map(liveList.map(v => [v.id, v]));
+              
+              // 1. Update existing vehicles that have live updates
+              const updated = prevVehicles.map(v => {
+                if (liveMap.has(v.id)) {
+                  const liveV = liveMap.get(v.id);
+                  liveMap.delete(v.id);
+                  return {
+                    ...v,
+                    ...liveV,
+                    isLive: true,
+                    routeWaypoints: v.routeWaypoints || liveV.routeWaypoints,
+                  };
+                }
+                return v;
+              });
+
+              // 2. Prepend any new identifiers (e.g. arbitrary identifiers sent from Traccar)
+              const newlyAdded = Array.from(liveMap.values()).map(v => {
+                const colors = getDynamicColor(v.id);
+                return {
+                  ...v,
+                  isLive: true,
+                  lineColor: v.lineColor || colors.line,
+                  glowColor: v.glowColor || colors.glow,
+                  highwayName: v.highwayName || 'Live Outreach Sector',
+                  driverName: v.driverName || 'Assigned Driver',
+                };
+              });
+
+              return [...newlyAdded, ...updated];
             });
-          if (list.length > 0 && hasChanged) {
-            setVehicles(list);
           }
         }
       } catch (err) {
@@ -146,7 +188,7 @@ export default function App() {
     };
 
     fetchRealData();
-    const interval = setInterval(fetchRealData, 3000);
+    const interval = setInterval(fetchRealData, 2500);
     return () => clearInterval(interval);
   }, []);
 
