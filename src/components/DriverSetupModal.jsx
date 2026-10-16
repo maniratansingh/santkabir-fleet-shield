@@ -240,7 +240,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-start gap-2.5">
               <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>Private Internal Release:</strong> The <strong>Sant Kabir Fleet Shield APK</strong> is compiled and signed with Mani Ratan Singh's developer release key. It is not hosted on Google Play to prevent driver manipulation.
+                <strong>Private Internal Release:</strong> The <strong>Sant Kabir Fleet Shield APK</strong> is compiled with hardcoded server endpoints and admin PIN protection. It is distributed directly to drivers via WhatsApp or private file transfer.
               </div>
             </div>
 
@@ -255,17 +255,17 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                       santkabir-fleet-shield-v1.0.apk
                     </h5>
                     <p className="text-[11px] text-slate-500">
-                      Release Build • ARM64/V7A • 8.4 MB • Android 8.0+
+                      Private Driver Binary • Android 8.0+
                     </p>
                   </div>
                 </div>
                 <a
                   href="/downloads/santkabir-fleet-shield-v1.0.apk"
-                  download
+                  download="santkabir-fleet-shield-v1.0.apk"
                   className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Download</span>
+                  <span>Download APK</span>
                 </a>
               </div>
 

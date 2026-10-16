@@ -152,7 +152,33 @@ export default {
       });
     }
 
-    // 3. Fallback: Serve static assets (HTML, JS, CSS, images)
+    // 3. Binary APK Downloads (Enforces Android APK MIME headers and blocks HTML fallback into .txt)
+    if (url.pathname.endsWith('.apk')) {
+      const assetRes = await env.ASSETS.fetch(request);
+      const contentType = assetRes.headers.get('content-type') || '';
+      if (assetRes.status === 404 || contentType.includes('text/html')) {
+        return new Response(JSON.stringify({
+          error: 'Sant Kabir Fleet Shield APK binary has not been placed in public/downloads/ yet.',
+          solution: 'Compile santkabir-fleet-shield-v1.0.apk and place it in public/downloads/ before uploading.',
+          developer: 'Mani Ratan Singh (mrps.in)',
+        }), {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+      const headers = new Headers(assetRes.headers);
+      headers.set('Content-Type', 'application/vnd.android.package-archive');
+      headers.set('Content-Disposition', 'attachment; filename="santkabir-fleet-shield-v1.0.apk"');
+      return new Response(assetRes.body, {
+        status: assetRes.status,
+        headers,
+      });
+    }
+
+    // 4. Fallback: Serve static assets (HTML, JS, CSS, images)
     return env.ASSETS.fetch(request);
   },
 };
