@@ -21,7 +21,7 @@ export default function FloatingControls({
   onCenterBase,
   showDistanceLines = true,
   onToggleDistanceLines,
-  isSimulation = true,
+  isSimulation = false,
   onToggleSimulation,
   soundEnabled = true,
   onToggleSound,
@@ -45,7 +45,7 @@ export default function FloatingControls({
     { key: 'light', name: 'Light Canvas', desc: 'Esri Light Gray' },
     { key: 'dark', name: 'Dark Canvas', desc: 'Esri Dark Gray' },
     { key: 'satellite', name: 'Satellite', desc: 'High-Res Aerial' },
-    { key: 'streets', name: 'Streets', desc: 'OpenStreetMap' },
+    { key: 'streets', name: 'Highways & Streets', desc: 'World Street Map' },
   ];
 
   return (
@@ -148,10 +148,10 @@ export default function FloatingControls({
         {/* Simulation / Live Switcher */}
         <button
           onClick={onToggleSimulation}
-          title={isSimulation ? "Simulator Running (Click to Switch to Live Fleet Shield Feed)" : "Live Fleet Shield Feed Active"}
+          title={isSimulation ? "Stop Demo Simulation (Switch to Live Mode)" : "Start Demo Simulation (Preview 3 Test Ambulances)"}
           className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >
-          {isSimulation ? <Play className="w-4 h-4 text-emerald-500 fill-emerald-500" /> : <Pause className="w-4 h-4 text-amber-500" />}
+          {isSimulation ? <Pause className="w-4 h-4 text-emerald-500 fill-emerald-500" /> : <Play className="w-4 h-4 text-slate-500" />}
         </button>
 
         {/* Sound Toggle */}

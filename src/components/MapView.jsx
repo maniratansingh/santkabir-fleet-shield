@@ -3,7 +3,6 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
-import { Layers, Ruler, Navigation } from 'lucide-react';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
@@ -127,24 +126,24 @@ const MAP_STYLES = {
     },
   },
   streets: {
-    name: 'OpenStreetMap',
+    name: 'Highways & Streets',
     style: {
       version: 8,
       sources: {
-        'osm-standard': {
+        'esri-streets': {
           type: 'raster',
           tiles: [
-            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
           ],
           tileSize: 256,
-          attribution: '© OpenStreetMap contributors',
+          attribution: 'Esri, HERE, Garmin, USGS, © OpenStreetMap contributors',
         },
       },
       layers: [
         {
-          id: 'osm-standard-layer',
+          id: 'esri-streets-layer',
           type: 'raster',
-          source: 'osm-standard',
+          source: 'esri-streets',
           minzoom: 0,
           maxzoom: 19,
         },
@@ -300,8 +299,6 @@ export default function MapView({
   const baseMarkerRef = useRef(null);
   const distanceMarkersRef = useRef({});
   const currentStyleKeyRef = useRef(activeStyleKey);
-  const [styleDropdownOpen, setStyleDropdownOpen] = useState(false);
-
   const vehiclesRef = useRef(vehicles);
   useEffect(() => {
     vehiclesRef.current = vehicles;
@@ -313,6 +310,18 @@ export default function MapView({
     if (!map) return;
 
     const currentVehicles = vehiclesRef.current || vehicles;
+    if (!currentVehicles || currentVehicles.length === 0) {
+      map.flyTo({
+        center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat],
+        zoom: 13.5,
+        pitch: 20,
+        bearing: 0,
+        duration: options.duration !== undefined ? options.duration : 800,
+        essential: true,
+      });
+      return;
+    }
+
     const bounds = new maplibregl.LngLatBounds();
     bounds.extend([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]);
 
@@ -356,7 +365,8 @@ export default function MapView({
   // Switch map layer style seamlessly
   const switchMapStyle = (styleKey) => {
     const map = mapRef.current;
-    if (!map || styleKey === currentStyleKeyRef.current) return;
+    if (!map || !MAP_STYLES[styleKey]) return;
+    if (styleKey === currentStyleKeyRef.current && map.isStyleLoaded()) return;
 
     currentStyleKeyRef.current = styleKey;
     if (onStyleChange) onStyleChange(styleKey);
@@ -371,20 +381,30 @@ export default function MapView({
       baseMarkerRef.current = null;
     }
 
-    let styleReadyFired = false;
-    const onStyleReady = () => {
-      if (styleReadyFired) return;
-      styleReadyFired = true;
+    // Clean up previous custom layers before switching
+    try {
+      if (map.getLayer('delivery-trail-line')) map.removeLayer('delivery-trail-line');
+      if (map.getLayer('delivery-trail-casing')) map.removeLayer('delivery-trail-casing');
+      if (map.getSource('delivery-trail-routes')) map.removeSource('delivery-trail-routes');
+    } catch (e) {}
+
+    // Wait strictly for style.load (never styledata, which causes 'Style is not done loading')
+    map.once('style.load', () => {
       addCustomLayers(map);
       updateBaseMarker(map);
       updateDistanceVectors(map);
       updateVehicleMarkers(map);
-    };
+    });
 
     map.setStyle(MAP_STYLES[styleKey].style);
-    map.once('style.load', onStyleReady);
-    map.once('styledata', onStyleReady);
   };
+
+  // Synchronize when activeStyleKey changes from parent FloatingControls
+  useEffect(() => {
+    if (activeStyleKey && activeStyleKey !== currentStyleKeyRef.current) {
+      switchMapStyle(activeStyleKey);
+    }
+  }, [activeStyleKey]);
 
   // Synchronize style when theme changes from light to dark or vice-versa
   useEffect(() => {
@@ -755,67 +775,6 @@ export default function MapView({
     <div className="relative flex-1 w-full h-full min-h-[400px] overflow-hidden">
       {/* MapLibre WebGL Canvas Container */}
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
-
-      {/* Floating Apple Map Controls (Top Right) */}
-      <div className="absolute top-3 right-3 z-20 flex flex-col gap-2">
-        {/* Style Selector Popover */}
-        <div className="relative">
-          <button
-            onClick={() => setStyleDropdownOpen(prev => !prev)}
-            title="Map Style"
-            className="w-10 h-10 rounded-2xl glass-panel shadow-lg flex items-center justify-center text-slate-700 dark:text-slate-200 hover:text-sky-600 dark:hover:text-cyan-400 transition-colors border border-slate-200/90 dark:border-white/10 cursor-pointer"
-          >
-            <Layers className="w-4 h-4" />
-          </button>
-
-          {styleDropdownOpen && (
-            <div className="absolute right-0 top-12 w-44 glass-panel rounded-2xl shadow-2xl p-1.5 border border-slate-200/90 dark:border-white/10 z-30 animate-in fade-in zoom-in-95">
-              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 px-2 py-1">
-                Map Style
-              </div>
-              {Object.entries(MAP_STYLES).map(([key, item]) => (
-                <button
-                  key={key}
-                  onClick={() => {
-                    switchMapStyle(key);
-                    setStyleDropdownOpen(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors flex items-center justify-between cursor-pointer ${
-                    currentStyleKeyRef.current === key
-                      ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-cyan-400 font-bold'
-                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <span>{item.name}</span>
-                  {currentStyleKeyRef.current === key && <span className="text-xs">✓</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Toggle Distance Lines */}
-        <button
-          onClick={onToggleDistanceLines}
-          title={showDistanceLines ? 'Hide Highway Trail' : 'Show Highway Trail'}
-          className={`w-10 h-10 rounded-2xl glass-panel shadow-lg flex items-center justify-center transition-colors border border-slate-200/90 dark:border-white/10 cursor-pointer ${
-            showDistanceLines 
-              ? 'text-sky-600 dark:text-cyan-400 bg-sky-50/50 dark:bg-sky-950/40' 
-              : 'text-slate-400 dark:text-slate-500'
-          }`}
-        >
-          <Ruler className="w-4 h-4" />
-        </button>
-
-        {/* Reset Camera to Fit Fleet */}
-        <button
-          onClick={onResetView || fitAll}
-          title="Fit All Fleet Units"
-          className="w-10 h-10 rounded-2xl glass-panel shadow-lg flex items-center justify-center text-slate-700 dark:text-slate-200 hover:text-sky-600 dark:hover:text-cyan-400 transition-colors border border-slate-200/90 dark:border-white/10 cursor-pointer"
-        >
-          <Navigation className="w-4 h-4" />
-        </button>
-      </div>
     </div>
   );
 }

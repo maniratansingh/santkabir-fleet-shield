@@ -82,7 +82,9 @@ export default function AppleSheet({
               <span className="text-[10px] text-slate-500 dark:text-slate-400">
                 {selectedVehicle 
                   ? `Driver: ${selectedVehicle.driverName} • ${selectedVehicle.speed} km/h` 
-                  : `${vehicles.filter(v => v.status === 'moving').length} en route • Tap to expand`}
+                  : vehicles.length === 0
+                    ? 'Hospital Base Standby • Ready for GPS telemetry'
+                    : `${vehicles.filter(v => v.status === 'moving').length} en route • Tap to expand`}
               </span>
             </div>
           </div>
@@ -338,7 +340,20 @@ export default function AppleSheet({
 
               {/* Scrollable Vehicle Cards List */}
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
-                {filteredVehicles.map((v) => {
+                {filteredVehicles.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center py-8 px-4 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-cyan-400 flex items-center justify-center mb-2.5 shadow-xs border border-sky-200/60 dark:border-sky-800/40">
+                      <Ambulance className="w-6 h-6" />
+                    </div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                      Hospital Base Standby
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-[250px] leading-relaxed">
+                      Zero active ambulances reporting. Live telemetry will appear automatically once drivers open Fleet Shield APK.
+                    </span>
+                  </div>
+                ) : (
+                  filteredVehicles.map((v) => {
                   const isMoving = v.status === 'moving' || v.status === 'returning';
                   const vColor = v.lineColor || '#007AFF';
 
@@ -409,7 +424,7 @@ export default function AppleSheet({
                       </div>
                     </div>
                   );
-                })}
+                }))}
               </div>
             </div>
           )}

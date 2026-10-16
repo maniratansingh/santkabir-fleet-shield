@@ -112,24 +112,32 @@ export default function DynamicIsland({
           {/* Live Fleet Status Pill */}
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${vehicles.length > 0 ? 'bg-emerald-400' : 'bg-sky-400'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${vehicles.length > 0 ? 'bg-emerald-500' : 'bg-sky-500'}`}></span>
             </span>
-            <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-              {movingCount} En Route
-            </span>
-            {inFieldCount > 0 && (
+            {vehicles.length === 0 ? (
+              <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                Hospital Standby • Telemetry Ready
+              </span>
+            ) : (
               <>
-                <span className="text-slate-300 dark:text-slate-600">•</span>
-                <span className="text-xs font-medium text-sky-600 dark:text-cyan-400">
-                  {inFieldCount} In Field
+                <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                  {movingCount} En Route
+                </span>
+                {inFieldCount > 0 && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">•</span>
+                    <span className="text-xs font-medium text-sky-600 dark:text-cyan-400">
+                      {inFieldCount} In Field
+                    </span>
+                  </>
+                )}
+                <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">•</span>
+                <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hidden sm:inline">
+                  {vehicles.length} Active Ambulances
                 </span>
               </>
             )}
-            <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">•</span>
-            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hidden sm:inline">
-              {vehicles.length} Active Ambulances
-            </span>
           </div>
 
           {/* Divider */}

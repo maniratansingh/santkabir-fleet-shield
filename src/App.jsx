@@ -9,9 +9,9 @@ import { playCampArrivalChime, playAlertTone } from './utils/audio';
 import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
-  const [vehicles, setVehicles] = useState(INITIAL_VEHICLES);
+  const [vehicles, setVehicles] = useState([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
-  const [isSimulation, setIsSimulation] = useState(true);
+  const [isSimulation, setIsSimulation] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
   const [detent, setDetent] = useState('half'); // 'peek', 'half', 'full'
@@ -130,12 +130,11 @@ export default function App() {
         const vehRes = await fetch('/api/vehicles').catch(() => null);
         if (vehRes && vehRes.ok) {
           const vehData = await vehRes.json();
-          if (vehData.vehicles && vehData.vehicles.length > 0) {
-            setVehicles(vehData.vehicles);
-          }
+          const list = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
+          setVehicles(list);
         }
       } catch (err) {
-        console.warn('Backend API not reachable (using local state):', err);
+        console.warn('Backend API not reachable (standby mode):', err);
       }
     };
 
@@ -270,7 +269,13 @@ export default function App() {
   const handleToggleSimulation = () => {
     setIsSimulation(prev => {
       const next = !prev;
-      showToast(next ? 'Active Simulation Mode (Live Corridors)' : 'Live Fleet Shield Feed Mode (mrps.in)', 'info');
+      if (next) {
+        setVehicles(INITIAL_VEHICLES);
+        showToast('Demo Fleet Simulation Started', 'info');
+      } else {
+        setVehicles([]);
+        showToast('Live Mode: Awaiting telemetry from Fleet Shield APK', 'info');
+      }
       return next;
     });
   };
