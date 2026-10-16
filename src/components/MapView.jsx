@@ -286,6 +286,7 @@ export default function MapView({
   selectedVehicleId = null, 
   onSelectVehicle = () => {}, 
   fitTrigger, 
+  actionTrigger = null,
   theme = 'light',
   activeStyleKey = 'light',
   onStyleChange,
@@ -400,6 +401,13 @@ export default function MapView({
       }
     }
   }, [fitTrigger, selectedVehicleId]);
+
+  // Handle action triggers (e.g. Reset North)
+  useEffect(() => {
+    if (actionTrigger?.type === 'resetNorth' && mapRef.current) {
+      mapRef.current.easeTo({ bearing: 0, pitch: 20, duration: 800 });
+    }
+  }, [actionTrigger]);
 
   // Add Custom Highway Road Trail Layers
   const addCustomLayers = (map) => {

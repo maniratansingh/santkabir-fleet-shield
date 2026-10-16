@@ -313,6 +313,7 @@ export default function App() {
         selectedVehicleId={selectedVehicleId}
         onSelectVehicle={setSelectedVehicleId}
         fitTrigger={fitTrigger}
+        actionTrigger={actionTrigger}
         theme={theme}
         activeStyleKey={activeStyleKey}
         onStyleChange={setActiveStyleKey}
