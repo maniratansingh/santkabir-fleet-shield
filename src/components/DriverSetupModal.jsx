@@ -1,67 +1,69 @@
-import React, { useState, useEffect } from 'react';
-import QRCode from 'qrcode';
+import React, { useState } from 'react';
 import { 
   X, 
-  ShieldCheck, 
-  QrCode, 
-  Download, 
-  Lock, 
-  Smartphone, 
+  Radio, 
+  Terminal, 
   Check, 
   Copy, 
-  ExternalLink,
-  User,
-  Radio,
-  Sparkles
+  Send,
+  Sparkles,
+  Info,
+  Server,
+  Zap
 } from 'lucide-react';
 
 export default function DriverSetupModal({ isOpen, onClose }) {
-  const [selectedId, setSelectedId] = useState('SK-AMB-01');
-  const [customId, setCustomId] = useState('');
+  const [selectedTab, setSelectedTab] = useState('traccar'); // 'traccar' or 'api'
+  const [deviceId, setDeviceId] = useState('AMB-ALPHA');
   const [driverName, setDriverName] = useState('Ramesh Yadav');
-  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [testSpeed, setTestSpeed] = useState(48);
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState('qr'); // 'qr' or 'apk'
+  const [pingStatus, setPingStatus] = useState(null);
 
   const currentDomain = typeof window !== 'undefined' ? window.location.origin : 'https://fleet.mrps.in';
-  const serverEndpoint = `${currentDomain}/api/location`;
-
-  const effectiveId = customId.trim() ? customId.trim().toUpperCase() : selectedId;
-
-  const payload = {
-    app: 'Sant Kabir Fleet Shield',
-    developer: 'Mani Ratan Singh (mrps.in)',
-    id: effectiveId,
-    driver: driverName.trim() || 'Assigned Driver',
-    server: serverEndpoint,
-    timestamp: Date.now(),
-  };
-
-  const setupProvisionUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/setup?id=${encodeURIComponent(effectiveId)}&url=${encodeURIComponent(serverEndpoint)}`
-    : `https://fleet.mrps.in/setup?id=${encodeURIComponent(effectiveId)}&url=${encodeURIComponent(serverEndpoint)}`;
-
-  useEffect(() => {
-    if (!isOpen) return;
-    QRCode.toDataURL(setupProvisionUrl, {
-      width: 240,
-      margin: 1.5,
-      color: {
-        dark: '#0284C7', // Medical Sky / Apple Cyan
-        light: '#FFFFFF'
-      }
-    })
-      .then(url => setQrDataUrl(url))
-      .catch(err => console.error('QR generation error:', err));
-  }, [isOpen, setupProvisionUrl]);
+  const effectiveId = deviceId.trim() || 'AMB-ALPHA';
+  const effectiveDriver = driverName.trim() || 'Assigned Driver';
 
   if (!isOpen) return null;
 
-  const copyPayload = () => {
-    navigator.clipboard.writeText(setupProvisionUrl);
+  const copyText = (text) => {
+    navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const sendTestPing = async () => {
+    setPingStatus('sending');
+    try {
+      // Pick coordinate around Ayodhya / Sant Kabir Nagar corridor
+      const testLat = (26.785 + (Math.random() - 0.5) * 0.03).toFixed(6);
+      const testLon = (82.680 + (Math.random() - 0.5) * 0.03).toFixed(6);
+      const res = await fetch(`/?id=${encodeURIComponent(effectiveId)}&driver=${encodeURIComponent(effectiveDriver)}&lat=${testLat}&lon=${testLon}&speed=${testSpeed}&bearing=90`);
+      
+      if (res.ok) {
+        setPingStatus('success');
+        setTimeout(() => setPingStatus(null), 3000);
+      } else {
+        setPingStatus('error');
+      }
+    } catch (err) {
+      console.error('Test ping failed:', err);
+      setPingStatus('error');
+    }
+  };
+
+  const curlTraccar = `curl "${currentDomain}/?id=${encodeURIComponent(effectiveId)}&driver=${encodeURIComponent(effectiveDriver)}&lat=26.7912&lon=82.6841&speed=${testSpeed}&bearing=90"`;
+
+  const curlApiJson = `curl -X POST "${currentDomain}/api/location" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "id": "${effectiveId}",
+    "driver": "${effectiveDriver}",
+    "lat": 26.79125,
+    "lon": 82.68410,
+    "speed": ${testSpeed},
+    "bearing": 90
+  }'`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md select-none animate-in fade-in duration-200">
@@ -71,19 +73,20 @@ export default function DriverSetupModal({ isOpen, onClose }) {
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-600 dark:text-cyan-400 flex items-center justify-center shadow-xs">
-              <ShieldCheck className="w-5 h-5" />
+              <Radio className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white font-['Outfit']">
-                  Sant Kabir Fleet Shield
+                  Live Telemetry & Tracker Stream
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-cyan-400 border border-sky-200 dark:border-sky-800">
-                  v1.0
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Active Ingestion
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                <span>Driver Provisioning Center • by</span>
+                <span>Universal GPS Integration • by</span>
                 <a 
                   href="https://mrps.in" 
                   target="_blank" 
@@ -106,217 +109,36 @@ export default function DriverSetupModal({ isOpen, onClose }) {
         {/* Navigation Tabs */}
         <div className="flex items-center gap-1 px-4 pt-3 shrink-0">
           <button
-            onClick={() => setActiveTab('qr')}
+            onClick={() => setSelectedTab('traccar')}
             className={`flex-1 py-2 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'qr'
-                ? 'bg-sky-600 text-white shadow-sm'
-                : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
-            }`}
-          >
-            <QrCode className="w-3.5 h-3.5" />
-            <span>Admin QR</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('apk')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'apk'
-                ? 'bg-sky-600 text-white shadow-sm'
-                : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Driver APK</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('traccar')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              activeTab === 'traccar'
+              selectedTab === 'traccar'
                 ? 'bg-sky-600 text-white shadow-sm'
                 : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
-            <span>Traccar / 3rd Party</span>
+            <span>Universal Tracker (Traccar / OsmAnd)</span>
+          </button>
+          <button
+            onClick={() => setSelectedTab('api')}
+            className={`flex-1 py-2 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              selectedTab === 'api'
+                ? 'bg-sky-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Terminal className="w-3.5 h-3.5" />
+            <span>Direct HTTP Telemetry API</span>
           </button>
         </div>
 
-        {/* Tab 1: QR Provisioning */}
-        {activeTab === 'qr' && (
-          <div className="p-4 space-y-3.5 overflow-y-auto text-sm">
-            <div className="p-3 rounded-2xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200/80 dark:border-sky-800/60 flex items-start gap-2.5">
-              <Lock className="w-4 h-4 text-sky-600 dark:text-cyan-400 shrink-0 mt-0.5" />
-              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>QR Auto-Provisioning:</strong> 1. Install the APK on the phone (Tab 2). 2. Select the Ambulance Asset ID below. 3. Point the phone's camera at this QR code — it prompts to open Fleet Shield and automatically configures the vehicle identifier and server endpoint!
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {/* Form Controls */}
-              <div className="space-y-3">
-                {/* Permanent Asset ID */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Permanent Ambulance Asset ID
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5 mb-1.5">
-                    {['SK-AMB-01', 'SK-AMB-02', 'SK-AMB-03'].map(id => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => { setSelectedId(id); setCustomId(''); }}
-                        className={`py-1.5 px-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
-                          effectiveId === id && !customId
-                            ? 'bg-sky-600 text-white shadow-xs'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-                        }`}
-                      >
-                        {id}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="text"
-                    value={customId}
-                    onChange={(e) => setCustomId(e.target.value)}
-                    placeholder="Or custom ID (e.g. SK-AMB-04)"
-                    className="w-full px-3 py-1.5 text-xs font-mono rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
-                </div>
-
-                {/* Driver Name */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Assigned Driver Name
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-                    <input
-                      type="text"
-                      value={driverName}
-                      onChange={(e) => setDriverName(e.target.value)}
-                      placeholder="e.g. Ramesh Yadav"
-                      className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Serverless Endpoint */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Serverless Cloudflare Endpoint
-                  </label>
-                  <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[11px] font-mono text-slate-600 dark:text-cyan-300 truncate">
-                    {serverEndpoint}
-                  </div>
-                </div>
-              </div>
-
-              {/* QR Code Display Card */}
-              <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-                {qrDataUrl ? (
-                  <img 
-                    src={qrDataUrl} 
-                    alt="Fleet Shield Provisioning QR" 
-                    className="w-44 h-44 rounded-xl shadow-xs"
-                  />
-                ) : (
-                  <div className="w-44 h-44 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse flex items-center justify-center text-xs text-slate-400">
-                    Generating QR...
-                  </div>
-                )}
-                <span className="mt-2 text-[11px] font-mono font-bold text-sky-600 dark:text-cyan-400">
-                  {effectiveId} • {driverName}
-                </span>
-                <span className="text-[10px] text-slate-400">Scan with Phone Camera to Auto-Configure</span>
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center gap-2">
-              <a
-                href={`/driver?id=${encodeURIComponent(effectiveId)}&driver=${encodeURIComponent(driverName)}`}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full sm:flex-1 py-2 px-3 text-xs font-bold rounded-xl bg-sky-600 hover:bg-sky-500 text-white flex items-center justify-center gap-1.5 shadow-md shadow-sky-600/30 transition-all text-center"
-              >
-                <Smartphone className="w-4 h-4" />
-                <span>Launch Custom Driver App</span>
-                <ExternalLink className="w-3.5 h-3.5 opacity-80" />
-              </a>
-
-              <button
-                onClick={copyPayload}
-                className="w-full sm:w-auto px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'Copied' : 'Copy Link'}</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 2: Private APK Download */}
-        {activeTab === 'apk' && (
-          <div className="p-4 space-y-3.5 overflow-y-auto text-sm">
-            <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-start gap-2.5">
-              <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>Master Admin Protected:</strong> The <strong>Sant Kabir Fleet Shield APK</strong> locks settings on launch so drivers cannot tamper with telemetry. Only authorized administrators with the master PIN can unlock and tune device settings.
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950/80 text-sky-600 dark:text-cyan-400 flex items-center justify-center font-bold text-xs">
-                    APK
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-900 dark:text-white">
-                      santkabir-fleet-shield-v1.0.apk
-                    </h5>
-                    <p className="text-[11px] text-slate-500">
-                      Private Driver Binary • Android 8.0+
-                    </p>
-                  </div>
-                </div>
-                <a
-                  href="/downloads/santkabir-fleet-shield-v1.0.apk"
-                  download="santkabir-fleet-shield-v1.0.apk"
-                  type="application/vnd.android.package-archive"
-                  className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download APK</span>
-                </a>
-              </div>
-
-              {/* Installation Protocol */}
-              <div className="p-3.5 rounded-2xl bg-slate-100/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 space-y-2">
-                <h5 className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
-                  Field Installation Protocol
-                </h5>
-                <ol className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5 list-decimal pl-4">
-                  <li>Download and install APK on driver's Android phone (Android 8.0+).</li>
-                  <li><em>Chrome Tip:</em> If Android Chrome labels it as <code>.zip</code>, simply rename the file to <code>.apk</code> in your phone's <strong>Files</strong> app and tap to install.</li>
-                  <li>Enable <em>"Install unknown apps"</em> and complete installation.</li>
-                  <li>Launch app and scan the <strong>Admin Provisioning QR Code</strong> from Tab 1.</li>
-                  <li>Grant <em>"Allow location all the time"</em> and ignore battery optimizations.</li>
-                  <li>App automatically starts background daemon and locks configuration.</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 3: Traccar & Third-Party Tracker Integration */}
-        {activeTab === 'traccar' && (
+        {/* Tab 1: Universal Tracker */}
+        {selectedTab === 'traccar' && (
           <div className="p-4 space-y-3.5 overflow-y-auto text-sm">
             <div className="p-3.5 rounded-2xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200/80 dark:border-sky-800/60 flex items-start gap-2.5">
-              <Radio className="w-5 h-5 text-sky-600 dark:text-cyan-400 shrink-0 mt-0.5" />
+              <Zap className="w-5 h-5 text-sky-600 dark:text-cyan-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>Universal Tracker Ingestion:</strong> Point any standard tracker app (<strong>Traccar Client</strong>, <strong>OsmAnd</strong>, <strong>GPSLogger</strong>, or custom HTTP clients) to our root URL. Track by <strong>ANY arbitrary Identifier & Driver name</strong> — cars keep changing, so no rigid vehicle IDs are required!
+                <strong>Universal Tracker Ingestion:</strong> Connect any standard tracking app (such as <strong>Traccar Client</strong>, <strong>OsmAnd</strong>, <strong>GPSLogger</strong>, or hardware OBD trackers). Point directly to our root domain. You can use <strong>ANY custom identifier & driver name</strong>!
               </div>
             </div>
 
@@ -324,11 +146,12 @@ export default function DriverSetupModal({ isOpen, onClose }) {
               {/* Server URL Card */}
               <div className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 dark:text-white">
-                    1. Server URL (In Traccar Client)
+                  <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                    <Server className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
+                    1. Server URL (Traccar Client / OsmAnd)
                   </span>
-                  <span className="text-[10px] font-bold text-rose-500 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-900/60">
-                    No :5055 Port
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900/60">
+                    HTTPS Port 443
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -336,35 +159,32 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                     {currentDomain}
                   </div>
                   <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(currentDomain);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 cursor-pointer"
+                    onClick={() => copyText(currentDomain)}
+                    className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 cursor-pointer flex items-center gap-1"
                   >
-                    Copy
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Cloudflare operates on standard HTTPS (port 443). Do <strong>not</strong> add <code>:5055</code> at the end.
+                  Cloudflare terminates on standard HTTPS. Do <strong>not</strong> append <code>:5055</code>.
                 </p>
               </div>
 
-              {/* Identifier & Driver */}
+              {/* Identifier & Driver Form */}
               <div className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
                 <span className="text-xs font-bold text-slate-800 dark:text-white block">
-                  2. Device Identifier & Driver Name
+                  2. Device Identifier & Driver Attribution
                 </span>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase">Device Identifier</label>
                     <input
                       type="text"
-                      value={customId || selectedId}
-                      onChange={(e) => setCustomId(e.target.value)}
+                      value={deviceId}
+                      onChange={(e) => setDeviceId(e.target.value)}
                       placeholder="e.g. Ramesh, Amb-01, Car-5"
-                      className="w-full mt-0.5 px-3 py-1.5 text-xs font-mono font-bold rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                      className="w-full mt-0.5 px-3 py-1.5 text-xs font-mono font-bold rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
                   </div>
                   <div>
@@ -374,63 +194,123 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                       value={driverName}
                       onChange={(e) => setDriverName(e.target.value)}
                       placeholder="e.g. Ramesh Yadav"
-                      className="w-full mt-0.5 px-3 py-1.5 text-xs rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white"
+                      className="w-full mt-0.5 px-3 py-1.5 text-xs rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
                   </div>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Enter any identifier you want. The system registers and tracks it dynamically with a 3D ambulance and live speedometer!
+                  Identifier dynamically creates or updates the 3D ambulance on the map in real time.
                 </p>
               </div>
 
-              {/* 1-Click Live Test Ping */}
-              <div className="p-3 rounded-2xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              {/* Live Test Telemetry Ping */}
+              <div className="p-3.5 rounded-2xl bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                 <div>
-                  <h6 className="text-xs font-bold text-slate-800 dark:text-white">
-                    Send Live Test Telemetry Ping
+                  <h6 className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                    <Send className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
+                    Send Live Test Ping
                   </h6>
                   <p className="text-[11px] text-slate-500">
-                    Immediately send a test GPS packet for <strong>{effectiveId}</strong>
+                    Immediately fire a live telemetry packet for <strong>{effectiveId}</strong>
                   </p>
                 </div>
                 <button
-                  onClick={async () => {
-                    try {
-                      const testLat = 26.7912 + (Math.random() - 0.5) * 0.02;
-                      const testLon = 82.6841 + (Math.random() - 0.5) * 0.02;
-                      const res = await fetch(`/?id=${encodeURIComponent(effectiveId)}&driver=${encodeURIComponent(driverName)}&lat=${testLat.toFixed(6)}&lon=${testLon.toFixed(6)}&speed=48&bearing=90`);
-                      if (res.ok) {
-                        alert(`Telemetry received for ${effectiveId}! Check map for live 3D ambulance.`);
-                      }
-                    } catch (e) {
-                      alert('Error sending test packet: ' + e.message);
-                    }
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  onClick={sendTestPing}
+                  disabled={pingStatus === 'sending'}
+                  className={`px-3.5 py-2 rounded-xl text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5 transition-all ${
+                    pingStatus === 'success' 
+                      ? 'bg-emerald-600' 
+                      : pingStatus === 'error'
+                      ? 'bg-rose-600'
+                      : 'bg-sky-600 hover:bg-sky-500'
+                  }`}
                 >
-                  📡 Send Test Ping
+                  {pingStatus === 'sending' ? (
+                    'Sending...'
+                  ) : pingStatus === 'success' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Received!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Radio className="w-3.5 h-3.5" />
+                      <span>Send Test Ping</span>
+                    </>
+                  )}
                 </button>
               </div>
 
-              {/* Copyable Curl / URL */}
+              {/* Copyable Curl */}
               <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1">
                 <div className="text-[10px] text-slate-400 uppercase font-sans font-bold flex items-center justify-between">
                   <span>Traccar HTTP Ping URL / Curl</span>
                   <button
-                    onClick={() => {
-                      const curlCmd = `curl "${currentDomain}/?id=${encodeURIComponent(effectiveId)}&driver=${encodeURIComponent(driverName)}&lat=26.7912&lon=82.6841&speed=45"`;
-                      navigator.clipboard.writeText(curlCmd);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
+                    onClick={() => copyText(curlTraccar)}
                     className="text-sky-400 hover:text-sky-300 font-bold cursor-pointer"
                   >
                     Copy Curl
                   </button>
                 </div>
-                <div className="overflow-x-auto whitespace-pre p-2 bg-slate-950 rounded-lg text-emerald-400">
-                  {`curl "${currentDomain}/?id=${effectiveId}&driver=${encodeURIComponent(driverName)}&lat=26.7912&lon=82.6841&speed=45"`}
+                <div className="overflow-x-auto whitespace-pre p-2 bg-slate-950 rounded-lg text-emerald-400 text-[10px]">
+                  {curlTraccar}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Direct HTTP Telemetry API */}
+        {selectedTab === 'api' && (
+          <div className="p-4 space-y-3.5 overflow-y-auto text-sm">
+            <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-start gap-2.5">
+              <Terminal className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                <strong>High-Speed Telemetry Endpoint:</strong> Telemetry packets can be sent via standard HTTP <code>POST</code> with JSON payload or via <code>GET</code> query strings to <code>/api/location</code>.
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {/* Endpoint Card */}
+              <div className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <span className="text-xs font-bold text-slate-800 dark:text-white block">
+                  REST Endpoint
+                </span>
+                <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-950 font-mono text-xs font-bold text-sky-700 dark:text-cyan-300 truncate">
+                  POST {currentDomain}/api/location
+                </div>
+              </div>
+
+              {/* JSON Payload Snippet */}
+              <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1">
+                <div className="text-[10px] text-slate-400 uppercase font-sans font-bold flex items-center justify-between">
+                  <span>POST JSON Body (Curl)</span>
+                  <button
+                    onClick={() => copyText(curlApiJson)}
+                    className="text-sky-400 hover:text-sky-300 font-bold cursor-pointer"
+                  >
+                    Copy Curl
+                  </button>
+                </div>
+                <div className="overflow-x-auto whitespace-pre p-2 bg-slate-950 rounded-lg text-emerald-400 text-[10px]">
+                  {curlApiJson}
+                </div>
+              </div>
+
+              {/* Query Parameter Alternatives */}
+              <div className="p-3 rounded-2xl bg-slate-100/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800 space-y-2">
+                <h5 className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
+                  Telemetry Fields Reference
+                </h5>
+                <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1 list-disc pl-4 font-mono text-[11px]">
+                  <li><code>id</code> (string): Unique identifier (e.g. "SK-AMB-01" or "Ramesh")</li>
+                  <li><code>driver</code> (string, optional): Assigned driver name</li>
+                  <li><code>lat</code> (float): Latitude (-90 to 90)</li>
+                  <li><code>lon</code> (float): Longitude (-180 to 180)</li>
+                  <li><code>speed</code> (float, optional): Speed in km/h</li>
+                  <li><code>bearing</code> (float, optional): Heading in degrees (0-360)</li>
+                </ul>
               </div>
             </div>
           </div>

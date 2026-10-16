@@ -4,21 +4,10 @@ import DynamicIsland from './components/DynamicIsland';
 import FloatingControls from './components/FloatingControls';
 import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
-import DriverApp from './components/DriverApp';
 import { BASE_HOSPITAL, INITIAL_VEHICLES } from './data/mockData';
 import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
-  const isDriverRoute = typeof window !== 'undefined' && 
-    (window.location.pathname === '/driver' || 
-     window.location.pathname === '/driver/' || 
-     window.location.pathname === '/tracker' || 
-     window.location.pathname === '/tracker/' ||
-     new URLSearchParams(window.location.search).get('view') === 'driver');
-
-  if (isDriverRoute) {
-    return <DriverApp />;
-  }
 
   const [vehicles, setVehicles] = useState(INITIAL_VEHICLES);
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
@@ -291,7 +280,7 @@ function getDynamicColor(id = '') {
         </div>
       )}
 
-      {/* 6. Sant Kabir Fleet Shield Driver Provisioning Modal (by Mani Ratan Singh) */}
+      {/* 6. Live Telemetry & Tracker Stream Modal (by Mani Ratan Singh) */}
       <DriverSetupModal 
         isOpen={isDriverModalOpen}
         onClose={() => setIsDriverModalOpen(false)}

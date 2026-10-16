@@ -368,7 +368,7 @@ export default function AppleSheet({
                       Hospital Base Standby
                     </span>
                     <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-[250px] leading-relaxed">
-                      Zero active ambulances reporting. Live telemetry will appear automatically once drivers open Fleet Shield APK.
+                      Zero active ambulances reporting. Live telemetry will appear automatically as GPS telemetry packets arrive.
                     </span>
                   </div>
                 ) : (

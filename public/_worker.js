@@ -45,46 +45,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // Endpoint: /setup (Handles provisioning deep links from phone camera scans)
-    if (url.pathname === '/setup' || url.pathname === '/setup/') {
-      const id = url.searchParams.get('id') || 'SK-AMB-01';
-      const locUrl = url.searchParams.get('url') || 'https://fleet.mrps.in/api/location';
-      const deepLink = `santkabir://setup?id=${encodeURIComponent(id)}&url=${encodeURIComponent(locUrl)}`;
-      
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Provisioning Sant Kabir Fleet Shield</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; padding: 20px; }
-    .card { background: #1e293b; padding: 32px; border-radius: 24px; border: 1px solid #334155; max-width: 400px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
-    h2 { margin-top: 0; color: #38bdf8; font-size: 20px; }
-    p { color: #94a3b8; font-size: 14px; line-height: 1.6; }
-    .btn { display: inline-block; background: #0284c7; color: white; padding: 12px 24px; border-radius: 12px; font-weight: bold; text-decoration: none; margin-top: 16px; }
-    .id-tag { background: #0369a1; padding: 4px 10px; border-radius: 8px; font-family: monospace; font-weight: bold; color: white; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>🚑 Sant Kabir Fleet Shield</h2>
-    <p>Provisioning Ambulance <span class="id-tag">${id}</span></p>
-    <p>Opening Fleet Shield app...</p>
-    <a href="${deepLink}" class="btn">Open App to Configure</a>
-    <p style="font-size: 12px; margin-top: 20px;">App not installed yet? <a href="/downloads/santkabir-fleet-shield-v1.0.apk" style="color: #38bdf8;">Download APK</a></p>
-  </div>
-  <script>
-    window.location.href = "${deepLink}";
-  </script>
-</body>
-</html>`;
-      return new Response(html, {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' }
-      });
-    }
-
-    // 1. Endpoint: Universal Telemetry Receiver (Supports Traccar Client, OsmAnd, GPSLogger, Fleet Shield APK)
+    // 1. Endpoint: Universal Telemetry Receiver (Supports Traccar Client, OsmAnd, GPSLogger)
     // Works with:
     // - Direct Root URL: https://fleet.mrps.in/?id=12345&lat=26.79&lon=82.71... (Standard Traccar default)
     // - Standard paths: /api/location, /location, /track, /telemetry, /api/v1/telemetry
@@ -254,35 +215,7 @@ export default {
       });
     }
 
-    // 3. Binary APK Downloads (Enforces Android APK MIME headers and blocks HTML fallback into .txt/.zip)
-    if (url.pathname.endsWith('.apk') || url.pathname === '/api/download-apk') {
-      const assetRes = await env.ASSETS.fetch(new Request(new URL('/downloads/santkabir-fleet-shield-v1.0.apk', request.url)));
-      const contentType = assetRes.headers.get('content-type') || '';
-      if (assetRes.status === 404 || contentType.includes('text/html')) {
-        return new Response(JSON.stringify({
-          error: 'Sant Kabir Fleet Shield APK binary has not been placed in public/downloads/ yet.',
-          solution: 'Compile santkabir-fleet-shield-v1.0.apk and place it in public/downloads/ before uploading.',
-          developer: 'Mani Ratan Singh (mrps.in)',
-        }), {
-          status: 404,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          },
-        });
-      }
-      const headers = new Headers(assetRes.headers);
-      headers.set('Content-Type', 'application/vnd.android.package-archive');
-      headers.set('Content-Disposition', 'attachment; filename="santkabir-fleet-shield-v1.0.apk"; filename*=UTF-8\'\'santkabir-fleet-shield-v1.0.apk');
-      headers.set('X-Content-Type-Options', 'nosniff');
-      headers.set('Cache-Control', 'public, max-age=86400');
-      return new Response(assetRes.body, {
-        status: 200,
-        headers,
-      });
-    }
-
-    // 4. Fallback: Serve static assets (HTML, JS, CSS, images)
+    // 3. Fallback: Serve static assets (HTML, JS, CSS, images)
     return env.ASSETS.fetch(request);
   },
 };
