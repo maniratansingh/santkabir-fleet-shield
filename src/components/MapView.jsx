@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { BASE_HOSPITAL } from '../data/mockData';
-import { Layers } from 'lucide-react';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
+import { Layers, Ruler, Navigation } from 'lucide-react';
+
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 // Free, No-API-Key Map Styles (100% Watermark-Free)
 const MAP_STYLES = {
@@ -150,6 +153,32 @@ const MAP_STYLES = {
   },
 };
 
+// Generate Geographic Circle for Distance Range Rings (in Kilometers)
+function createGeoJSONCircle(center, radiusInKm, points = 64) {
+  const [lon, lat] = center;
+  const coords = [];
+  const latRad = (lat * Math.PI) / 180;
+  const degLat = radiusInKm / 110.574;
+  const degLon = radiusInKm / (111.32 * Math.cos(latRad));
+
+  for (let i = 0; i <= points; i++) {
+    const theta = (i / points) * (2 * Math.PI);
+    const x = degLon * Math.cos(theta);
+    const y = degLat * Math.sin(theta);
+    coords.push([lon + x, lat + y]);
+  }
+  return {
+    type: 'Feature',
+    geometry: {
+      type: 'Polygon',
+      coordinates: [coords],
+    },
+    properties: {
+      radiusKm: radiusInKm,
+    },
+  };
+}
+
 export default function MapView({ 
   vehicles, 
   camps, 
@@ -165,7 +194,10 @@ export default function MapView({
   const markersRef = useRef({});
   const campMarkersRef = useRef({});
   const baseMarkerRef = useRef(null);
+  const distanceMarkersRef = useRef({});
+  const ringLabelMarkersRef = useRef([]);
   const [activeStyleKey, setActiveStyleKey] = useState(theme === 'dark' ? 'dark' : 'light');
+  const [showDistanceLines, setShowDistanceLines] = useState(true);
 
   // Synchronize map style with app theme (unless user explicitly selected satellite/streets)
   useEffect(() => {
@@ -177,7 +209,7 @@ export default function MapView({
     }
   }, [theme]);
 
-  // Responsive padding calculation (prevents map from being squeezed offscreen)
+  // Responsive padding calculation
   const getResponsivePadding = () => {
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
@@ -227,15 +259,124 @@ export default function MapView({
       addCustomLayers(map);
       updateBaseMarker();
       updateCampMarkers();
+      updateDistanceVectors(map);
     });
   };
 
-  // Add Route lines and Geofences
+  // Add Route lines, Distance Range Rings, and Geofences
   const addCustomLayers = (map) => {
     try {
       const isDark = theme === 'dark';
 
-      // 1. Highway Route Corridors from Base Hospital to each Eye Camp
+      // 1. Range Rings around Base Hospital (15km, 30km, 50km)
+      if (map.getSource('base-range-rings')) {
+        map.removeLayer('base-range-rings-fill');
+        map.removeLayer('base-range-rings-line');
+        map.removeSource('base-range-rings');
+      }
+
+      const ringRadii = [15, 30, 50]; // Kilometers
+      const ringFeatures = ringRadii.map(r => createGeoJSONCircle([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat], r));
+
+      map.addSource('base-range-rings', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: ringFeatures,
+        },
+      });
+
+      map.addLayer({
+        id: 'base-range-rings-fill',
+        type: 'fill',
+        source: 'base-range-rings',
+        layout: {
+          visibility: showDistanceLines ? 'visible' : 'none',
+        },
+        paint: {
+          'fill-color': isDark ? '#0284c7' : '#0284c7',
+          'fill-opacity': isDark ? 0.02 : 0.015,
+        },
+      });
+
+      map.addLayer({
+        id: 'base-range-rings-line',
+        type: 'line',
+        source: 'base-range-rings',
+        layout: {
+          visibility: showDistanceLines ? 'visible' : 'none',
+        },
+        paint: {
+          'line-color': isDark ? '#38bdf8' : '#0284c7',
+          'line-width': 1.2,
+          'line-opacity': isDark ? 0.35 : 0.28,
+          'line-dasharray': [4, 4],
+        },
+      });
+
+      // 2. Direct Distance Vector Lines from Base Hospital to each Vehicle
+      if (map.getSource('base-distance-vectors')) {
+        map.removeLayer('base-distance-vectors-line');
+        map.removeSource('base-distance-vectors');
+      }
+
+      const distanceLineFeatures = vehicles
+        .filter(v => v.status !== 'at_base')
+        .map(v => ({
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat],
+              [v.lon, v.lat],
+            ],
+          },
+          properties: {
+            vehicleId: v.id,
+            distanceKm: calculateDistanceKm(v.lat, v.lon, BASE_HOSPITAL.lat, BASE_HOSPITAL.lon),
+            isSelected: v.id === selectedVehicleId,
+          },
+        }));
+
+      map.addSource('base-distance-vectors', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: distanceLineFeatures,
+        },
+      });
+
+      map.addLayer({
+        id: 'base-distance-vectors-line',
+        type: 'line',
+        source: 'base-distance-vectors',
+        layout: {
+          visibility: showDistanceLines ? 'visible' : 'none',
+        },
+        paint: {
+          'line-color': [
+            'case',
+            ['get', 'isSelected'],
+            isDark ? '#22d3ee' : '#0284c7',
+            isDark ? '#38bdf8' : '#0ea5e9',
+          ],
+          'line-width': [
+            'case',
+            ['get', 'isSelected'],
+            3,
+            1.5,
+          ],
+          'line-opacity': [
+            'case',
+            ['get', 'isSelected'],
+            0.9,
+            isDark ? 0.45 : 0.4,
+          ],
+          'line-dasharray': [2, 2],
+        },
+      });
+
+      // 3. Highway Route Corridors from Base Hospital to each Eye Camp
       if (map.getSource('camp-routes')) {
         map.removeLayer('camp-routes-casing');
         map.removeLayer('camp-routes-line');
@@ -264,7 +405,6 @@ export default function MapView({
         },
       });
 
-      // Outer glow for routes
       map.addLayer({
         id: 'camp-routes-casing',
         type: 'line',
@@ -272,12 +412,11 @@ export default function MapView({
         paint: {
           'line-color': isDark ? '#06b6d4' : '#0284c7',
           'line-width': 4,
-          'line-opacity': isDark ? 0.2 : 0.15,
+          'line-opacity': isDark ? 0.18 : 0.12,
           'line-blur': 2,
         },
       });
 
-      // Inner dashed active corridor
       map.addLayer({
         id: 'camp-routes-line',
         type: 'line',
@@ -290,7 +429,7 @@ export default function MapView({
         },
       });
 
-      // 2. Geofence rings around each Camp Site
+      // 4. Geofence rings around each Camp Site
       if (map.getSource('camp-geofences')) {
         map.removeLayer('camp-geofence-fill');
         map.removeSource('camp-geofences');
@@ -340,6 +479,144 @@ export default function MapView({
     }
   };
 
+  // Toggle Distance Lines & Range Rings
+  const toggleDistanceLines = () => {
+    const nextState = !showDistanceLines;
+    setShowDistanceLines(nextState);
+
+    const map = mapRef.current;
+    if (!map) return;
+
+    const visibility = nextState ? 'visible' : 'none';
+    if (map.getLayer('base-range-rings-line')) map.setLayoutProperty('base-range-rings-line', 'visibility', visibility);
+    if (map.getLayer('base-range-rings-fill')) map.setLayoutProperty('base-range-rings-fill', 'visibility', visibility);
+    if (map.getLayer('base-distance-vectors-line')) map.setLayoutProperty('base-distance-vectors-line', 'visibility', visibility);
+
+    // Toggle distance badge markers visibility
+    Object.values(distanceMarkersRef.current).forEach(({ element }) => {
+      element.style.display = nextState ? 'flex' : 'none';
+    });
+    ringLabelMarkersRef.current.forEach((marker) => {
+      marker.getElement().style.display = nextState ? 'flex' : 'none';
+    });
+  };
+
+  // Update Distance Vector Line geometry and Midpoint Distance Badges
+  const updateDistanceVectors = (map) => {
+    if (!map || !map.getSource('base-distance-vectors')) return;
+
+    const isDark = theme === 'dark';
+
+    const distanceLineFeatures = vehicles
+      .filter(v => v.status !== 'at_base')
+      .map(v => {
+        const dist = calculateDistanceKm(v.lat, v.lon, BASE_HOSPITAL.lat, BASE_HOSPITAL.lon);
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat],
+              [v.lon, v.lat],
+            ],
+          },
+          properties: {
+            vehicleId: v.id,
+            distanceKm: dist,
+            isSelected: v.id === selectedVehicleId,
+          },
+        };
+      });
+
+    map.getSource('base-distance-vectors').setData({
+      type: 'FeatureCollection',
+      features: distanceLineFeatures,
+    });
+
+    // Update midpoint distance badges on the map
+    const activeVehIds = new Set(vehicles.filter(v => v.status !== 'at_base').map(v => v.id));
+
+    // Remove deleted vehicle distance badges
+    Object.keys(distanceMarkersRef.current).forEach((id) => {
+      if (!activeVehIds.has(id)) {
+        distanceMarkersRef.current[id].marker.remove();
+        delete distanceMarkersRef.current[id];
+      }
+    });
+
+    vehicles.filter(v => v.status !== 'at_base').forEach((v) => {
+      const dist = calculateDistanceKm(v.lat, v.lon, BASE_HOSPITAL.lat, BASE_HOSPITAL.lon);
+      const midLon = (BASE_HOSPITAL.lon + v.lon) / 2;
+      const midLat = (BASE_HOSPITAL.lat + v.lat) / 2;
+      const isSelected = v.id === selectedVehicleId;
+
+      let badgeObj = distanceMarkersRef.current[v.id];
+
+      if (!badgeObj) {
+        const el = document.createElement('div');
+        el.className = 'select-none transition-all duration-200 pointer-events-none';
+        el.style.display = showDistanceLines ? 'flex' : 'none';
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([midLon, midLat])
+          .addTo(map);
+
+        distanceMarkersRef.current[v.id] = { marker, element: el };
+        badgeObj = distanceMarkersRef.current[v.id];
+      } else {
+        badgeObj.marker.setLngLat([midLon, midLat]);
+        badgeObj.element.style.display = showDistanceLines ? 'flex' : 'none';
+      }
+
+      badgeObj.element.innerHTML = `
+        <div class="px-2 py-0.5 rounded-full border text-[10px] font-mono font-bold tracking-tight shadow-md flex items-center gap-1 ${
+          isSelected 
+            ? (isDark ? 'bg-cyan-950 text-cyan-200 border-cyan-400 scale-110 shadow-cyan-500/30' : 'bg-sky-600 text-white border-sky-700 scale-110 shadow-sky-500/30')
+            : (isDark ? 'bg-slate-950/90 text-cyan-300 border-cyan-500/40' : 'bg-white/95 text-sky-800 border-sky-200 shadow-sm')
+        }">
+          <span class="w-1.5 h-1.5 rounded-full ${isDark ? 'bg-cyan-400' : 'bg-sky-500'}"></span>
+          <span>${dist} km from Base</span>
+        </div>
+      `;
+    });
+  };
+
+  // Add Range Ring Labels on the northern arc of each ring
+  const updateRingLabels = (map) => {
+    if (!map) return;
+    const isDark = theme === 'dark';
+
+    // Remove existing
+    ringLabelMarkersRef.current.forEach(m => m.remove());
+    ringLabelMarkersRef.current = [];
+
+    const ringRadii = [15, 30, 50];
+    ringRadii.forEach((r) => {
+      // Point on the northern boundary of the circle
+      const degLat = r / 110.574;
+      const ringNorthCoord = [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat + degLat];
+
+      const el = document.createElement('div');
+      el.className = 'select-none pointer-events-none flex items-center justify-center';
+      el.style.display = showDistanceLines ? 'flex' : 'none';
+      el.innerHTML = `
+        <div class="px-2 py-0.5 rounded-md border text-[9px] font-mono font-bold uppercase tracking-wider ${
+          isDark 
+            ? 'bg-slate-900/90 text-cyan-300/80 border-cyan-500/30 shadow-xs' 
+            : 'bg-white/90 text-sky-700/80 border-slate-200 shadow-xs'
+        }">
+          ⭕ ${r} km Base Radius
+        </div>
+      `;
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat(ringNorthCoord)
+        .addTo(map);
+
+      ringLabelMarkersRef.current.push(marker);
+    });
+  };
+
   // Initialize Map
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -361,6 +638,8 @@ export default function MapView({
       addCustomLayers(map);
       updateBaseMarker();
       updateCampMarkers();
+      updateRingLabels(map);
+      updateDistanceVectors(map);
 
       setTimeout(() => {
         map.resize();
@@ -393,11 +672,21 @@ export default function MapView({
       window.removeEventListener('resize', handleResize);
       Object.values(markersRef.current).forEach(({ marker }) => marker.remove());
       Object.values(campMarkersRef.current).forEach((marker) => marker.remove());
+      Object.values(distanceMarkersRef.current).forEach(({ marker }) => marker.remove());
+      ringLabelMarkersRef.current.forEach((marker) => marker.remove());
       if (baseMarkerRef.current) baseMarkerRef.current.remove();
       map.remove();
       mapRef.current = null;
     };
   }, []);
+
+  // Update vectors whenever vehicles, selectedVehicleId, or theme changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && map.loaded()) {
+      updateDistanceVectors(map);
+    }
+  }, [vehicles, selectedVehicleId, theme, showDistanceLines]);
 
   // Trigger fit when fitTrigger or sidebar toggle changes
   useEffect(() => {
@@ -442,6 +731,9 @@ export default function MapView({
 
   useEffect(() => {
     updateBaseMarker();
+    if (mapRef.current && mapRef.current.loaded()) {
+      updateRingLabels(mapRef.current);
+    }
   }, [theme]);
 
   // Update Camp Markers
@@ -551,7 +843,6 @@ export default function MapView({
         .replace('Mobile Screening ', '')
         .replace('Cataract Surgical ', '');
 
-      // Adaptive Theme Glow and Pill Colors
       let glowColor = '';
       if (isDark) {
         glowColor = v.status === 'moving' 
@@ -619,7 +910,7 @@ export default function MapView({
       {/* Absolute positioned map canvas */}
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
 
-      {/* Floating Map Legend & Style Switcher (Bottom Left) */}
+      {/* Floating Map Legend & Control Bar (Bottom Left) */}
       <div className="absolute bottom-4 left-4 z-10 glass-panel px-3 py-2 rounded-xl text-xs flex flex-wrap items-center gap-3 pointer-events-auto shadow-xl">
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-md bg-blue-600 border border-white flex items-center justify-center text-[8px] text-white font-bold">+</span>
@@ -627,17 +918,27 @@ export default function MapView({
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>
-          <span className="text-slate-700 dark:text-slate-300 font-medium">Eye Camp Site</span>
+          <span className="text-slate-700 dark:text-slate-300 font-medium">Eye Camp</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-          <span className="text-slate-700 dark:text-slate-300 font-medium">Outreach Van</span>
+          <span className="text-slate-700 dark:text-slate-300 font-medium">Van</span>
         </div>
 
-        {/* Route Corridor Indicator */}
-        <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-slate-300 dark:border-slate-700">
-          <span className="w-4 h-0.5 border-t-2 border-dashed border-sky-500"></span>
-          <span className="text-slate-500 dark:text-slate-400 text-[10px]">Camp Corridor</span>
+        {/* Distance Range & Lines Toggle */}
+        <div className="flex items-center gap-1 pl-2 border-l border-slate-300 dark:border-slate-700">
+          <button
+            onClick={toggleDistanceLines}
+            title={showDistanceLines ? "Hide Distance Lines & Radii from Base" : "Show Distance Lines & Radii from Base"}
+            className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
+              showDistanceLines
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-white'
+            }`}
+          >
+            <Ruler className="w-3 h-3" />
+            <span>Distance from Base: {showDistanceLines ? 'ON' : 'OFF'}</span>
+          </button>
         </div>
 
         {/* Map Layer Switcher */}
