@@ -27,8 +27,13 @@ function telemetryDevPlugin() {
   const attachMiddleware = (server) => {
     server.middlewares.use((req, res, next) => {
       const parsedUrl = new URL(req.url, 'http://localhost');
-      if (parsedUrl.pathname === '/api/location' || parsedUrl.pathname === '/api/location/' ||
-          parsedUrl.pathname === '/api/v1/telemetry' || parsedUrl.pathname === '/api/v1/telemetry/') {
+      const hasTraccarParams = (parsedUrl.searchParams.has('id') || parsedUrl.searchParams.has('uniqueId') || parsedUrl.searchParams.has('deviceId')) && 
+                               (parsedUrl.searchParams.has('lat') || parsedUrl.searchParams.has('latitude'));
+      const isTelemetryPath = parsedUrl.pathname === '/api/location' || parsedUrl.pathname === '/api/location/' ||
+                             parsedUrl.pathname === '/api/v1/telemetry' || parsedUrl.pathname === '/api/v1/telemetry/' ||
+                             parsedUrl.pathname === '/location' || parsedUrl.pathname === '/track' || parsedUrl.pathname === '/telemetry';
+
+      if (isTelemetryPath || hasTraccarParams) {
         if (req.method === 'OPTIONS') {
           res.statusCode = 204;
           res.setHeader('Access-Control-Allow-Origin', '*');

@@ -84,9 +84,17 @@ export default {
       });
     }
 
-    // 1. Endpoint: /api/location and /api/v1/telemetry (Receives GPS telemetry from Fleet Shield APK)
-    if (url.pathname === '/api/location' || url.pathname === '/api/location/' ||
-        url.pathname === '/api/v1/telemetry' || url.pathname === '/api/v1/telemetry/') {
+    // 1. Endpoint: Universal Telemetry Receiver (Supports Traccar Client, OsmAnd, GPSLogger, Fleet Shield APK)
+    // Works with:
+    // - Direct Root URL: https://fleet.mrps.in/?id=12345&lat=26.79&lon=82.71... (Standard Traccar default)
+    // - Standard paths: /api/location, /location, /track, /telemetry, /api/v1/telemetry
+    const hasTraccarParams = (url.searchParams.has('id') || url.searchParams.has('uniqueId') || url.searchParams.has('deviceId') || url.searchParams.has('deviceid')) && 
+                             (url.searchParams.has('lat') || url.searchParams.has('latitude'));
+    const isTelemetryPath = url.pathname === '/api/location' || url.pathname === '/api/location/' ||
+                           url.pathname === '/api/v1/telemetry' || url.pathname === '/api/v1/telemetry/' ||
+                           url.pathname === '/location' || url.pathname === '/track' || url.pathname === '/telemetry';
+
+    if (isTelemetryPath || hasTraccarParams || (request.method === 'POST' && url.pathname === '/')) {
       if (request.method === 'OPTIONS') {
         return new Response(null, {
           headers: {
@@ -99,7 +107,7 @@ export default {
       }
 
       // Check query params first (supported in both GET and POST)
-      let id = url.searchParams.get('id') || url.searchParams.get('uniqueId') || url.searchParams.get('deviceid');
+      let id = url.searchParams.get('id') || url.searchParams.get('uniqueId') || url.searchParams.get('deviceid') || url.searchParams.get('deviceId');
       let driver = url.searchParams.get('driver') || url.searchParams.get('driverName') || '';
       let lat = parseFloat(url.searchParams.get('lat') || url.searchParams.get('latitude') || '');
       let lon = parseFloat(url.searchParams.get('lon') || url.searchParams.get('lng') || url.searchParams.get('longitude') || '');
@@ -131,7 +139,7 @@ export default {
             if (body.timestamp) timestamp = new Date(body.timestamp).getTime() || Date.now();
           } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
-            if (!id) id = formData.get('id') || formData.get('uniqueId');
+            if (!id) id = formData.get('id') || formData.get('uniqueId') || formData.get('deviceId');
             if (!driver) driver = formData.get('driver') || formData.get('driverName') || '';
             if (isNaN(lat)) lat = parseFloat(formData.get('lat') || formData.get('latitude'));
             if (isNaN(lon)) lon = parseFloat(formData.get('lon') || formData.get('lng') || formData.get('longitude'));
@@ -145,6 +153,9 @@ export default {
       }
 
       if (!id || isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        if (url.pathname === '/' && request.method === 'GET') {
+          return env.ASSETS.fetch(request);
+        }
         return new Response(JSON.stringify({ 
           error: 'Missing or invalid parameters. Required: id, lat (-90..90), lon (-180..180)' 
         }), {
