@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -7,45 +9,60 @@
   body {
     margin: 0;
     padding: 0;
-    background-color: #060d17;
-    color: #f1f5f9;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 }
 
-/* Custom Glassmorphism styles matching Sant Kabir Eye Hospital */
+/* Adaptive Liquid Glass Styling */
 .glass-panel {
-  background: rgba(11, 27, 51, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(56, 189, 248, 0.15);
+  transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+/* Dark Mode Glass */
+.dark .glass-panel {
+  background: rgba(11, 27, 51, 0.85);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(56, 189, 248, 0.16);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
 }
 
-.glass-panel-glow {
-  background: rgba(11, 27, 51, 0.85);
+.dark .glass-panel-glow {
+  background: rgba(11, 27, 51, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(14, 165, 233, 0.35);
-  box-shadow: 0 0 25px rgba(6, 182, 212, 0.2), 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  box-shadow: 0 0 25px rgba(6, 182, 212, 0.2), 0 10px 35px 0 rgba(0, 0, 0, 0.5);
 }
 
-.glass-badge {
-  background: rgba(6, 182, 212, 0.12);
-  border: 1px solid rgba(6, 182, 212, 0.3);
-  color: #38bdf8;
+/* Light Mode Glass (Clean, Clinical, Crisp, Premium Medical) */
+html:not(.dark) .glass-panel {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+}
+
+html:not(.dark) .glass-panel-glow {
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(14, 165, 233, 0.45);
+  box-shadow: 0 0 25px rgba(14, 165, 233, 0.12), 0 12px 32px -4px rgba(15, 23, 42, 0.08);
 }
 
 /* Pulse Radar Ring for Eye Camp Sites */
 @keyframes radar-pulse {
   0% {
     transform: scale(0.95);
-    opacity: 0.8;
+    opacity: 0.85;
   }
   50% {
     transform: scale(1.6);
-    opacity: 0.3;
+    opacity: 0.35;
   }
   100% {
     transform: scale(2.2);
@@ -57,25 +74,41 @@
   animation: radar-pulse 2.4s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
 
-/* Hide scrollbars on TV / Wallboard mode */
+/* Responsive and Smooth Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-::-webkit-scrollbar-track {
-  background: rgba(6, 13, 23, 0.5);
+
+.dark ::-webkit-scrollbar-track {
+  background: rgba(6, 13, 23, 0.6);
 }
-::-webkit-scrollbar-thumb {
+.dark ::-webkit-scrollbar-thumb {
   background: rgba(56, 189, 248, 0.25);
   border-radius: 9999px;
 }
-::-webkit-scrollbar-thumb:hover {
+.dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(56, 189, 248, 0.5);
+}
+
+html:not(.dark) ::-webkit-scrollbar-track {
+  background: rgba(241, 245, 249, 0.8);
+}
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.6);
 }
 
 /* Custom Marker styles */
 .maplibre-marker {
   cursor: pointer;
   will-change: transform;
-  transition: transform 0.3s ease-out;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.maplibre-marker:hover {
+  z-index: 50 !important;
 }

@@ -20,6 +20,32 @@ export default function App() {
   const [fitTrigger, setFitTrigger] = useState(0);
   const [toast, setToast] = useState(null);
 
+  // Theme Management (Light mode default as requested)
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sk_theme');
+      if (saved) return saved;
+      // Default to light mode for fresh, clean clinical aesthetic
+      return 'light';
+    }
+    return 'light';
+  });
+
+  // Apply theme class to <html> tag
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('sk_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
+
   const prevCampStatusRef = useRef({});
   const tourIndexRef = useRef(0);
 
@@ -215,7 +241,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#060d17] text-slate-100">
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-50 text-slate-900 dark:bg-[#060d17] dark:text-slate-100 transition-colors duration-250">
       {/* Top Operations Header */}
       <Header
         vehicles={vehicles}
@@ -230,6 +256,8 @@ export default function App() {
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
         isAutoTour={isAutoTour}
         onToggleAutoTour={handleToggleAutoTour}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       {/* Main Real-Time Operations Canvas */}
@@ -243,6 +271,7 @@ export default function App() {
           onSelectCamp={setSelectedCamp}
           fitTrigger={fitTrigger}
           isSidebarOpen={isSidebarOpen}
+          theme={theme}
         />
 
         {/* Right Operations Sidebar */}
@@ -257,67 +286,67 @@ export default function App() {
 
         {/* Camp Info Modal (when user clicks an Eye Camp marker) */}
         {selectedCamp && (
-          <div className="absolute top-16 left-4 z-40 w-80 md:w-96 glass-panel-glow p-4 rounded-2xl border border-cyan-400 shadow-2xl animate-in fade-in duration-200">
-            <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-2.5">
+          <div className="absolute top-16 left-4 z-40 w-80 md:w-96 glass-panel-glow p-4 rounded-2xl border border-slate-200 dark:border-cyan-400 shadow-2xl animate-in fade-in duration-200">
+            <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                <div className="p-2 rounded-lg bg-sky-50 border border-sky-200 text-sky-600 dark:bg-cyan-500/20 dark:border-cyan-500/30 dark:text-cyan-400">
                   <Eye className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white leading-tight font-['Outfit']">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-tight font-['Outfit']">
                     {selectedCamp.name}
                   </h3>
-                  <span className="text-[11px] text-cyan-300 flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3 h-3 shrink-0" />
+                  <span className="text-[11px] text-sky-700 dark:text-cyan-300 flex items-center gap-1 mt-0.5 font-medium">
+                    <MapPin className="w-3 h-3 shrink-0 text-sky-600 dark:text-cyan-400" />
                     {selectedCamp.location}
                   </span>
                 </div>
               </div>
               <button 
                 onClick={() => setSelectedCamp(null)}
-                className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800"
+                className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Screening Progress Bar */}
-            <div className="mt-3 bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+            <div className="mt-3 bg-slate-50 border border-slate-200/90 dark:bg-slate-950/70 dark:border-slate-800 p-3 rounded-xl shadow-2xs">
               <div className="flex justify-between text-xs mb-1.5">
-                <span className="text-slate-400">Screening Target</span>
-                <span className="text-cyan-300 font-bold font-mono">
+                <span className="text-slate-600 dark:text-slate-400 font-medium">Screening Target</span>
+                <span className="text-sky-700 dark:text-cyan-300 font-bold font-mono">
                   {selectedCamp.currentScreened} / {selectedCamp.targetScreening} checked
                 </span>
               </div>
-              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+              <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                 <div 
-                  className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 transition-all duration-500 rounded-full"
+                  className="h-full bg-gradient-to-r from-sky-500 to-emerald-500 transition-all duration-500 rounded-full"
                   style={{ width: `${Math.min(100, Math.round((selectedCamp.currentScreened / selectedCamp.targetScreening) * 100))}%` }}
                 />
               </div>
 
               {/* Clinical Breakdown */}
-              <div className="mt-3 grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-800/80 text-center">
-                <div className="p-1.5 rounded-lg bg-amber-950/40 border border-amber-500/20">
-                  <span className="text-[9px] text-amber-300/70 block uppercase font-semibold">Cataract</span>
-                  <span className="text-xs font-bold text-amber-400 font-mono">{selectedCamp.cataractIdentified}</span>
+              <div className="mt-3 grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-200/90 dark:border-slate-800/80 text-center">
+                <div className="p-1.5 rounded-lg bg-amber-50 border border-amber-200/90 dark:bg-amber-950/40 dark:border-amber-500/20">
+                  <span className="text-[9px] text-amber-700 dark:text-amber-300/80 block uppercase font-semibold">Cataract</span>
+                  <span className="text-xs font-bold text-amber-700 dark:text-amber-400 font-mono">{selectedCamp.cataractIdentified}</span>
                 </div>
-                <div className="p-1.5 rounded-lg bg-sky-950/40 border border-sky-500/20">
-                  <span className="text-[9px] text-sky-300/70 block uppercase font-semibold">Glasses</span>
-                  <span className="text-xs font-bold text-sky-400 font-mono">{selectedCamp.refractiveErrors || 50}</span>
+                <div className="p-1.5 rounded-lg bg-sky-50 border border-sky-200/90 dark:bg-sky-950/40 dark:border-sky-500/20">
+                  <span className="text-[9px] text-sky-700 dark:text-sky-300/80 block uppercase font-semibold">Glasses</span>
+                  <span className="text-xs font-bold text-sky-700 dark:text-sky-400 font-mono">{selectedCamp.refractiveErrors || 50}</span>
                 </div>
-                <div className="p-1.5 rounded-lg bg-emerald-950/40 border border-emerald-500/20">
-                  <span className="text-[9px] text-emerald-300/70 block uppercase font-semibold">Glaucoma</span>
-                  <span className="text-xs font-bold text-emerald-400 font-mono">{selectedCamp.glaucomaSuspects || 10}</span>
+                <div className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200/90 dark:bg-emerald-950/40 dark:border-emerald-500/20">
+                  <span className="text-[9px] text-emerald-700 dark:text-emerald-300/80 block uppercase font-semibold">Glaucoma</span>
+                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 font-mono">{selectedCamp.glaucomaSuspects || 10}</span>
                 </div>
               </div>
             </div>
 
             {/* Doctor and Field Coordinator */}
-            <div className="mt-3 space-y-1.5 text-xs text-slate-300">
+            <div className="mt-3 space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
               <div className="flex items-center gap-2">
-                <User className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span>Doctor: <strong>{selectedCamp.leadDoctor}</strong></span>
+                <User className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400 shrink-0" />
+                <span>Doctor: <strong className="text-slate-900 dark:text-white">{selectedCamp.leadDoctor}</strong></span>
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -327,7 +356,7 @@ export default function App() {
                 {selectedCamp.coordinatorPhone && (
                   <a 
                     href={`tel:${selectedCamp.coordinatorPhone}`}
-                    className="flex items-center gap-1 text-[11px] text-emerald-400 hover:underline"
+                    className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline font-medium"
                   >
                     <Phone className="w-3 h-3" />
                     Call Lead
@@ -343,7 +372,7 @@ export default function App() {
                   setSelectedVehicleId(selectedCamp.assignedVehicleId);
                   setSelectedCamp(null);
                 }}
-                className="mt-3 w-full py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-lg"
+                className="mt-3 w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-md"
               >
                 Track Assigned Van ({selectedCamp.assignedVehicleId})
               </button>
@@ -353,14 +382,14 @@ export default function App() {
 
         {/* Toast Alert Notification */}
         {toast && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 glass-panel-glow px-4 py-2.5 rounded-xl border border-cyan-400 flex items-center gap-3 shadow-2xl animate-in slide-in-from-top duration-300 max-w-[90vw]">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 glass-panel-glow px-4 py-2.5 rounded-xl border border-sky-400 dark:border-cyan-400 flex items-center gap-3 shadow-xl animate-in slide-in-from-top duration-300 max-w-[90vw]">
             {toast.type === 'arrival' ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 animate-bounce" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 animate-bounce" />
             ) : (
-              <AlertTriangle className="w-5 h-5 text-cyan-400 shrink-0" />
+              <AlertTriangle className="w-5 h-5 text-sky-600 dark:text-cyan-400 shrink-0" />
             )}
-            <span className="text-xs md:text-sm font-semibold text-white">{toast.message}</span>
-            <button onClick={() => setToast(null)} className="text-slate-400 hover:text-white p-0.5 ml-1">
+            <span className="text-xs md:text-sm font-semibold text-slate-900 dark:text-white">{toast.message}</span>
+            <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-0.5 ml-1">
               <X className="w-4 h-4" />
             </button>
           </div>

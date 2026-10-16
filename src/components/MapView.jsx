@@ -6,6 +6,45 @@ import { Layers } from 'lucide-react';
 
 // Free, No-API-Key Map Styles (100% Watermark-Free)
 const MAP_STYLES = {
+  light: {
+    name: 'Light Gray',
+    style: {
+      version: 8,
+      sources: {
+        'esri-light-base': {
+          type: 'raster',
+          tiles: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+          ],
+          tileSize: 256,
+          attribution: 'Esri, HERE, Garmin, © OpenStreetMap contributors',
+        },
+        'esri-light-labels': {
+          type: 'raster',
+          tiles: [
+            'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+          ],
+          tileSize: 256,
+        },
+      },
+      layers: [
+        {
+          id: 'esri-light-base-layer',
+          type: 'raster',
+          source: 'esri-light-base',
+          minzoom: 0,
+          maxzoom: 19,
+        },
+        {
+          id: 'esri-light-labels-layer',
+          type: 'raster',
+          source: 'esri-light-labels',
+          minzoom: 0,
+          maxzoom: 19,
+        },
+      ],
+    },
+  },
   dark: {
     name: 'Dark Gray',
     style: {
@@ -115,27 +154,38 @@ export default function MapView({
   vehicles, 
   camps, 
   selectedVehicleId, 
-  onSelectVehicle,
-  onSelectCamp,
-  fitTrigger,
-  isSidebarOpen
+  onSelectVehicle, 
+  onSelectCamp, 
+  fitTrigger, 
+  isSidebarOpen,
+  theme = 'light'
 }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef({});
   const campMarkersRef = useRef({});
   const baseMarkerRef = useRef(null);
-  const [activeStyleKey, setActiveStyleKey] = useState('dark');
+  const [activeStyleKey, setActiveStyleKey] = useState(theme === 'dark' ? 'dark' : 'light');
 
-  // Responsive padding calculation (prevents map from being squeezed offscreen on mobile/tablet)
+  // Synchronize map style with app theme (unless user explicitly selected satellite/streets)
+  useEffect(() => {
+    if (activeStyleKey === 'light' || activeStyleKey === 'dark') {
+      const targetStyle = theme === 'dark' ? 'dark' : 'light';
+      if (activeStyleKey !== targetStyle) {
+        changeStyle(targetStyle);
+      }
+    }
+  }, [theme]);
+
+  // Responsive padding calculation (prevents map from being squeezed offscreen)
   const getResponsivePadding = () => {
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
     
     return {
-      top: isMobile ? 80 : 70,
-      bottom: isMobile ? 120 : 70,
-      left: isMobile ? 20 : 60,
+      top: isMobile ? 80 : 75,
+      bottom: isMobile ? 120 : 75,
+      left: isMobile ? 25 : 60,
       right: isDesktop && isSidebarOpen ? 400 : 30,
     };
   };
@@ -168,20 +218,24 @@ export default function MapView({
 
   // Switch Map Style safely
   const changeStyle = (key) => {
-    if (!mapRef.current || key === activeStyleKey) return;
+    if (!mapRef.current || !MAP_STYLES[key]) return;
     setActiveStyleKey(key);
     const map = mapRef.current;
     map.setStyle(MAP_STYLES[key].style);
 
     map.once('style.load', () => {
       addCustomLayers(map);
+      updateBaseMarker();
+      updateCampMarkers();
     });
   };
 
   // Add Route lines and Geofences
   const addCustomLayers = (map) => {
     try {
-      // 1. Add Highway Route Corridors from Base Hospital to each Eye Camp
+      const isDark = theme === 'dark';
+
+      // 1. Highway Route Corridors from Base Hospital to each Eye Camp
       if (map.getSource('camp-routes')) {
         map.removeLayer('camp-routes-casing');
         map.removeLayer('camp-routes-line');
@@ -216,9 +270,9 @@ export default function MapView({
         type: 'line',
         source: 'camp-routes',
         paint: {
-          'line-color': '#06b6d4',
+          'line-color': isDark ? '#06b6d4' : '#0284c7',
           'line-width': 4,
-          'line-opacity': 0.18,
+          'line-opacity': isDark ? 0.2 : 0.15,
           'line-blur': 2,
         },
       });
@@ -229,14 +283,14 @@ export default function MapView({
         type: 'line',
         source: 'camp-routes',
         paint: {
-          'line-color': '#38bdf8',
-          'line-width': 1.8,
-          'line-opacity': 0.65,
+          'line-color': isDark ? '#38bdf8' : '#0284c7',
+          'line-width': 2,
+          'line-opacity': isDark ? 0.75 : 0.65,
           'line-dasharray': [3, 2.5],
         },
       });
 
-      // 2. Add Geofence rings around each Camp Site
+      // 2. Geofence rings around each Camp Site
       if (map.getSource('camp-geofences')) {
         map.removeLayer('camp-geofence-fill');
         map.removeSource('camp-geofences');
@@ -274,11 +328,11 @@ export default function MapView({
             12, 40,
             15, 140
           ],
-          'circle-color': '#06b6d4',
-          'circle-opacity': 0.16,
+          'circle-color': isDark ? '#06b6d4' : '#0284c7',
+          'circle-opacity': isDark ? 0.16 : 0.12,
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#22d3ee',
-          'circle-stroke-opacity': 0.7,
+          'circle-stroke-color': isDark ? '#22d3ee' : '#0284c7',
+          'circle-stroke-opacity': isDark ? 0.7 : 0.5,
         },
       });
     } catch (e) {
@@ -290,9 +344,10 @@ export default function MapView({
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
 
+    const initialStyleKey = theme === 'dark' ? 'dark' : 'light';
     const map = new maplibregl.Map({
       container: mapContainer.current,
-      style: MAP_STYLES.dark.style,
+      style: MAP_STYLES[initialStyleKey].style,
       center: [82.7628, 26.8048], // Basti, UP
       zoom: 10,
       pitch: 25,
@@ -304,6 +359,8 @@ export default function MapView({
     map.on('load', () => {
       map.resize();
       addCustomLayers(map);
+      updateBaseMarker();
+      updateCampMarkers();
 
       setTimeout(() => {
         map.resize();
@@ -311,7 +368,7 @@ export default function MapView({
       }, 150);
     });
 
-    // Clicking anywhere on open map deselects the active vehicle
+    // Clicking anywhere on open map deselects active vehicle
     map.on('click', (e) => {
       if (e.originalEvent && e.originalEvent.target && e.originalEvent.target.closest('.maplibre-marker')) {
         return;
@@ -347,40 +404,54 @@ export default function MapView({
     fitAll();
   }, [fitTrigger, isSidebarOpen]);
 
-  // Handle Base Hospital Marker
-  useEffect(() => {
+  // Base Hospital Marker
+  const updateBaseMarker = () => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (!baseMarkerRef.current) {
-      const el = document.createElement('div');
-      el.className = 'group relative flex items-center justify-center cursor-pointer';
-      el.innerHTML = `
-        <div class="relative flex items-center justify-center">
-          <div class="absolute w-12 h-12 rounded-full bg-blue-500/25 animate-ping"></div>
-          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-700 to-cyan-500 border-2 border-white/90 shadow-2xl flex items-center justify-center text-white font-bold text-xs">
-            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path d="M12 2v20M2 12h20" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <div class="absolute -bottom-7 whitespace-nowrap px-2.5 py-0.5 rounded-full bg-slate-900/95 border border-blue-400/50 text-[11px] font-bold text-cyan-300 shadow-md">
-            🏥 Sant Kabir Hospital (Base)
-          </div>
-        </div>
-      `;
-
-      baseMarkerRef.current = new maplibregl.Marker({ element: el })
-        .setLngLat([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat])
-        .addTo(map);
+    if (baseMarkerRef.current) {
+      baseMarkerRef.current.remove();
+      baseMarkerRef.current = null;
     }
-  }, []);
 
-  // Update Camp Markers & remove deleted camps
+    const isDark = theme === 'dark';
+    const el = document.createElement('div');
+    el.className = 'group relative flex items-center justify-center cursor-pointer';
+    el.innerHTML = `
+      <div class="relative flex items-center justify-center select-none">
+        <div class="absolute w-12 h-12 rounded-full ${isDark ? 'bg-blue-500/25' : 'bg-blue-600/15'} animate-ping"></div>
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-700 to-cyan-500 border-2 ${isDark ? 'border-white/90 shadow-2xl' : 'border-white shadow-lg shadow-blue-500/25'} flex items-center justify-center text-white font-bold text-xs">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 2v20M2 12h20" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="absolute -bottom-7 whitespace-nowrap px-2.5 py-0.5 rounded-full ${
+          isDark 
+            ? 'bg-slate-900/95 border border-blue-400/50 text-cyan-300 shadow-md' 
+            : 'bg-white/95 border border-slate-200 text-blue-900 shadow-md font-semibold'
+        } text-[11px]">
+          🏥 Sant Kabir Hospital (Base)
+        </div>
+      </div>
+    `;
+
+    baseMarkerRef.current = new maplibregl.Marker({ element: el })
+      .setLngLat([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat])
+      .addTo(map);
+  };
+
   useEffect(() => {
+    updateBaseMarker();
+  }, [theme]);
+
+  // Update Camp Markers
+  const updateCampMarkers = () => {
     const map = mapRef.current;
     if (!map) return;
 
+    const isDark = theme === 'dark';
     const currentCampIds = new Set(camps.map(c => c.id));
+    
     Object.keys(campMarkersRef.current).forEach((id) => {
       if (!currentCampIds.has(id)) {
         campMarkersRef.current[id].remove();
@@ -389,48 +460,64 @@ export default function MapView({
     });
 
     camps.forEach((camp) => {
-      if (!campMarkersRef.current[camp.id]) {
-        const el = document.createElement('div');
-        el.className = 'relative flex items-center justify-center cursor-pointer group select-none';
-        el.onclick = (e) => {
-          e.stopPropagation();
-          if (onSelectCamp) onSelectCamp(camp);
-        };
-
-        el.innerHTML = `
-          <div class="relative flex items-center justify-center">
-            <div class="absolute w-16 h-16 rounded-full bg-cyan-400/30 radar-ring pointer-events-none"></div>
-            
-            <div class="w-8 h-8 rounded-full bg-slate-900 border-2 border-cyan-400 shadow-lg shadow-cyan-500/50 flex items-center justify-center text-cyan-400 hover:scale-110 transition-transform">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </div>
-
-            <div class="absolute -top-7 whitespace-nowrap px-2 py-0.5 rounded-md bg-slate-950/95 border border-cyan-500/50 text-[10px] font-bold text-cyan-200 shadow-lg flex items-center gap-1.5">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              <span>${camp.name}</span>
-              <span class="text-slate-400 font-normal">(${camp.currentScreened || 0} checked)</span>
-            </div>
-          </div>
-        `;
-
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([camp.lon, camp.lat])
-          .addTo(map);
-
-        campMarkersRef.current[camp.id] = marker;
+      if (campMarkersRef.current[camp.id]) {
+        campMarkersRef.current[camp.id].remove();
       }
+
+      const el = document.createElement('div');
+      el.className = 'relative flex items-center justify-center cursor-pointer group select-none';
+      el.onclick = (e) => {
+        e.stopPropagation();
+        if (onSelectCamp) onSelectCamp(camp);
+      };
+
+      el.innerHTML = `
+        <div class="relative flex items-center justify-center">
+          <div class="absolute w-16 h-16 rounded-full ${isDark ? 'bg-cyan-400/30' : 'bg-sky-500/20'} radar-ring pointer-events-none"></div>
+          
+          <div class="w-8 h-8 rounded-full ${
+            isDark 
+              ? 'bg-slate-900 border-2 border-cyan-400 shadow-lg shadow-cyan-500/50 text-cyan-400' 
+              : 'bg-white border-2 border-sky-500 shadow-md text-sky-600'
+          } flex items-center justify-center hover:scale-110 transition-transform">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </div>
+
+          <div class="absolute -top-7 whitespace-nowrap px-2 py-0.5 rounded-md ${
+            isDark 
+              ? 'bg-slate-950/95 border border-cyan-500/50 text-cyan-200 shadow-lg' 
+              : 'bg-white/95 border border-slate-200 text-slate-800 shadow-md'
+          } text-[10px] font-bold flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            <span>${camp.name}</span>
+            <span class="${isDark ? 'text-slate-400' : 'text-slate-500'} font-normal">(${camp.currentScreened || 0} checked)</span>
+          </div>
+        </div>
+      `;
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([camp.lon, camp.lat])
+        .addTo(map);
+
+      campMarkersRef.current[camp.id] = marker;
     });
-  }, [camps, onSelectCamp]);
+  };
+
+  useEffect(() => {
+    updateCampMarkers();
+  }, [camps, theme]);
 
   // Update Vehicle Markers with Live Position & Bearing
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
+    const isDark = theme === 'dark';
     const currentVehIds = new Set(vehicles.map(v => v.id));
+
     Object.keys(markersRef.current).forEach((id) => {
       if (!currentVehIds.has(id)) {
         markersRef.current[id].marker.remove();
@@ -464,25 +551,39 @@ export default function MapView({
         .replace('Mobile Screening ', '')
         .replace('Cataract Surgical ', '');
 
-      const glowColor = v.status === 'moving' 
-        ? 'border-emerald-400 shadow-emerald-500/50 bg-emerald-950/95 text-emerald-300' 
-        : v.status === 'at_camp'
-        ? 'border-cyan-400 shadow-cyan-500/50 bg-cyan-950/95 text-cyan-300'
-        : v.status === 'returning'
-        ? 'border-indigo-400 shadow-indigo-500/50 bg-indigo-950/95 text-indigo-300'
-        : 'border-slate-500 shadow-slate-700/50 bg-slate-900/95 text-slate-300';
+      // Adaptive Theme Glow and Pill Colors
+      let glowColor = '';
+      if (isDark) {
+        glowColor = v.status === 'moving' 
+          ? 'border-emerald-400 shadow-emerald-500/50 bg-emerald-950/95 text-emerald-300' 
+          : v.status === 'at_camp'
+          ? 'border-cyan-400 shadow-cyan-500/50 bg-cyan-950/95 text-cyan-300'
+          : v.status === 'returning'
+          ? 'border-indigo-400 shadow-indigo-500/50 bg-indigo-950/95 text-indigo-300'
+          : 'border-slate-500 shadow-slate-700/50 bg-slate-900/95 text-slate-300';
+      } else {
+        glowColor = v.status === 'moving'
+          ? 'border-emerald-500 shadow-emerald-500/25 bg-white text-emerald-800'
+          : v.status === 'at_camp'
+          ? 'border-sky-500 shadow-sky-500/25 bg-white text-sky-800'
+          : v.status === 'returning'
+          ? 'border-indigo-500 shadow-indigo-500/25 bg-white text-indigo-800'
+          : 'border-slate-300 shadow-slate-400/25 bg-white text-slate-700';
+      }
 
       markerObj.element.innerHTML = `
         <div class="relative flex flex-col items-center">
           ${v.speed > 5 ? `
             <div style="transform: rotate(${v.bearing || 0}deg);" class="mb-1 transition-transform duration-300">
-              <svg class="w-3.5 h-3.5 text-emerald-400 drop-shadow" viewBox="0 0 24 24" fill="currentColor">
+              <svg class="w-3.5 h-3.5 ${isDark ? 'text-emerald-400' : 'text-emerald-600'} drop-shadow" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="12,2 22,22 12,17 2,22"/>
               </svg>
             </div>
           ` : ''}
 
-          <div class="px-2.5 py-1 rounded-xl border-2 shadow-xl backdrop-blur-md flex items-center gap-1.5 ${glowColor} ${isSelected ? 'scale-115 ring-2 ring-white' : ''}">
+          <div class="px-2.5 py-1 rounded-xl border-2 shadow-lg backdrop-blur-md flex items-center gap-1.5 ${glowColor} ${
+            isSelected ? (isDark ? 'scale-115 ring-2 ring-white' : 'scale-115 ring-2 ring-sky-500 shadow-xl') : ''
+          }">
             <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
               <rect x="1" y="3" width="15" height="13" rx="2"/>
               <polygon points="16 8 20 8 23 11 23 16 16 16 8"/>
@@ -492,7 +593,7 @@ export default function MapView({
             
             <div class="flex flex-col">
               <span class="text-[11px] font-bold leading-none whitespace-nowrap">${shortName}</span>
-              ${v.speed > 0 ? `<span class="text-[9px] font-mono font-semibold">${v.speed} km/h</span>` : `<span class="text-[9px] font-medium opacity-80">Idle</span>`}
+              ${v.speed > 0 ? `<span class="text-[9px] font-mono font-semibold">${v.speed} km/h</span>` : `<span class="text-[9px] font-medium opacity-75">Idle</span>`}
             </div>
           </div>
         </div>
@@ -511,7 +612,7 @@ export default function MapView({
         });
       }
     }
-  }, [vehicles, selectedVehicleId, onSelectVehicle]);
+  }, [vehicles, selectedVehicleId, theme]);
 
   return (
     <div className="relative flex-1 w-full h-full min-h-[400px] overflow-hidden">
@@ -519,37 +620,37 @@ export default function MapView({
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
 
       {/* Floating Map Legend & Style Switcher (Bottom Left) */}
-      <div className="absolute bottom-4 left-4 z-10 glass-panel px-3 py-2 rounded-xl border border-cyan-500/20 text-xs flex flex-wrap items-center gap-3 pointer-events-auto shadow-2xl">
+      <div className="absolute bottom-4 left-4 z-10 glass-panel px-3 py-2 rounded-xl text-xs flex flex-wrap items-center gap-3 pointer-events-auto shadow-xl">
         <div className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-md bg-blue-600 border border-white flex items-center justify-center text-[8px] text-white font-bold">+</span>
-          <span className="text-slate-300 font-medium">Sant Kabir Hospital</span>
+          <span className="text-slate-700 dark:text-slate-300 font-medium">Sant Kabir Hospital</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
-          <span className="text-slate-300 font-medium">Eye Camp Site</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>
+          <span className="text-slate-700 dark:text-slate-300 font-medium">Eye Camp Site</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-          <span className="text-slate-300 font-medium">Moving Outreach Van</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+          <span className="text-slate-700 dark:text-slate-300 font-medium">Outreach Van</span>
         </div>
 
         {/* Route Corridor Indicator */}
-        <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-slate-700">
-          <span className="w-4 h-0.5 border-t-2 border-dashed border-sky-400"></span>
-          <span className="text-slate-400 text-[10px]">Camp Corridor</span>
+        <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-slate-300 dark:border-slate-700">
+          <span className="w-4 h-0.5 border-t-2 border-dashed border-sky-500"></span>
+          <span className="text-slate-500 dark:text-slate-400 text-[10px]">Camp Corridor</span>
         </div>
 
         {/* Map Layer Switcher */}
-        <div className="flex items-center gap-1 pl-2 border-l border-slate-700">
-          <Layers className="w-3.5 h-3.5 text-cyan-400 mr-1" />
+        <div className="flex items-center gap-1 pl-2 border-l border-slate-300 dark:border-slate-700">
+          <Layers className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400 mr-1" />
           {Object.entries(MAP_STYLES).map(([key, styleObj]) => (
             <button
               key={key}
               onClick={() => changeStyle(key)}
               className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
                 activeStyleKey === key
-                  ? 'bg-cyan-500 text-white shadow'
-                  : 'bg-slate-800 text-slate-400 hover:text-white'
+                  ? 'bg-sky-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-white'
               }`}
             >
               {styleObj.name}
