@@ -37,13 +37,13 @@ export default function DriverSetupModal({ isOpen, onClose }) {
     timestamp: Date.now(),
   };
 
-  const apkDownloadUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/downloads/santkabir-fleet-shield-v1.0.apk`
-    : 'https://fleet.mrps.in/downloads/santkabir-fleet-shield-v1.0.apk';
+  const setupProvisionUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/setup?id=${encodeURIComponent(effectiveId)}&url=${encodeURIComponent(serverEndpoint)}`
+    : `https://fleet.mrps.in/setup?id=${encodeURIComponent(effectiveId)}&url=${encodeURIComponent(serverEndpoint)}`;
 
   useEffect(() => {
     if (!isOpen) return;
-    QRCode.toDataURL(apkDownloadUrl, {
+    QRCode.toDataURL(setupProvisionUrl, {
       width: 240,
       margin: 1.5,
       color: {
@@ -53,12 +53,12 @@ export default function DriverSetupModal({ isOpen, onClose }) {
     })
       .then(url => setQrDataUrl(url))
       .catch(err => console.error('QR generation error:', err));
-  }, [isOpen, apkDownloadUrl]);
+  }, [isOpen, setupProvisionUrl]);
 
   if (!isOpen) return null;
 
   const copyPayload = () => {
-    navigator.clipboard.writeText(apkDownloadUrl);
+    navigator.clipboard.writeText(setupProvisionUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -135,7 +135,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             <div className="p-3 rounded-2xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200/80 dark:border-sky-800/60 flex items-start gap-2.5">
               <Lock className="w-4 h-4 text-sky-600 dark:text-cyan-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>Driver Provisioning:</strong> Scan this QR code with the driver's phone camera to download <strong>santkabir-fleet-shield-v1.0.apk</strong>. On install, unlock the app using code <strong>8722</strong> and enter the <strong>Ambulance Asset ID</strong> below into the app.
+                <strong>QR Auto-Provisioning:</strong> 1. Install the APK on the phone (Tab 2). 2. Select the Ambulance Asset ID below. 3. Point the phone's camera at this QR code — it prompts to open Fleet Shield and automatically configures the vehicle identifier and server endpoint!
               </div>
             </div>
 
@@ -216,21 +216,21 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                 <span className="mt-2 text-[11px] font-mono font-bold text-sky-600 dark:text-cyan-400">
                   {effectiveId} • {driverName}
                 </span>
-                <span className="text-[10px] text-slate-400">Scan with Phone Camera to Download APK</span>
+                <span className="text-[10px] text-slate-400">Scan with Phone Camera to Auto-Configure</span>
               </div>
             </div>
 
             {/* Payload preview button */}
             <div className="pt-1 flex items-center justify-between">
               <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                Direct download link encoded in QR
+                Deep link setup encoded in QR
               </span>
               <button
                 onClick={copyPayload}
                 className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'Copied Link' : 'Copy Download Link'}</span>
+                <span>{copied ? 'Copied Link' : 'Copy Setup Link'}</span>
               </button>
             </div>
           </div>

@@ -172,7 +172,7 @@ npm run preview
 
 1. **Install Client**: Open the dashboard's **Driver Provisioning** modal (`Tab 2`) and download `santkabir-fleet-shield-v1.0.apk`.
 2. **Transfer to Device**: Send the APK to the driver's Android device via WhatsApp or USB and install.
-3. **Set Ambulance Asset ID**: In the app, tap **Master Admin Authorization**, enter `8722`, tap **Ambulance Asset ID**, and type the assigned vehicle code (e.g. `SK-AMB-01`).
+3. **Auto-Provision via QR**: Point the driver phone's camera at the dashboard's Provisioning QR code (`Tab 1`) — Android prompts to open Sant Kabir Fleet Shield and automatically configures the Ambulance Asset ID and server endpoint! (Or manually enter code `8722` in the app to type it).
 4. **Grant Permissions**: Allow background location permissions (*"Allow all the time"*).
 5. **Locked & Streaming**: The app starts background tracking. Settings remain locked to prevent tampering. Enter your admin code (`8722`) anytime you need to tune intervals or device parameters.
 
