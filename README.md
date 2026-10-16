@@ -56,7 +56,7 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 
 ### 4. Custom Driver Android APK (`santkabir-fleet-shield-v1.0.apk`)
 - **Master Admin PIN Protection**: Settings are locked on start to prevent drivers from stopping tracking or altering endpoints.
-- **Admin Tuning**: Enter Master Admin Code `8722` (or your secret PIN) under *"Master Admin Authorization"* to unlock and tune update frequency (e.g. 5s–30s for low-end devices), accuracy, or server URL.
+- **Admin Tuning**: Enter your secret Master Admin PIN under *"Master Admin Authorization"* to unlock and tune update frequency (e.g. 5s–30s for low-end devices), accuracy, or server URL.
 - **Default Telemetry Endpoint**: Preconfigured with your server endpoint (`https://fleet.mrps.in/api/location`).
 - **Background Daemon**: Runs as an Android Foreground Service with `START_STICKY` and `BootCompletedReceiver`.
 - **Direct Download**: Hosted directly at `/downloads/santkabir-fleet-shield-v1.0.apk` with strict MIME enforcement (`application/vnd.android.package-archive`).
@@ -172,9 +172,9 @@ npm run preview
 
 1. **Install Client**: Open the dashboard's **Driver Provisioning** modal (`Tab 2`) and download `santkabir-fleet-shield-v1.0.apk`.
 2. **Transfer to Device**: Send the APK to the driver's Android device via WhatsApp or USB and install.
-3. **Auto-Provision via QR**: Point the driver phone's camera at the dashboard's Provisioning QR code (`Tab 1`) — Android prompts to open Sant Kabir Fleet Shield and automatically configures the Ambulance Asset ID and server endpoint! (Or manually enter code `8722` in the app to type it).
+3. **Auto-Provision via QR**: Point the driver phone's camera at the dashboard's Provisioning QR code (`Tab 1`) — Android prompts to open Sant Kabir Fleet Shield and automatically configures the Ambulance Asset ID and server endpoint! (Or manually enter your secret admin PIN in the app to type it).
 4. **Grant Permissions**: Allow background location permissions (*"Allow all the time"*).
-5. **Locked & Streaming**: The app starts background tracking. Settings remain locked to prevent tampering. Enter your admin code (`8722`) anytime you need to tune intervals or device parameters.
+5. **Locked & Streaming**: The app starts background tracking. Settings remain locked to prevent tampering. Enter your secret admin PIN anytime you need to tune intervals or device parameters.
 
 ---
 
