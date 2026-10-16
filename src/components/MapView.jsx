@@ -186,8 +186,12 @@ export default function MapView({
   onSelectVehicle, 
   onSelectCamp, 
   fitTrigger, 
-  isSidebarOpen,
-  theme = 'light'
+  theme = 'light',
+  activeStyleKey = 'light',
+  onStyleChange,
+  showDistanceLines = true,
+  detent = 'half',
+  actionTrigger = null,
 }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
@@ -196,29 +200,17 @@ export default function MapView({
   const baseMarkerRef = useRef(null);
   const distanceMarkersRef = useRef({});
   const ringLabelMarkersRef = useRef([]);
-  const [activeStyleKey, setActiveStyleKey] = useState(theme === 'dark' ? 'dark' : 'light');
-  const [showDistanceLines, setShowDistanceLines] = useState(true);
 
-  // Synchronize map style with app theme (unless user explicitly selected satellite/streets)
-  useEffect(() => {
-    if (activeStyleKey === 'light' || activeStyleKey === 'dark') {
-      const targetStyle = theme === 'dark' ? 'dark' : 'light';
-      if (activeStyleKey !== targetStyle) {
-        changeStyle(targetStyle);
-      }
-    }
-  }, [theme]);
-
-  // Responsive padding calculation
+  // Responsive padding calculation (adapts dynamically to Apple Sheet position)
   const getResponsivePadding = () => {
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
     
     return {
-      top: isMobile ? 80 : 75,
-      bottom: isMobile ? 120 : 75,
-      left: isMobile ? 25 : 60,
-      right: isDesktop && isSidebarOpen ? 400 : 30,
+      top: isMobile ? 80 : 70,
+      bottom: isMobile ? (detent === 'peek' ? 90 : 360) : (detent === 'peek' ? 80 : 80),
+      left: isDesktop ? (detent === 'peek' ? 70 : 410) : 25,
+      right: isDesktop ? 70 : 25,
     };
   };
 
@@ -248,10 +240,13 @@ export default function MapView({
     }
   };
 
+  const currentStyleKeyRef = useRef(activeStyleKey || (theme === 'dark' ? 'dark' : 'light'));
+
   // Switch Map Style safely
   const changeStyle = (key) => {
     if (!mapRef.current || !MAP_STYLES[key]) return;
-    setActiveStyleKey(key);
+    currentStyleKeyRef.current = key;
+    if (onStyleChange) onStyleChange(key);
     const map = mapRef.current;
     map.setStyle(MAP_STYLES[key].style);
 
@@ -259,9 +254,44 @@ export default function MapView({
       addCustomLayers(map);
       updateBaseMarker();
       updateCampMarkers();
+      updateRingLabels(map);
       updateDistanceVectors(map);
     });
   };
+
+  useEffect(() => {
+    if (activeStyleKey && activeStyleKey !== currentStyleKeyRef.current) {
+      changeStyle(activeStyleKey);
+    }
+  }, [activeStyleKey]);
+
+  // Respond to action triggers (resetNorth, centerBase, focusRoute, focusDistance)
+  useEffect(() => {
+    if (!actionTrigger || !mapRef.current) return;
+    const { type } = actionTrigger;
+    if (type === 'resetNorth') {
+      mapRef.current.easeTo({ bearing: 0, pitch: 20, duration: 800 });
+    } else if (type === 'centerBase') {
+      mapRef.current.flyTo({ center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat], zoom: 12.5, speed: 1.2 });
+    } else if (type === 'focusRoute') {
+      const veh = vehicles.find(v => v.id === selectedVehicleId);
+      const camp = veh ? camps.find(c => c.id === veh.assignedCampId) : null;
+      if (camp && camp.routeWaypoints) {
+        const bounds = new maplibregl.LngLatBounds();
+        bounds.extend([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]);
+        camp.routeWaypoints.forEach(pt => bounds.extend(pt));
+        mapRef.current.fitBounds(bounds, { padding: getResponsivePadding(), duration: 1000 });
+      }
+    } else if (type === 'focusDistance') {
+      const veh = vehicles.find(v => v.id === selectedVehicleId);
+      if (veh) {
+        const bounds = new maplibregl.LngLatBounds();
+        bounds.extend([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]);
+        bounds.extend([veh.lon, veh.lat]);
+        mapRef.current.fitBounds(bounds, { padding: getResponsivePadding(), duration: 1000 });
+      }
+    }
+  }, [actionTrigger]);
 
   // Add Route lines, Distance Range Rings, and Geofences
   const addCustomLayers = (map) => {
@@ -479,27 +509,23 @@ export default function MapView({
     }
   };
 
-  // Toggle Distance Lines & Range Rings
-  const toggleDistanceLines = () => {
-    const nextState = !showDistanceLines;
-    setShowDistanceLines(nextState);
-
+  // Update Distance Lines & Range Rings visibility whenever prop changes
+  useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !map.loaded()) return;
 
-    const visibility = nextState ? 'visible' : 'none';
+    const visibility = showDistanceLines ? 'visible' : 'none';
     if (map.getLayer('base-range-rings-line')) map.setLayoutProperty('base-range-rings-line', 'visibility', visibility);
     if (map.getLayer('base-range-rings-fill')) map.setLayoutProperty('base-range-rings-fill', 'visibility', visibility);
     if (map.getLayer('base-distance-vectors-line')) map.setLayoutProperty('base-distance-vectors-line', 'visibility', visibility);
 
-    // Toggle distance badge markers visibility
     Object.values(distanceMarkersRef.current).forEach(({ element }) => {
-      element.style.display = nextState ? 'flex' : 'none';
+      element.style.display = showDistanceLines ? 'flex' : 'none';
     });
     ringLabelMarkersRef.current.forEach((marker) => {
-      marker.getElement().style.display = nextState ? 'flex' : 'none';
+      marker.getElement().style.display = showDistanceLines ? 'flex' : 'none';
     });
-  };
+  }, [showDistanceLines]);
 
   // Update Distance Vector Line geometry and Midpoint Distance Badges
   const updateDistanceVectors = (map) => {
@@ -688,10 +714,10 @@ export default function MapView({
     }
   }, [vehicles, selectedVehicleId, theme, showDistanceLines]);
 
-  // Trigger fit when fitTrigger or sidebar toggle changes
+  // Trigger fit when fitTrigger or detent changes
   useEffect(() => {
     fitAll();
-  }, [fitTrigger, isSidebarOpen]);
+  }, [fitTrigger, detent]);
 
   // Base Hospital Marker
   const updateBaseMarker = () => {
@@ -907,58 +933,8 @@ export default function MapView({
 
   return (
     <div className="relative flex-1 w-full h-full min-h-[400px] overflow-hidden">
-      {/* Absolute positioned map canvas */}
+      {/* Absolute positioned full-bleed map canvas */}
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
-
-      {/* Floating Map Legend & Control Bar (Bottom Left) */}
-      <div className="absolute bottom-4 left-4 z-10 glass-panel px-3 py-2 rounded-xl text-xs flex flex-wrap items-center gap-3 pointer-events-auto shadow-xl">
-        <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-md bg-blue-600 border border-white flex items-center justify-center text-[8px] text-white font-bold">+</span>
-          <span className="text-slate-700 dark:text-slate-300 font-medium">Sant Kabir Hospital</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-500"></span>
-          <span className="text-slate-700 dark:text-slate-300 font-medium">Eye Camp</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-          <span className="text-slate-700 dark:text-slate-300 font-medium">Van</span>
-        </div>
-
-        {/* Distance Range & Lines Toggle */}
-        <div className="flex items-center gap-1 pl-2 border-l border-slate-300 dark:border-slate-700">
-          <button
-            onClick={toggleDistanceLines}
-            title={showDistanceLines ? "Hide Distance Lines & Radii from Base" : "Show Distance Lines & Radii from Base"}
-            className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1 ${
-              showDistanceLines
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-600 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-white'
-            }`}
-          >
-            <Ruler className="w-3 h-3" />
-            <span>Distance from Base: {showDistanceLines ? 'ON' : 'OFF'}</span>
-          </button>
-        </div>
-
-        {/* Map Layer Switcher */}
-        <div className="flex items-center gap-1 pl-2 border-l border-slate-300 dark:border-slate-700">
-          <Layers className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400 mr-1" />
-          {Object.entries(MAP_STYLES).map(([key, styleObj]) => (
-            <button
-              key={key}
-              onClick={() => changeStyle(key)}
-              className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors cursor-pointer ${
-                activeStyleKey === key
-                  ? 'bg-sky-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-white'
-              }`}
-            >
-              {styleObj.name}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
