@@ -301,22 +301,36 @@ export default function MapView({
   const currentStyleKeyRef = useRef(activeStyleKey);
   const [styleDropdownOpen, setStyleDropdownOpen] = useState(false);
 
+  const vehiclesRef = useRef(vehicles);
+  useEffect(() => {
+    vehiclesRef.current = vehicles;
+  }, [vehicles]);
+
   // Helper to fit all active vehicles & hospital base in camera view
-  const fitAll = () => {
+  const fitAll = (options = {}) => {
     const map = mapRef.current;
     if (!map) return;
 
+    const currentVehicles = vehiclesRef.current || vehicles;
     const bounds = new maplibregl.LngLatBounds();
     bounds.extend([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]);
 
-    vehicles.forEach((v) => {
+    currentVehicles.forEach((v) => {
       bounds.extend([v.lon, v.lat]);
     });
 
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+    const padding = isDesktop
+      ? { top: 110, bottom: 85, left: 420, right: 90 }
+      : { top: 100, bottom: 380, left: 40, right: 40 };
+
     map.fitBounds(bounds, {
-      padding: { top: 120, bottom: 180, left: 100, right: 100 },
-      maxZoom: 13,
-      duration: 1000,
+      padding,
+      maxZoom: 12.8,
+      pitch: 22,
+      bearing: 0,
+      duration: options.duration !== undefined ? options.duration : 900,
+      essential: true,
     });
   };
 
@@ -554,8 +568,8 @@ export default function MapView({
 
       setTimeout(() => {
         map.resize();
-        fitAll(map);
-      }, 150);
+        fitAll({ duration: 0 });
+      }, 100);
     });
 
     return () => {

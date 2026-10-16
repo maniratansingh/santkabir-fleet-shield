@@ -49,7 +49,7 @@ export default function AppleSheet({
   // Determine height classes based on detent
   const getDetentHeightClass = () => {
     if (detent === 'peek') return 'h-16';
-    if (detent === 'half') return 'h-[400px]';
+    if (detent === 'half') return 'h-[420px]';
     return 'h-[580px] max-h-[85vh]';
   };
 
