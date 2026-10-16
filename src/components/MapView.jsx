@@ -486,14 +486,12 @@ export default function MapView({
             4.5,
             3,
           ],
-          'line-opacity': 0.75,
-          'line-dasharray': [3, 2],
+          'line-opacity': 0.85,
         },
       });
 
-      // 3. Active Turn-by-Turn Road Navigation Corridor (Google Maps / Swiggy Style Multi-Layer)
+      // 3. Active Turn-by-Turn Road Navigation Corridor (Solid Clean Road Ribbon, No Dashes)
       if (map.getSource('delivery-incoming-routes')) {
-        if (map.getLayer('delivery-incoming-flow')) map.removeLayer('delivery-incoming-flow');
         if (map.getLayer('delivery-incoming-road')) map.removeLayer('delivery-incoming-road');
         if (map.getLayer('delivery-incoming-casing')) map.removeLayer('delivery-incoming-casing');
         map.removeSource('delivery-incoming-routes');
@@ -525,7 +523,7 @@ export default function MapView({
         },
       });
 
-      // Layer A: Ambient Glowing Halo Beneath Navigation Corridor (Dynamic per Vehicle Glow Color)
+      // Layer A: Ambient Glowing Halo Beneath Navigation Corridor
       map.addLayer({
         id: 'delivery-incoming-casing',
         type: 'line',
@@ -540,20 +538,20 @@ export default function MapView({
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            12,
-            7.5,
+            10,
+            6.5,
           ],
           'line-opacity': [
             'case',
             ['get', 'isSelected'],
-            0.55,
-            0.35,
+            0.5,
+            0.3,
           ],
-          'line-blur': 3.5,
+          'line-blur': 3,
         },
       });
 
-      // Layer B: Solid Google Maps / Apple Maps Navigation Road Ribbon (Dynamic per Vehicle Color)
+      // Layer B: Solid Google Maps / Apple Maps Navigation Road Ribbon (Dynamic per Vehicle Color, No Dashes)
       map.addLayer({
         id: 'delivery-incoming-road',
         type: 'line',
@@ -569,27 +567,9 @@ export default function MapView({
             'case',
             ['get', 'isSelected'],
             5.5,
-            4,
+            3.8,
           ],
           'line-opacity': 0.98,
-        },
-      });
-
-      // Layer C: Zomato/Swiggy Animated Dash Flow (Streaming White Pulses moving forward towards destination)
-      map.addLayer({
-        id: 'delivery-incoming-flow',
-        type: 'line',
-        source: 'delivery-incoming-routes',
-        layout: {
-          visibility: showDistanceLines ? 'visible' : 'none',
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': '#FFFFFF',
-          'line-width': 2.2,
-          'line-opacity': 0.95,
-          'line-dasharray': [1.5, 2.5],
         },
       });
 
@@ -605,12 +585,9 @@ export default function MapView({
 
     const visibility = showDistanceLines ? 'visible' : 'none';
     [
-      'camp-routes-casing',
-      'camp-routes-line',
       'delivery-trail-line',
       'delivery-incoming-casing',
-      'delivery-incoming-road',
-      'delivery-incoming-flow'
+      'delivery-incoming-road'
     ].forEach((layerId) => {
       if (map.getLayer(layerId)) {
         map.setLayoutProperty(layerId, 'visibility', visibility);
@@ -624,44 +601,22 @@ export default function MapView({
     });
   }, [showDistanceLines]);
 
-  // Live Navigation Line Animation (Streaming forward pulses + breathing halo glow)
+  // Live Navigation Line Animation (Breathing halo glow)
   useEffect(() => {
     let animId;
-    let lastDashUpdate = 0;
-    let step = 0;
-    const dashPatterns = [
-      [0.1, 2.5, 2.4],
-      [0.5, 2.5, 2.0],
-      [1.0, 2.5, 1.5],
-      [1.5, 2.5, 1.0],
-      [2.0, 2.5, 0.5],
-      [2.5, 2.5, 0.1],
-    ];
 
     const animate = (timestamp) => {
       const map = mapRef.current;
       if (map && map.isStyleLoaded()) {
         try {
-          // 1. Smooth Breathing Glow on Navigation Corridor Halo
+          // Smooth Breathing Glow on Navigation Corridor Halo
           if (map.getLayer('delivery-incoming-casing')) {
             const pulse = (Math.sin(timestamp * 0.005) + 1) / 2;
-            const opacity = 0.28 + 0.35 * pulse;
-            const width = 8 + 4 * pulse;
+            const opacity = 0.25 + 0.3 * pulse;
+            const width = 7 + 3.5 * pulse;
             map.setPaintProperty('delivery-incoming-casing', 'line-opacity', opacity);
             map.setPaintProperty('delivery-incoming-casing', 'line-width', width);
           }
-
-          // 2. Dash Flow Streaming Movement every ~80ms
-          if (timestamp - lastDashUpdate > 80) {
-            lastDashUpdate = timestamp;
-            if (map.getLayer('delivery-incoming-flow')) {
-              step = (step + 1) % dashPatterns.length;
-              map.setPaintProperty('delivery-incoming-flow', 'line-dasharray', dashPatterns[step]);
-            }
-          }
-
-          // Force canvas re-render so streaming animation stays active smoothly
-          map.triggerRepaint();
         } catch (e) {}
       }
       animId = requestAnimationFrame(animate);
@@ -844,47 +799,74 @@ export default function MapView({
       }
     });
 
+    // Anti-collision decluttering: fan out overlapping ambulances within 220m
+    const declutterGroups = [];
+    vehicles.forEach((v) => {
+      const lat = Number(v.lat || 0);
+      const lon = Number(v.lon || 0);
+      let matched = null;
+      for (const grp of declutterGroups) {
+        const rep = grp[0];
+        if (Math.hypot(lat - rep.lat, lon - rep.lon) < 0.0022) {
+          matched = grp;
+          break;
+        }
+      }
+      if (matched) matched.push({ id: v.id, lat, lon });
+      else declutterGroups.push([{ id: v.id, lat, lon }]);
+    });
+
+    const declutteredCoords = new Map();
+    declutterGroups.forEach((grp) => {
+      if (grp.length === 1) {
+        declutteredCoords.set(grp[0].id, [grp[0].lon, grp[0].lat]);
+      } else {
+        const radius = 0.00075 + (grp.length * 0.0001);
+        grp.forEach((item, idx) => {
+          const angle = (idx * (2 * Math.PI / grp.length)) - (Math.PI / 2);
+          const oLon = item.lon + (radius * Math.cos(angle) * 1.15);
+          const oLat = item.lat + (radius * Math.sin(angle));
+          declutteredCoords.set(item.id, [Number(oLon.toFixed(6)), Number(oLat.toFixed(6))]);
+        });
+      }
+    });
+
     vehicles.forEach((v) => {
       const isSelected = selectedVehicleId === v.id;
       const vColor = v.lineColor || '#007AFF';
-      const vGlow = v.glowColor || '#38BDF8';
+      const liveDist = getLiveDistanceKm(v);
+      const pos = declutteredCoords.get(v.id) || [Number(v.lon || 0), Number(v.lat || 0)];
       let markerObj = markersRef.current[v.id];
 
-      const shortName = v.name
-        .replace('Mobile Screening ', '')
-        .replace('Cataract Surgical ', '')
-        .replace('Vision Outreach ', 'Outreach ')
-        .replace('Emergency Outreach ', '');
+      // Concise label: only Identifier • Speed • Distance to Hospital
+      const speedStr = v.speed > 0 ? `${v.speed} km/h` : 'Stopped';
+      const distStr = `${liveDist} km to Base`;
 
       const innerContent = `
-        <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-200 ${isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'}">
-          <!-- Upright Speed & Distance Bubble Floating Above Vehicle (Dynamic Vehicle Color) -->
-          ${v.status !== 'at_base' ? `
-            <div class="mb-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md flex items-center gap-1.5 text-white text-[9.5px] font-mono font-bold tracking-tight pointer-events-none"
-              style="background: linear-gradient(135deg, ${vColor}, ${vGlow}); border-color: rgba(255,255,255,0.7); box-shadow: 0 4px 14px ${vColor}55;">
-              <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-              <span>⚡ ${v.speed > 0 ? `${v.speed} km/h • ` : ''}${getLiveDistanceKm(v)} km from Hospital</span>
-            </div>
-          ` : ''}
-
-          <!-- 3D Isometric Ambulance Rotated on the Road along Vehicle Bearing -->
-          <div class="relative flex items-center justify-center transition-transform duration-500 ease-out" style="transform: rotate(${v.bearing || 0}deg);">
-            ${isSelected ? `
-              <div class="absolute w-14 h-16 rounded-full animate-ping pointer-events-none" style="background-color: ${vColor}35; border: 2px solid ${vColor};"></div>
-            ` : ''}
-            ${get3DAmbulanceSvg(isDark, v.status, isSelected)}
+        <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
+          <!-- Concise Single Capsule: Identifier • Speed • Distance -->
+          <div class="px-2 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[9.5px] font-bold font-mono transition-all backdrop-blur-md"
+            style="background: ${isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${vColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 2px 8px ${vColor}35;">
+            <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: ${vColor};"></span>
+            <span class="font-extrabold text-[10px]" style="color: ${vColor};">${v.id}</span>
+            <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+            <span>${speedStr}</span>
+            <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+            <span class="text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
           </div>
 
-          <!-- Apple Frosted Label Pill Below (Driver Only) -->
-          <div class="mt-1 px-2.5 py-0.5 rounded-full backdrop-blur-md border shadow-md flex items-center gap-1.5 transition-all duration-200 ${
-            isSelected
-              ? (isDark ? 'bg-slate-950/95 text-white scale-105' : 'bg-white/95 text-slate-900 scale-105 shadow-md')
-              : (isDark ? 'bg-slate-950/90 text-slate-200 border-white/10 group-hover:border-slate-600' : 'bg-white/95 text-slate-800 border-slate-200/80 shadow-xs group-hover:border-slate-300')
-          }" style="${isSelected ? `border-color: ${vColor}; box-shadow: 0 0 12px ${vColor}55;` : ''}">
-            <span class="w-2 h-2 rounded-full" style="background-color: ${vColor};"></span>
-            <span class="text-[10px] font-bold leading-none tracking-tight">${shortName}</span>
-            <span class="text-slate-400 dark:text-slate-600">•</span>
-            <span class="text-[9.5px] font-medium opacity-90">Driver: ${v.driverName ? v.driverName.split(' ')[0] : 'Driver'}</span>
+          <!-- Compact Directional Ambulance Indicator (26px) -->
+          <div class="mt-0.5 relative flex items-center justify-center transition-transform duration-300" style="transform: rotate(${v.bearing || 0}deg);">
+            <svg width="26" height="32" viewBox="0 0 28 36" fill="none" class="drop-shadow-md">
+              <ellipse cx="14" cy="24" rx="10" ry="8" fill="#000000" opacity="0.35" />
+              <rect x="6" y="8" width="16" height="22" rx="4" fill="#0F172A" />
+              <rect x="7" y="9" width="14" height="20" rx="3.5" fill="#FFFFFF" stroke="${vColor}" stroke-width="1.6" />
+              <path d="M8 12 L20 12 L19 16 L9 16 Z" fill="#0284C7" />
+              <rect x="12.5" y="19" width="3" height="7" rx="0.5" fill="#EF4444" />
+              <rect x="10.5" y="21" width="7" height="3" rx="0.5" fill="#EF4444" />
+              <circle cx="8.5" cy="9.5" r="1.2" fill="#FEF08A" />
+              <circle cx="19.5" cy="9.5" r="1.2" fill="#FEF08A" />
+            </svg>
           </div>
         </div>
       `;
@@ -902,13 +884,13 @@ export default function MapView({
         };
 
         const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([Number(v.lon || 0), Number(v.lat || 0)])
+          .setLngLat(pos)
           .addTo(map);
 
         markersRef.current[v.id] = { marker, element: el };
       } else {
         markerObj.element.innerHTML = innerContent;
-        markerObj.marker.setLngLat([Number(v.lon || 0), Number(v.lat || 0)]);
+        markerObj.marker.setLngLat(pos);
       }
     });
   };

@@ -375,71 +375,61 @@ export default function AppleSheet({
                   filteredVehicles.map((v) => {
                   const isMoving = v.status === 'moving' || v.status === 'returning';
                   const vColor = v.lineColor || '#007AFF';
+                  const distKm = getVehicleDistance(v);
 
                   return (
                     <div
                       key={v.id}
                       onClick={() => onSelectVehicle(v.id)}
-                      className="p-2.5 rounded-2xl bg-white/80 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 hover:border-slate-400 transition-all cursor-pointer flex items-center justify-between group shadow-2xs"
+                      className={`px-3 py-2 rounded-xl border transition-all cursor-pointer flex items-center justify-between group shadow-2xs ${
+                        selectedVehicleId === v.id
+                          ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-400 dark:border-sky-600 shadow-sm'
+                          : 'bg-white/80 dark:bg-slate-900/60 border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
+                      }`}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        {/* Ambulance Icon Tinted by Vehicle Unique Line Color */}
+                      {/* Left: Identifier & Live Distance */}
+                      <div className="flex items-center gap-2 min-w-0">
                         <div 
-                          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-2xs"
-                          style={{
-                            backgroundColor: `${vColor}15`,
-                            color: vColor,
-                            border: `1px solid ${vColor}30`,
-                          }}
-                        >
-                          <Ambulance className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                              {v.name}
-                            </span>
-                            {isMoving && (
-                              <span className="text-[10px] font-mono font-semibold" style={{ color: vColor }}>
-                                {v.speed} km/h
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10.5px] text-slate-600 dark:text-slate-300 truncate">
-                            Driver: <strong className="text-slate-800 dark:text-white">{v.driverName}</strong>
-                          </div>
-                          <div className="text-[9.5px] font-mono text-slate-400 truncate">
-                            {Number(v.lat || 0).toFixed(4)}° N, {Number(v.lon || 0).toFixed(4)}° E
-                          </div>
-                        </div>
+                          className="w-2.5 h-2.5 rounded-full shrink-0" 
+                          style={{ backgroundColor: vColor, boxShadow: `0 0 6px ${vColor}88` }} 
+                        />
+                        <span className="text-xs font-mono font-extrabold text-slate-900 dark:text-white truncate">
+                          {v.id}
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                          {v.speed > 0 ? `${v.speed} km/h` : 'Stopped'} • {distKm} km to Base
+                        </span>
                       </div>
 
+                      {/* Right: Driver + Call & Maps Shortcuts */}
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {/* Quick 1-Tap Driver Call Button */}
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline max-w-[70px] truncate">
+                          {v.driverName ? v.driverName.split(' ')[0] : ''}
+                        </span>
+
                         {v.driverPhone && (
                           <a
                             href={`tel:${v.driverPhone}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center transition-colors shadow-2xs"
+                            className="w-6 h-6 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center transition-colors shadow-2xs"
                             title={`Call Driver (${v.driverName})`}
                           >
-                            <Phone className="w-3.5 h-3.5" />
+                            <Phone className="w-3 h-3" />
                           </a>
                         )}
 
-                        {/* Navigation in Google Maps */}
                         <a
                           href={`https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="px-2 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/60 border border-sky-200/80 dark:border-sky-800 text-sky-700 dark:text-cyan-400 text-[10px] font-bold hover:bg-sky-100 transition-colors flex items-center gap-1 shadow-2xs"
+                          className="w-6 h-6 rounded-lg bg-sky-50 dark:bg-sky-950/60 border border-sky-200/80 dark:border-sky-800 text-sky-700 dark:text-cyan-400 hover:bg-sky-100 transition-colors flex items-center justify-center shadow-2xs"
                           title="Navigate in Google Maps"
                         >
                           <Navigation className="w-3 h-3" />
-                          <span>Maps</span>
                         </a>
-                        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-sky-500 transition-colors" />
+
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-sky-500 transition-colors" />
                       </div>
                     </div>
                   );
