@@ -11,7 +11,7 @@ if (typeof window !== 'undefined') {
     developer: 'Mani Ratan Singh',
     website: 'https://mrps.in',
     github: 'https://github.com/maniratansingh',
-    hospital: 'Sant Kabir Eye Hospital (PIECS)',
+    hospital: 'Sant Kabir Eye Hospital',
   };
 
   console.log(

@@ -16,7 +16,6 @@ import {
   Clock, 
   ShieldCheck
 } from 'lucide-react';
-import { playCampArrivalChime } from '../utils/audio';
 
 export default function AppleSheet({
   vehicles = [],
@@ -263,15 +262,15 @@ export default function AppleSheet({
 
               {/* Apple Signature Action Platter */}
               <div className="grid grid-cols-3 gap-2 my-2 py-2.5 px-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
-                {/* 1. Play Chime */}
+                {/* 1. Locate Vehicle */}
                 <button
-                  onClick={() => playCampArrivalChime()}
+                  onClick={onFocusRoute}
                   className="flex flex-col items-center gap-1 text-center cursor-pointer group"
                 >
                   <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-700 shadow-xs flex items-center justify-center text-sky-600 dark:text-cyan-400 group-hover:scale-105 transition-transform">
-                    <Volume2 className="w-4 h-4" />
+                    <MapPin className="w-4 h-4" />
                   </div>
-                  <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">Play Chime</span>
+                  <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">Locate</span>
                 </button>
 
                 {/* 2. Focus Route Corridor */}
@@ -306,10 +305,12 @@ export default function AppleSheet({
                   </span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Cellular Link</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Last Update</span>
                   <span className="text-xs font-bold text-slate-800 dark:text-white font-mono flex items-center gap-1">
                     <Signal className="w-3 h-3 text-emerald-500" />
-                    {selectedVehicle.network || '4G LTE'} • {selectedVehicle.pingMs || 38}ms
+                    {selectedVehicle.lastSeen 
+                      ? `${Math.max(1, Math.round((Date.now() - selectedVehicle.lastSeen) / 1000))}s ago` 
+                      : 'Live Active'}
                   </span>
                 </div>
               </div>
@@ -433,7 +434,7 @@ export default function AppleSheet({
           <div className="pt-2 mt-1 border-t border-slate-200/70 dark:border-slate-800/70 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 shrink-0 select-none">
             <span className="flex items-center gap-1 font-mono text-[9px]">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              Sant Kabir Hospital (PIECS)
+              Sant Kabir Eye Hospital
             </span>
             <div className="flex items-center gap-1">
               <span>Engineered by</span>

@@ -4,10 +4,6 @@ import {
   Layers, 
   Hospital, 
   Ruler, 
-  Play, 
-  Pause, 
-  Volume2, 
-  VolumeX, 
   Tv, 
   Maximize2, 
   Minimize2,
@@ -21,10 +17,6 @@ export default function FloatingControls({
   onCenterBase,
   showDistanceLines = true,
   onToggleDistanceLines,
-  isSimulation = false,
-  onToggleSimulation,
-  soundEnabled = true,
-  onToggleSound,
   isAutoTour = false,
   onToggleAutoTour,
 }) {
@@ -135,7 +127,7 @@ export default function FloatingControls({
         {/* TV Wallboard Auto-Tour */}
         <button
           onClick={onToggleAutoTour}
-          title={isAutoTour ? "Stop TV Auto-Tour" : "Start TV Wallboard Auto-Tour"}
+          title={isAutoTour ? "Stop TV Wallboard Auto-Tour" : "Start TV Wallboard Auto-Tour (Continuous Kiosk Monitoring)"}
           className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
             isAutoTour 
               ? 'bg-purple-600 text-white shadow-xs' 
@@ -145,28 +137,10 @@ export default function FloatingControls({
           <Tv className="w-4 h-4" />
         </button>
 
-        {/* Simulation / Live Switcher */}
-        <button
-          onClick={onToggleSimulation}
-          title={isSimulation ? "Stop Demo Simulation (Switch to Live Mode)" : "Start Demo Simulation (Preview 3 Test Ambulances)"}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-        >
-          {isSimulation ? <Pause className="w-4 h-4 text-emerald-500 fill-emerald-500" /> : <Play className="w-4 h-4 text-slate-500" />}
-        </button>
-
-        {/* Sound Toggle */}
-        <button
-          onClick={onToggleSound}
-          title={soundEnabled ? "Medical Chimes: ON" : "Medical Chimes: Muted"}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-        >
-          {soundEnabled ? <Volume2 className="w-4 h-4 text-sky-600 dark:text-cyan-400" /> : <VolumeX className="w-4 h-4 text-slate-400" />}
-        </button>
-
         {/* Fullscreen Toggle */}
         <button
           onClick={toggleFullscreen}
-          title="Toggle TV Fullscreen"
+          title="Toggle Fullscreen Wallboard"
           className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >
           {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}

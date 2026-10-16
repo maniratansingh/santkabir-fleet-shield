@@ -291,7 +291,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
         <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            <span>Sant Kabir Eye Hospital (PIECS)</span>
+            <span>Sant Kabir Eye Hospital</span>
           </div>
           <div className="flex items-center gap-1 font-medium">
             <span>Engineered by</span>

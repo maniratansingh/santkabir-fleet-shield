@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Sun, Moon, QrCode, CloudSun, ChevronDown, CheckCircle2, Activity, X, Navigation, Ambulance } from 'lucide-react';
+import { Sun, Moon, QrCode, ChevronDown, CheckCircle2, Activity, X, Navigation, Ambulance } from 'lucide-react';
+import { BASE_HOSPITAL } from '../data/mockData';
 
 export default function DynamicIsland({
   vehicles = [],
@@ -91,17 +92,20 @@ export default function DynamicIsland({
           onClick={() => setIsExpanded(prev => !prev)}
           className="glass-panel px-3.5 py-1.5 rounded-full flex items-center gap-2.5 sm:gap-4 shadow-xl border cursor-pointer select-none transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] border-slate-200/90 dark:border-white/10"
         >
-          {/* Hospital Monogram */}
+          {/* Developer Logo Avatar */}
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-sky-600 to-cyan-500 text-white flex items-center justify-center shadow-xs">
-              <Eye className="w-4 h-4" />
-            </div>
+            <img 
+              src="/avatar.png" 
+              alt="Mani Ratan Singh" 
+              className="w-7 h-7 rounded-full object-cover border border-slate-200 dark:border-white/10 shadow-xs"
+              onError={(e) => { e.target.src = 'https://avatars.githubusercontent.com/u/85608407?v=4'; }}
+            />
             <div className="hidden md:flex flex-col">
               <span className="text-xs font-bold tracking-tight text-slate-900 dark:text-white leading-none">
                 Sant Kabir Eye Hospital
               </span>
               <span className="text-[10px] text-sky-600 dark:text-cyan-400 font-semibold tracking-wider uppercase mt-0.5">
-                PIECS Fleet Command
+                Fleet Command
               </span>
             </div>
           </div>
@@ -141,13 +145,7 @@ export default function DynamicIsland({
           </div>
 
           {/* Divider */}
-          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden md:block" />
-
-          {/* Weather Tag */}
-          <div className="hidden xl:flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-            <CloudSun className="w-3.5 h-3.5 text-amber-500" />
-            <span>Basti 28°C</span>
-          </div>
+          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
 
           {/* Time */}
           <div className="hidden sm:flex items-center font-mono text-xs font-semibold text-slate-600 dark:text-slate-300">
@@ -196,12 +194,12 @@ export default function DynamicIsland({
               </span>
             </div>
             <a 
-              href="https://www.google.com/maps/dir/?api=1&destination=26.8048,82.7628" 
+              href={BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/NDr27v6mEnooeBE99'} 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-[11px] font-mono text-sky-600 dark:text-cyan-400 hover:underline flex items-center gap-1 font-semibold"
             >
-              <span>Base: 26.8048° N, 82.7628° E</span>
+              <span>Base: {BASE_HOSPITAL.lat?.toFixed(4)}° N, {BASE_HOSPITAL.lon?.toFixed(4)}° E</span>
               <span>↗</span>
             </a>
           </div>
