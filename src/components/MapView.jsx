@@ -371,7 +371,10 @@ export default function MapView({
       baseMarkerRef.current = null;
     }
 
+    let styleReadyFired = false;
     const onStyleReady = () => {
+      if (styleReadyFired) return;
+      styleReadyFired = true;
       addCustomLayers(map);
       updateBaseMarker(map);
       updateDistanceVectors(map);
@@ -557,7 +560,7 @@ export default function MapView({
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: MAP_STYLES[initialStyleKey].style,
-      center: [82.7628, 26.8048], // Basti, UP
+      center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat], // Sant Kabir Eye Hospital Base (Basti, UP)
       zoom: 10,
       pitch: 25,
       attributionControl: false,
@@ -625,6 +628,7 @@ export default function MapView({
       } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105">
         <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
         <span>Sant Kabir Hospital (Base)</span>
+        <a href="${BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/NDr27v6mEnooeBE99'}" target="_blank" rel="noopener noreferrer" class="text-rose-500 hover:text-rose-600 font-bold ml-0.5" title="Open in Google Maps" onclick="event.stopPropagation()">↗</a>
       </div>
     `;
 

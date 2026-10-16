@@ -9,8 +9,9 @@ export const BASE_HOSPITAL = {
   name: 'Sant Kabir Eye Hospital',
   organization: 'Pragati India Eye Care Society (PIECS)',
   address: 'Bansi Road, near Pindari Hospital, Katra, Basti, UP 272001',
-  lat: 26.8048,
-  lon: 82.7628,
+  lat: 26.797313,
+  lon: 82.718401,
+  googleMapsUrl: 'https://maps.app.goo.gl/NDr27v6mEnooeBE99',
   phone: '+91 94151 40719',
   isBase: true,
 };
