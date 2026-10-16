@@ -179,6 +179,57 @@ function createGeoJSONCircle(center, radiusInKm, points = 64) {
   };
 }
 
+// Apple-style vehicle glyph generator for AirTag pins
+function getVehicleIconSvg(type, isDark, status) {
+  let color = isDark ? '#38bdf8' : '#0284c7';
+  if (status === 'moving') color = isDark ? '#34d399' : '#059669';
+  if (status === 'returning') color = isDark ? '#a78bfa' : '#6366f1';
+  if (status === 'at_base') color = isDark ? '#94a3b8' : '#64748b';
+
+  if (type === 'shuttle') {
+    return `
+      <svg class="w-5 h-5" style="color: ${color};" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-1.1 0-2 .9-2 2v7h2"/>
+        <circle cx="7" cy="17" r="2"/>
+        <path d="M9 17h6"/>
+        <circle cx="17" cy="17" r="2"/>
+      </svg>
+    `;
+  }
+  if (type === 'bus') {
+    return `
+      <svg class="w-5 h-5" style="color: ${color};" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="13" rx="2"/>
+        <circle cx="7" cy="17" r="2"/>
+        <path d="M9 17h6"/>
+        <circle cx="17" cy="17" r="2"/>
+        <path d="M3 10h18"/>
+      </svg>
+    `;
+  }
+  if (type === 'ambulance') {
+    return `
+      <svg class="w-5 h-5 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1" y="3" width="15" height="13" rx="2"/>
+        <polygon points="16 8 20 8 23 11 23 16 16 16 8"/>
+        <circle cx="5.5" cy="18.5" r="2.5"/>
+        <circle cx="18.5" cy="18.5" r="2.5"/>
+        <path d="M8.5 7.5v4M6.5 9.5h4" stroke-width="2.2"/>
+      </svg>
+    `;
+  }
+  // Mobile screening van with eye glyph
+  return `
+    <svg class="w-5 h-5" style="color: ${color};" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1" y="3" width="15" height="13" rx="2"/>
+      <polygon points="16 8 20 8 23 11 23 16 16 16 8"/>
+      <circle cx="5.5" cy="18.5" r="2.5"/>
+      <circle cx="18.5" cy="18.5" r="2.5"/>
+      <circle cx="8.5" cy="9.5" r="1.5" fill="currentColor"/>
+    </svg>
+  `;
+}
+
 export default function MapView({ 
   vehicles, 
   camps, 
@@ -256,6 +307,7 @@ export default function MapView({
       updateCampMarkers();
       updateRingLabels(map);
       updateDistanceVectors(map);
+      updateVehicleMarkers();
     });
   };
 
@@ -666,6 +718,7 @@ export default function MapView({
       updateCampMarkers();
       updateRingLabels(map);
       updateDistanceVectors(map);
+      updateVehicleMarkers();
 
       setTimeout(() => {
         map.resize();
@@ -675,7 +728,7 @@ export default function MapView({
 
     // Clicking anywhere on open map deselects active vehicle
     map.on('click', (e) => {
-      if (e.originalEvent && e.originalEvent.target && e.originalEvent.target.closest('.maplibre-marker')) {
+      if (e.originalEvent && e.originalEvent.target && (e.originalEvent.target.closest('.maplibre-marker') || e.originalEvent.target.closest('.maplibregl-marker'))) {
         return;
       }
       onSelectVehicle(null);
@@ -697,10 +750,17 @@ export default function MapView({
     return () => {
       window.removeEventListener('resize', handleResize);
       Object.values(markersRef.current).forEach(({ marker }) => marker.remove());
+      markersRef.current = {};
       Object.values(campMarkersRef.current).forEach((marker) => marker.remove());
+      campMarkersRef.current = {};
       Object.values(distanceMarkersRef.current).forEach(({ marker }) => marker.remove());
+      distanceMarkersRef.current = {};
       ringLabelMarkersRef.current.forEach((marker) => marker.remove());
-      if (baseMarkerRef.current) baseMarkerRef.current.remove();
+      ringLabelMarkersRef.current = [];
+      if (baseMarkerRef.current) {
+        baseMarkerRef.current.remove();
+        baseMarkerRef.current = null;
+      }
       map.remove();
       mapRef.current = null;
     };
@@ -719,7 +779,7 @@ export default function MapView({
     fitAll();
   }, [fitTrigger, detent]);
 
-  // Base Hospital Marker
+  // Base Hospital Landmark Marker (Apple Maps style POI)
   const updateBaseMarker = () => {
     const map = mapRef.current;
     if (!map) return;
@@ -731,22 +791,36 @@ export default function MapView({
 
     const isDark = theme === 'dark';
     const el = document.createElement('div');
-    el.className = 'group relative flex items-center justify-center cursor-pointer';
+    el.className = 'group relative flex flex-col items-center justify-center cursor-pointer select-none';
+    el.onclick = (e) => {
+      e.stopPropagation();
+      map.flyTo({ center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat], zoom: 13.5, speed: 1.2 });
+    };
+
     el.innerHTML = `
-      <div class="relative flex items-center justify-center select-none">
-        <div class="absolute w-12 h-12 rounded-full ${isDark ? 'bg-blue-500/25' : 'bg-blue-600/15'} animate-ping"></div>
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-700 to-cyan-500 border-2 ${isDark ? 'border-white/90 shadow-2xl' : 'border-white shadow-lg shadow-blue-500/25'} flex items-center justify-center text-white font-bold text-xs">
-          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <path d="M12 2v20M2 12h20" stroke-linecap="round"/>
+      <div class="relative flex items-center justify-center">
+        <!-- Soft Apple Beacon Halo -->
+        <div class="absolute w-14 h-14 rounded-full ${isDark ? 'bg-rose-500/20' : 'bg-rose-500/15'} animate-ping pointer-events-none"></div>
+        <div class="absolute w-10 h-10 rounded-full ${isDark ? 'bg-rose-500/25' : 'bg-rose-500/20'} pointer-events-none"></div>
+
+        <!-- Apple Maps Red Landmark Squircle -->
+        <div class="w-9 h-9 rounded-2xl bg-gradient-to-tr from-rose-600 via-red-500 to-rose-400 border-2 ${
+          isDark ? 'border-white/90 shadow-[0_4px_16px_rgba(244,63,94,0.5)]' : 'border-white shadow-[0_4px_14px_rgba(225,29,72,0.35)]'
+        } flex items-center justify-center text-white transition-transform duration-200 hover:scale-110">
+          <svg class="w-5 h-5 drop-shadow-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M12 4v16M4 12h16"/>
           </svg>
         </div>
-        <div class="absolute -bottom-7 whitespace-nowrap px-2.5 py-0.5 rounded-full ${
-          isDark 
-            ? 'bg-slate-900/95 border border-blue-400/50 text-cyan-300 shadow-md' 
-            : 'bg-white/95 border border-slate-200 text-blue-900 shadow-md font-semibold'
-        } text-[11px]">
-          🏥 Sant Kabir Hospital (Base)
-        </div>
+      </div>
+
+      <!-- Attached Apple Callout Label -->
+      <div class="mt-1 whitespace-nowrap px-2.5 py-0.5 rounded-full backdrop-blur-md ${
+        isDark 
+          ? 'bg-slate-950/95 border border-rose-500/40 text-rose-200 shadow-md' 
+          : 'bg-white/95 border border-rose-200 text-rose-950 shadow-sm font-semibold'
+      } text-[10px] tracking-tight flex items-center gap-1">
+        <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+        <span>Sant Kabir Hospital (Base)</span>
       </div>
     `;
 
@@ -762,7 +836,7 @@ export default function MapView({
     }
   }, [theme]);
 
-  // Update Camp Markers
+  // Update Camp Markers (Apple Maps POI Disc Style)
   const updateCampMarkers = () => {
     const map = mapRef.current;
     if (!map) return;
@@ -783,36 +857,45 @@ export default function MapView({
       }
 
       const el = document.createElement('div');
-      el.className = 'relative flex items-center justify-center cursor-pointer group select-none';
+      el.className = 'relative flex flex-col items-center justify-center cursor-pointer group select-none';
       el.onclick = (e) => {
         e.stopPropagation();
         if (onSelectCamp) onSelectCamp(camp);
       };
 
+      const shortCampName = camp.name
+        .replace(' Community Eye Camp', '')
+        .replace(' Rural Vision & Cataract Camp', '')
+        .replace(' Outreach Centre', '')
+        .replace(' Eye Screening Camp', '');
+
       el.innerHTML = `
         <div class="relative flex items-center justify-center">
-          <div class="absolute w-16 h-16 rounded-full ${isDark ? 'bg-cyan-400/30' : 'bg-sky-500/20'} radar-ring pointer-events-none"></div>
+          <!-- Gentle Sonar Ripple Ring -->
+          <div class="absolute w-14 h-14 rounded-full ${isDark ? 'bg-cyan-400/20' : 'bg-sky-500/15'} radar-ring pointer-events-none"></div>
           
+          <!-- Apple Maps Circular POI Disc -->
           <div class="w-8 h-8 rounded-full ${
             isDark 
-              ? 'bg-slate-900 border-2 border-cyan-400 shadow-lg shadow-cyan-500/50 text-cyan-400' 
-              : 'bg-white border-2 border-sky-500 shadow-md text-sky-600'
+              ? 'bg-gradient-to-tr from-cyan-600 to-sky-400 border-2 border-white/90 shadow-[0_4px_14px_rgba(6,182,212,0.5)] text-white' 
+              : 'bg-gradient-to-tr from-sky-600 to-cyan-500 border-2 border-white shadow-[0_4px_12px_rgba(2,132,199,0.3)] text-white'
           } flex items-center justify-center hover:scale-110 transition-transform">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
               <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
               <circle cx="12" cy="12" r="3"/>
             </svg>
           </div>
+        </div>
 
-          <div class="absolute -top-7 whitespace-nowrap px-2 py-0.5 rounded-md ${
-            isDark 
-              ? 'bg-slate-950/95 border border-cyan-500/50 text-cyan-200 shadow-lg' 
-              : 'bg-white/95 border border-slate-200 text-slate-800 shadow-md'
-          } text-[10px] font-bold flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            <span>${camp.name}</span>
-            <span class="${isDark ? 'text-slate-400' : 'text-slate-500'} font-normal">(${camp.currentScreened || 0} checked)</span>
-          </div>
+        <!-- Apple Callout Label Pill -->
+        <div class="mt-1 whitespace-nowrap px-2 py-0.5 rounded-full backdrop-blur-md ${
+          isDark 
+            ? 'bg-slate-950/95 border border-cyan-500/40 text-cyan-200 shadow-md' 
+            : 'bg-white/95 border border-slate-200 text-slate-800 shadow-xs'
+        } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          <span>${shortCampName}</span>
+          <span class="${isDark ? 'text-cyan-400/90 font-mono' : 'text-sky-600 font-mono'} font-semibold">(${camp.currentScreened || 0})</span>
         </div>
       `;
 
@@ -828,8 +911,8 @@ export default function MapView({
     updateCampMarkers();
   }, [camps, theme]);
 
-  // Update Vehicle Markers with Live Position & Bearing
-  useEffect(() => {
+  // Update Vehicle Markers with Apple AirTag Platter Style
+  const updateVehicleMarkers = () => {
     const map = mapRef.current;
     if (!map) return;
 
@@ -847,15 +930,18 @@ export default function MapView({
       const isSelected = selectedVehicleId === v.id;
       let markerObj = markersRef.current[v.id];
 
-      if (!markerObj) {
+      if (!markerObj || !markerObj.marker.getElement() || !markerObj.marker.getElement().parentElement) {
+        if (markerObj) {
+          try { markerObj.marker.remove(); } catch (e) {}
+        }
         const el = document.createElement('div');
-        el.className = 'maplibre-marker select-none';
+        el.className = 'select-none pointer-events-auto';
         el.onclick = (e) => {
           e.stopPropagation();
           onSelectVehicle(v.id);
         };
 
-        const marker = new maplibregl.Marker({ element: el, rotationAlignment: 'map' })
+        const marker = new maplibregl.Marker({ element: el })
           .setLngLat([v.lon, v.lat])
           .addTo(map);
 
@@ -867,60 +953,69 @@ export default function MapView({
 
       const shortName = v.name
         .replace('Mobile Screening ', '')
-        .replace('Cataract Surgical ', '');
+        .replace('Cataract Surgical ', '')
+        .replace('Vision Outreach ', 'Outreach ')
+        .replace('Emergency Outreach ', '');
 
-      let glowColor = '';
-      if (isDark) {
-        glowColor = v.status === 'moving' 
-          ? 'border-emerald-400 shadow-emerald-500/50 bg-emerald-950/95 text-emerald-300' 
-          : v.status === 'at_camp'
-          ? 'border-cyan-400 shadow-cyan-500/50 bg-cyan-950/95 text-cyan-300'
-          : v.status === 'returning'
-          ? 'border-indigo-400 shadow-indigo-500/50 bg-indigo-950/95 text-indigo-300'
-          : 'border-slate-500 shadow-slate-700/50 bg-slate-900/95 text-slate-300';
-      } else {
-        glowColor = v.status === 'moving'
-          ? 'border-emerald-500 shadow-emerald-500/25 bg-white text-emerald-800'
-          : v.status === 'at_camp'
-          ? 'border-sky-500 shadow-sky-500/25 bg-white text-sky-800'
-          : v.status === 'returning'
-          ? 'border-indigo-500 shadow-indigo-500/25 bg-white text-indigo-800'
-          : 'border-slate-300 shadow-slate-400/25 bg-white text-slate-700';
-      }
+      let statusDotColor = 'bg-slate-400';
+      if (v.status === 'moving') statusDotColor = 'bg-emerald-500 shadow-sm shadow-emerald-500/50';
+      else if (v.status === 'at_camp') statusDotColor = 'bg-sky-500 shadow-sm shadow-sky-500/50';
+      else if (v.status === 'returning') statusDotColor = 'bg-indigo-500 shadow-sm shadow-indigo-500/50';
 
       markerObj.element.innerHTML = `
-        <div class="relative flex flex-col items-center">
-          ${v.speed > 5 ? `
-            <div style="transform: rotate(${v.bearing || 0}deg);" class="mb-1 transition-transform duration-300">
-              <svg class="w-3.5 h-3.5 ${isDark ? 'text-emerald-400' : 'text-emerald-600'} drop-shadow" viewBox="0 0 24 24" fill="currentColor">
+        <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-200 ${isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'}">
+          <!-- Live Heading Chevron (Apple Maps navigation style) -->
+          ${v.speed > 1 ? `
+            <div style="transform: rotate(${v.bearing || 0}deg);" class="absolute -top-3.5 transition-transform duration-300 pointer-events-none">
+              <svg class="w-3.5 h-3.5 ${isDark ? 'text-sky-400 drop-shadow-[0_0_6px_rgba(56,189,248,0.8)]' : 'text-sky-600 drop-shadow'}" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="12,2 22,22 12,17 2,22"/>
               </svg>
             </div>
           ` : ''}
 
-          <div class="px-2.5 py-1 rounded-xl border-2 shadow-lg backdrop-blur-md flex items-center gap-1.5 ${glowColor} ${
-            isSelected ? (isDark ? 'scale-115 ring-2 ring-white' : 'scale-115 ring-2 ring-sky-500 shadow-xl') : ''
+          <!-- Find My Precision Sonar Ping Rings -->
+          ${isSelected ? `
+            <div class="absolute -inset-2 rounded-full ${isDark ? 'bg-sky-400/25 ring-2 ring-sky-400/40' : 'bg-sky-500/20 ring-2 ring-sky-500/30'} animate-ping pointer-events-none"></div>
+            <div class="absolute -inset-4 rounded-full ${isDark ? 'bg-cyan-400/10' : 'bg-sky-400/10'} animate-pulse pointer-events-none"></div>
+          ` : ''}
+
+          <!-- AirTag Circular Metallic Platter Disc -->
+          <div class="relative w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+            isDark
+              ? 'bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950 border border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.6)] text-white'
+              : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 border border-slate-200/90 shadow-[0_4px_14px_rgba(0,0,0,0.18)] text-slate-800'
+          } ${
+            isSelected 
+              ? (isDark ? 'ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-950' : 'ring-2 ring-sky-600 ring-offset-2 ring-offset-white') 
+              : ''
           }">
-            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <rect x="1" y="3" width="15" height="13" rx="2"/>
-              <polygon points="16 8 20 8 23 11 23 16 16 16 8"/>
-              <circle cx="5.5" cy="18.5" r="2.5"/>
-              <circle cx="18.5" cy="18.5" r="2.5"/>
-            </svg>
-            
-            <div class="flex flex-col">
-              <span class="text-[11px] font-bold leading-none whitespace-nowrap">${shortName}</span>
-              ${v.speed > 0 ? `<span class="text-[9px] font-mono font-semibold">${v.speed} km/h</span>` : `<span class="text-[9px] font-medium opacity-75">Idle</span>`}
-            </div>
+            ${getVehicleIconSvg(v.type, isDark, v.status)}
+
+            <!-- Live Status Pip at 4 o'clock -->
+            <span class="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border-2 ${isDark ? 'border-slate-900' : 'border-white'} ${statusDotColor}"></span>
+          </div>
+
+          <!-- Apple Frosted Label Pill Below -->
+          <div class="mt-1 px-2 py-0.5 rounded-full backdrop-blur-md border shadow-md flex items-center gap-1.5 transition-all duration-200 ${
+            isSelected
+              ? (isDark ? 'bg-sky-950/95 text-sky-200 border-sky-400/80 scale-105 shadow-sky-500/30' : 'bg-sky-600 text-white border-sky-700 scale-105 shadow-sky-500/25')
+              : (isDark ? 'bg-slate-950/90 text-slate-200 border-white/10 group-hover:border-slate-600' : 'bg-white/95 text-slate-800 border-slate-200/80 shadow-xs group-hover:border-slate-300')
+          }">
+            <span class="text-[10px] font-bold leading-none tracking-tight">${shortName}</span>
+            <span class="text-[9px] font-mono opacity-80">${v.speed > 0 ? `${v.speed} km/h` : (v.patientsOnboard > 0 ? `${v.patientsOnboard} bded` : 'Idle')}</span>
           </div>
         </div>
       `;
     });
+  };
 
-    if (selectedVehicleId) {
+  useEffect(() => {
+    updateVehicleMarkers();
+
+    if (selectedVehicleId && mapRef.current) {
       const selected = vehicles.find((v) => v.id === selectedVehicleId);
       if (selected) {
-        map.flyTo({
+        mapRef.current.flyTo({
           center: [selected.lon, selected.lat],
           zoom: 13.5,
           speed: 1.2,

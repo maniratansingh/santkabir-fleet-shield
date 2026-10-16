@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Sun, Moon, QrCode, CloudSun, ChevronDown, CheckCircle2, Award, Activity } from 'lucide-react';
+import { Eye, Sun, Moon, QrCode, CloudSun, ChevronDown, CheckCircle2, Award, Activity, X } from 'lucide-react';
 
 export default function DynamicIsland({
   vehicles = [],
@@ -7,6 +7,9 @@ export default function DynamicIsland({
   theme = 'light',
   onToggleTheme,
   onOpenDriverModal,
+  arrivalAlert = null,
+  onDismissArrivalAlert,
+  onFocusArrival,
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [time, setTime] = useState('');
@@ -36,13 +39,61 @@ export default function DynamicIsland({
 
   return (
     <header className="fixed top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-auto max-w-[94vw] transition-all duration-300">
-      {/* Compact Capsule */}
-      <div 
-        onClick={() => setIsExpanded(prev => !prev)}
-        className="glass-panel px-3.5 py-1.5 rounded-full flex items-center gap-2.5 sm:gap-4 shadow-xl border cursor-pointer select-none transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] border-slate-200/90 dark:border-white/10"
-      >
-        {/* Hospital Monogram */}
-        <div className="flex items-center gap-2">
+      {/* If Arrival Alert is active: Apple Dynamic Island Live Activity Sonar Capsule */}
+      {arrivalAlert ? (
+        <div 
+          onClick={onFocusArrival}
+          className="glass-panel px-4 py-2 rounded-full flex items-center gap-3 shadow-2xl border cursor-pointer select-none transition-all duration-300 animate-in zoom-in-95 border-emerald-500/60 dark:border-emerald-400/60 bg-white/95 dark:bg-slate-950/95"
+        >
+          {/* Sonar Radar Wave Icon */}
+          <div className="relative flex items-center justify-center shrink-0">
+            <span className="absolute w-7 h-7 rounded-full bg-emerald-500/30 animate-ping"></span>
+            <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          </div>
+
+          {/* Alert Message */}
+          <div className="flex flex-col pr-1">
+            <span className="text-[9px] font-mono font-bold tracking-wider uppercase text-emerald-600 dark:text-emerald-400 leading-none">
+              500m Geofence • Arrival Sonar
+            </span>
+            <span className="text-xs font-bold text-slate-900 dark:text-white leading-tight mt-0.5">
+              {arrivalAlert.vehicleName} arrived at {arrivalAlert.campName}
+            </span>
+          </div>
+
+          {/* Action button */}
+          <div className="flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onFocusArrival) onFocusArrival();
+              }}
+              className="px-2.5 py-1 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-semibold transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+            >
+              <span>View</span>
+              <span className="text-[10px]">↗</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onDismissArrivalAlert) onDismissArrivalAlert();
+              }}
+              className="p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Normal Compact Dynamic Island Capsule */
+        <div 
+          onClick={() => setIsExpanded(prev => !prev)}
+          className="glass-panel px-3.5 py-1.5 rounded-full flex items-center gap-2.5 sm:gap-4 shadow-xl border cursor-pointer select-none transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] border-slate-200/90 dark:border-white/10"
+        >
+          {/* Hospital Monogram */}
+          <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-sky-600 to-cyan-500 text-white flex items-center justify-center shadow-xs">
             <Eye className="w-4 h-4" />
           </div>
@@ -121,6 +172,7 @@ export default function DynamicIsland({
           </button>
         </div>
       </div>
+      )}
 
       {/* Expanded Island Card (Dropdown overview) */}
       {isExpanded && (

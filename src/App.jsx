@@ -22,6 +22,7 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
+  const [arrivalAlert, setArrivalAlert] = useState(null);
 
   // Theme Management (Light mode default for clinical Apple aesthetic)
   const [theme, setTheme] = useState(() => {
@@ -61,6 +62,29 @@ export default function App() {
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 5000);
+  };
+
+  // Auto-dismiss arrival alert after 8 seconds
+  useEffect(() => {
+    if (!arrivalAlert) return;
+    const timer = setTimeout(() => {
+      setArrivalAlert(null);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [arrivalAlert]);
+
+  // Focus camera and UI on arrival event
+  const handleFocusArrival = () => {
+    if (arrivalAlert) {
+      if (arrivalAlert.vehicleId) {
+        setSelectedVehicleId(arrivalAlert.vehicleId);
+        setDetent('half');
+      }
+      if (arrivalAlert.camp) {
+        setSelectedCamp(arrivalAlert.camp);
+      }
+      setArrivalAlert(null);
+    }
   };
 
   // Keyboard shortcut listener (ESC to deselect)
@@ -177,7 +201,13 @@ export default function App() {
               if (!prevCampStatusRef.current[v.id]) {
                 prevCampStatusRef.current[v.id] = true;
                 if (soundEnabled) playCampArrivalChime();
-                showToast(`🚐 ${v.name} arrived at ${targetCamp?.name || 'Camp'}!`, 'arrival');
+                setArrivalAlert({
+                  vehicleId: v.id,
+                  vehicleName: v.name,
+                  campId: targetCamp?.id,
+                  campName: targetCamp?.name || 'Camp Site',
+                  camp: targetCamp,
+                });
               }
               return {
                 ...v,
@@ -285,6 +315,9 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenDriverModal={() => setIsDriverModalOpen(true)}
+        arrivalAlert={arrivalAlert}
+        onDismissArrivalAlert={() => setArrivalAlert(null)}
+        onFocusArrival={handleFocusArrival}
       />
 
       {/* 3. Top-Right Floating Controls Stack */}
