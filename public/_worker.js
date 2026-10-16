@@ -84,8 +84,9 @@ export default {
       });
     }
 
-    // 1. Endpoint: /api/location (Receives GPS telemetry from Fleet Shield APK)
-    if (url.pathname === '/api/location' || url.pathname === '/api/location/') {
+    // 1. Endpoint: /api/location and /api/v1/telemetry (Receives GPS telemetry from Fleet Shield APK)
+    if (url.pathname === '/api/location' || url.pathname === '/api/location/' ||
+        url.pathname === '/api/v1/telemetry' || url.pathname === '/api/v1/telemetry/') {
       if (request.method === 'OPTIONS') {
         return new Response(null, {
           headers: {
@@ -97,59 +98,49 @@ export default {
         });
       }
 
-      let id = null;
-      let driver = null;
-      let lat = null;
-      let lon = null;
-      let rawSpeed = 0;
-      let bearing = 0;
-      let altitude = 0;
-      let batt = 100;
+      // Check query params first (supported in both GET and POST)
+      let id = url.searchParams.get('id') || url.searchParams.get('uniqueId') || url.searchParams.get('deviceid');
+      let driver = url.searchParams.get('driver') || url.searchParams.get('driverName') || '';
+      let lat = parseFloat(url.searchParams.get('lat') || url.searchParams.get('latitude') || '');
+      let lon = parseFloat(url.searchParams.get('lon') || url.searchParams.get('lng') || url.searchParams.get('longitude') || '');
+      let rawSpeed = parseFloat(url.searchParams.get('speed') || '0');
+      let bearing = parseFloat(url.searchParams.get('bearing') || url.searchParams.get('heading') || '0');
+      let altitude = parseFloat(url.searchParams.get('altitude') || '0');
+      let batt = parseFloat(url.searchParams.get('batt') || url.searchParams.get('battery') || '100');
       let timestamp = Date.now();
+      const tsParam = url.searchParams.get('timestamp') || url.searchParams.get('time');
+      if (tsParam) {
+        const parsed = parseInt(tsParam, 10);
+        if (!isNaN(parsed)) timestamp = parsed > 10000000000 ? parsed : parsed * 1000;
+      }
 
-      if (request.method === 'GET') {
-        id = url.searchParams.get('id') || url.searchParams.get('uniqueId') || url.searchParams.get('deviceid');
-        driver = url.searchParams.get('driver') || url.searchParams.get('driverName') || '';
-        lat = parseFloat(url.searchParams.get('lat') || url.searchParams.get('latitude') || '');
-        lon = parseFloat(url.searchParams.get('lon') || url.searchParams.get('lng') || url.searchParams.get('longitude') || '');
-        rawSpeed = parseFloat(url.searchParams.get('speed') || '0');
-        bearing = parseFloat(url.searchParams.get('bearing') || url.searchParams.get('heading') || '0');
-        altitude = parseFloat(url.searchParams.get('altitude') || '0');
-        batt = parseFloat(url.searchParams.get('batt') || url.searchParams.get('battery') || '100');
-        const tsParam = url.searchParams.get('timestamp') || url.searchParams.get('time');
-        if (tsParam) {
-          const parsed = parseInt(tsParam, 10);
-          if (!isNaN(parsed)) timestamp = parsed > 10000000000 ? parsed : parsed * 1000;
-        }
-      } else if (request.method === 'POST') {
+      // If POST with body (JSON or form-data) and params were not in query:
+      if (request.method === 'POST' && (isNaN(lat) || isNaN(lon) || !id)) {
         try {
           const contentType = request.headers.get('content-type') || '';
           if (contentType.includes('application/json')) {
             const body = await request.json();
-            id = body.id || body.uniqueId || body.deviceId;
-            driver = body.driver || body.driverName || '';
-            lat = parseFloat(body.lat || body.latitude);
-            lon = parseFloat(body.lon || body.lng || body.longitude);
-            rawSpeed = parseFloat(body.speed || 0);
-            bearing = parseFloat(body.bearing || body.heading || 0);
-            altitude = parseFloat(body.altitude || 0);
-            batt = parseFloat(body.batt || body.battery || 100);
+            if (!id) id = body.id || body.uniqueId || body.deviceId;
+            if (!driver) driver = body.driver || body.driverName || '';
+            if (isNaN(lat)) lat = parseFloat(body.lat || body.latitude);
+            if (isNaN(lon)) lon = parseFloat(body.lon || body.lng || body.longitude);
+            if (body.speed !== undefined) rawSpeed = parseFloat(body.speed);
+            if (body.bearing !== undefined) bearing = parseFloat(body.bearing || body.heading);
+            if (body.altitude !== undefined) altitude = parseFloat(body.altitude);
+            if (body.batt !== undefined || body.battery !== undefined) batt = parseFloat(body.batt || body.battery);
             if (body.timestamp) timestamp = new Date(body.timestamp).getTime() || Date.now();
-          } else {
+          } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
-            id = formData.get('id') || formData.get('uniqueId');
-            driver = formData.get('driver') || formData.get('driverName') || '';
-            lat = parseFloat(formData.get('lat') || formData.get('latitude'));
-            lon = parseFloat(formData.get('lon') || formData.get('lng') || formData.get('longitude'));
-            rawSpeed = parseFloat(formData.get('speed') || '0');
-            bearing = parseFloat(formData.get('bearing') || formData.get('heading') || '0');
-            batt = parseFloat(formData.get('batt') || formData.get('battery') || '100');
+            if (!id) id = formData.get('id') || formData.get('uniqueId');
+            if (!driver) driver = formData.get('driver') || formData.get('driverName') || '';
+            if (isNaN(lat)) lat = parseFloat(formData.get('lat') || formData.get('latitude'));
+            if (isNaN(lon)) lon = parseFloat(formData.get('lon') || formData.get('lng') || formData.get('longitude'));
+            if (formData.has('speed')) rawSpeed = parseFloat(formData.get('speed'));
+            if (formData.has('bearing')) bearing = parseFloat(formData.get('bearing') || formData.get('heading'));
+            if (formData.has('batt')) batt = parseFloat(formData.get('batt') || formData.get('battery'));
           }
         } catch (e) {
-          return new Response(JSON.stringify({ error: 'Invalid payload: ' + e.message }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-          });
+          // Empty body is valid for Traccar query-param POST
         }
       }
 
@@ -164,7 +155,8 @@ export default {
 
       let speedKmH = 0;
       if (rawSpeed > 0) {
-        speedKmH = rawSpeed > 60 ? Math.min(130, Math.round(rawSpeed)) : Math.min(130, Math.round(rawSpeed * 3.6));
+        // Traccar sends speed in knots (nautical miles per hr); 1 knot = 1.852 km/h
+        speedKmH = Math.min(130, Math.round(rawSpeed * 1.852));
       }
 
       const vehId = String(id).trim().toUpperCase();

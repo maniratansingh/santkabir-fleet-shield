@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
+import { getDeliveryRouteSplit, getAllRoadCorridors } from '../utils/roadDistance';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
@@ -184,32 +185,9 @@ function getLiveDistanceKm(v) {
   return Math.round(dist * 1.15 * 10) / 10;
 }
 
-// Compute solid highway navigation trail from Sant Kabir Eye Hospital Base to the live vehicle location
+// Compute solid highway navigation trail along real road coordinates
 function getHighwayTrail(v) {
-  const baseCoord = [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat];
-  const vehCoord = [Number(v.lon || 0), Number(v.lat || 0)];
-
-  if (v.status === 'at_base') {
-    return [];
-  }
-
-  // If vehicle has live GPS telemetry breadcrumb history
-  if (Array.isArray(v.trail) && v.trail.length > 1) {
-    return [baseCoord, ...v.trail];
-  }
-
-  const wps = v.routeWaypoints;
-  if (!wps || wps.length < 2) {
-    return [baseCoord, vehCoord];
-  }
-
-  const k = findClosestSegmentIndex(vehCoord, wps);
-  const trail = [baseCoord];
-  for (let i = 0; i <= k; i++) {
-    trail.push(wps[i]);
-  }
-  trail.push(vehCoord);
-  return trail;
+  return getDeliveryRouteSplit(v).upcomingRoute;
 }
 
 // Authentic 3D Isometric Ambulance with specular lighting, dual headlights, and drop shadow
@@ -398,9 +376,17 @@ export default function MapView({
 
     // Clean up previous custom layers before switching
     try {
+      if (map.getLayer('delivery-incoming-flow')) map.removeLayer('delivery-incoming-flow');
+      if (map.getLayer('delivery-incoming-road')) map.removeLayer('delivery-incoming-road');
+      if (map.getLayer('delivery-incoming-casing')) map.removeLayer('delivery-incoming-casing');
+      if (map.getSource('delivery-incoming-routes')) map.removeSource('delivery-incoming-routes');
+
       if (map.getLayer('delivery-trail-line')) map.removeLayer('delivery-trail-line');
-      if (map.getLayer('delivery-trail-casing')) map.removeLayer('delivery-trail-casing');
       if (map.getSource('delivery-trail-routes')) map.removeSource('delivery-trail-routes');
+
+      if (map.getLayer('camp-routes-line')) map.removeLayer('camp-routes-line');
+      if (map.getLayer('camp-routes-casing')) map.removeLayer('camp-routes-casing');
+      if (map.getSource('camp-routes')) map.removeSource('camp-routes');
     } catch (e) {}
 
     // Wait strictly for style.load (never styledata, which causes 'Style is not done loading')
@@ -447,32 +433,33 @@ export default function MapView({
     }
   }, [actionTrigger]);
 
-  // Add Custom Highway Road Trail Layers
+  // Add Custom Highway Road Navigation Layers
   const addCustomLayers = (map) => {
     try {
       const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
 
-      // 1. Solid Highway Road Trail Behind Vehicle from Hospital Base
+      // 2. Traveled Highway Road Trail Behind Active Vehicles
       if (map.getSource('delivery-trail-routes')) {
-        if (map.getLayer('delivery-trail-casing')) map.removeLayer('delivery-trail-casing');
         if (map.getLayer('delivery-trail-line')) map.removeLayer('delivery-trail-line');
         map.removeSource('delivery-trail-routes');
       }
 
       const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
-      const trailFeatures = activeVehicles.map((v) => ({
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: getHighwayTrail(v),
-        },
-        properties: {
-          vehicleId: v.id,
-          lineColor: v.lineColor || '#007AFF',
-          glowColor: v.glowColor || '#38BDF8',
-          isSelected: v.id === selectedVehicleId,
-        },
-      }));
+      const trailFeatures = activeVehicles.map((v) => {
+        const split = getDeliveryRouteSplit(v);
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: split.completedTrail,
+          },
+          properties: {
+            vehicleId: v.id,
+            lineColor: v.lineColor || '#007AFF',
+            isSelected: v.id === selectedVehicleId,
+          },
+        };
+      });
 
       map.addSource('delivery-trail-routes', {
         type: 'geojson',
@@ -482,11 +469,67 @@ export default function MapView({
         },
       });
 
-      // Ambient Glowing Halo Beneath Highway Navigation Trail (Dynamic per Vehicle Color)
       map.addLayer({
-        id: 'delivery-trail-casing',
+        id: 'delivery-trail-line',
         type: 'line',
         source: 'delivery-trail-routes',
+        layout: {
+          visibility: showDistanceLines ? 'visible' : 'none',
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': ['get', 'lineColor'],
+          'line-width': [
+            'case',
+            ['get', 'isSelected'],
+            4.5,
+            3,
+          ],
+          'line-opacity': 0.75,
+          'line-dasharray': [3, 2],
+        },
+      });
+
+      // 3. Active Turn-by-Turn Road Navigation Corridor (Google Maps / Swiggy Style Multi-Layer)
+      if (map.getSource('delivery-incoming-routes')) {
+        if (map.getLayer('delivery-incoming-flow')) map.removeLayer('delivery-incoming-flow');
+        if (map.getLayer('delivery-incoming-road')) map.removeLayer('delivery-incoming-road');
+        if (map.getLayer('delivery-incoming-casing')) map.removeLayer('delivery-incoming-casing');
+        map.removeSource('delivery-incoming-routes');
+      }
+
+      const incomingFeatures = activeVehicles.map((v) => {
+        const split = getDeliveryRouteSplit(v);
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: split.upcomingRoute,
+          },
+          properties: {
+            vehicleId: v.id,
+            lineColor: v.lineColor || '#007AFF',
+            glowColor: v.glowColor || '#38BDF8',
+            isSelected: v.id === selectedVehicleId,
+            status: v.status,
+          },
+        };
+      });
+
+      map.addSource('delivery-incoming-routes', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: incomingFeatures,
+        },
+      });
+
+      // Layer A: Ambient Glowing Halo Beneath Navigation Corridor (Dynamic per Vehicle Glow Color)
+      map.addLayer({
+        id: 'delivery-incoming-casing',
+        type: 'line',
+        source: 'delivery-incoming-routes',
         layout: {
           visibility: showDistanceLines ? 'visible' : 'none',
           'line-cap': 'round',
@@ -500,16 +543,21 @@ export default function MapView({
             12,
             7.5,
           ],
-          'line-opacity': isDark ? 0.45 : 0.3,
-          'line-blur': 3,
+          'line-opacity': [
+            'case',
+            ['get', 'isSelected'],
+            0.55,
+            0.35,
+          ],
+          'line-blur': 3.5,
         },
       });
 
-      // Solid Apple Maps Highway Navigation Ribbon (Dynamic per Vehicle Color)
+      // Layer B: Solid Google Maps / Apple Maps Navigation Road Ribbon (Dynamic per Vehicle Color)
       map.addLayer({
-        id: 'delivery-trail-line',
+        id: 'delivery-incoming-road',
         type: 'line',
-        source: 'delivery-trail-routes',
+        source: 'delivery-incoming-routes',
         layout: {
           visibility: showDistanceLines ? 'visible' : 'none',
           'line-cap': 'round',
@@ -527,6 +575,24 @@ export default function MapView({
         },
       });
 
+      // Layer C: Zomato/Swiggy Animated Dash Flow (Streaming White Pulses moving forward towards destination)
+      map.addLayer({
+        id: 'delivery-incoming-flow',
+        type: 'line',
+        source: 'delivery-incoming-routes',
+        layout: {
+          visibility: showDistanceLines ? 'visible' : 'none',
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': '#FFFFFF',
+          'line-width': 2.2,
+          'line-opacity': 0.95,
+          'line-dasharray': [1.5, 2.5],
+        },
+      });
+
     } catch (e) {
       console.warn('Custom layer registration error:', e);
     }
@@ -537,9 +603,17 @@ export default function MapView({
     const map = mapRef.current;
     if (!map) return;
 
-    ['delivery-trail-casing', 'delivery-trail-line'].forEach((layerId) => {
+    const visibility = showDistanceLines ? 'visible' : 'none';
+    [
+      'camp-routes-casing',
+      'camp-routes-line',
+      'delivery-trail-line',
+      'delivery-incoming-casing',
+      'delivery-incoming-road',
+      'delivery-incoming-flow'
+    ].forEach((layerId) => {
       if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, 'visibility', showDistanceLines ? 'visible' : 'none');
+        map.setLayoutProperty(layerId, 'visibility', visibility);
       }
     });
 
@@ -550,26 +624,102 @@ export default function MapView({
     });
   }, [showDistanceLines]);
 
-  // Update Highway Navigation Trail geometry and On-Road Distance Badges
+  // Live Navigation Line Animation (Streaming forward pulses + breathing halo glow)
+  useEffect(() => {
+    let animId;
+    let lastDashUpdate = 0;
+    let step = 0;
+    const dashPatterns = [
+      [0.1, 2.5, 2.4],
+      [0.5, 2.5, 2.0],
+      [1.0, 2.5, 1.5],
+      [1.5, 2.5, 1.0],
+      [2.0, 2.5, 0.5],
+      [2.5, 2.5, 0.1],
+    ];
+
+    const animate = (timestamp) => {
+      const map = mapRef.current;
+      if (map && map.isStyleLoaded()) {
+        try {
+          // 1. Smooth Breathing Glow on Navigation Corridor Halo
+          if (map.getLayer('delivery-incoming-casing')) {
+            const pulse = (Math.sin(timestamp * 0.005) + 1) / 2;
+            const opacity = 0.28 + 0.35 * pulse;
+            const width = 8 + 4 * pulse;
+            map.setPaintProperty('delivery-incoming-casing', 'line-opacity', opacity);
+            map.setPaintProperty('delivery-incoming-casing', 'line-width', width);
+          }
+
+          // 2. Dash Flow Streaming Movement every ~80ms
+          if (timestamp - lastDashUpdate > 80) {
+            lastDashUpdate = timestamp;
+            if (map.getLayer('delivery-incoming-flow')) {
+              step = (step + 1) % dashPatterns.length;
+              map.setPaintProperty('delivery-incoming-flow', 'line-dasharray', dashPatterns[step]);
+            }
+          }
+
+          // Force canvas re-render so streaming animation stays active smoothly
+          map.triggerRepaint();
+        } catch (e) {}
+      }
+      animId = requestAnimationFrame(animate);
+    };
+
+    animId = requestAnimationFrame(animate);
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, []);
+
+  // Update Road Navigation Trails, Incoming Corridors, and On-Road Midpoint Distance Badges
   const updateDistanceVectors = (map) => {
     if (!map) return;
 
     const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
     const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
 
-    const trailFeatures = activeVehicles.map((v) => ({
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: getHighwayTrail(v),
-      },
-      properties: {
-        vehicleId: v.id,
-        lineColor: v.lineColor || '#007AFF',
-        glowColor: v.glowColor || '#38BDF8',
-        isSelected: v.id === selectedVehicleId,
-      },
-    }));
+    const incomingFeatures = activeVehicles.map((v) => {
+      const split = getDeliveryRouteSplit(v);
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: split.upcomingRoute,
+        },
+        properties: {
+          vehicleId: v.id,
+          lineColor: v.lineColor || '#007AFF',
+          glowColor: v.glowColor || '#38BDF8',
+          isSelected: v.id === selectedVehicleId,
+          status: v.status,
+        },
+      };
+    });
+
+    const trailFeatures = activeVehicles.map((v) => {
+      const split = getDeliveryRouteSplit(v);
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: split.completedTrail,
+        },
+        properties: {
+          vehicleId: v.id,
+          lineColor: v.lineColor || '#007AFF',
+          isSelected: v.id === selectedVehicleId,
+        },
+      };
+    });
+
+    if (map.getSource('delivery-incoming-routes')) {
+      map.getSource('delivery-incoming-routes').setData({
+        type: 'FeatureCollection',
+        features: incomingFeatures,
+      });
+    }
 
     if (map.getSource('delivery-trail-routes')) {
       map.getSource('delivery-trail-routes').setData({
@@ -580,11 +730,11 @@ export default function MapView({
       addCustomLayers(map);
     }
 
-    // Clean up any old on-road badges so no duplicate clutter remains near the hospital
-    Object.values(distanceMarkersRef.current).forEach(({ marker }) => {
-      try { marker.remove(); } catch (e) {}
+    // Clean up any remaining distance markers if any exist
+    Object.keys(distanceMarkersRef.current).forEach((id) => {
+      try { distanceMarkersRef.current[id].marker.remove(); } catch (e) {}
+      delete distanceMarkersRef.current[id];
     });
-    distanceMarkersRef.current = {};
   };
 
   // Initialize Map
@@ -602,6 +752,7 @@ export default function MapView({
     });
 
     mapRef.current = map;
+    if (typeof window !== 'undefined') window.__map = map;
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-left');
 

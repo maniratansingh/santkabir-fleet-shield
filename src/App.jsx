@@ -4,11 +4,11 @@ import DynamicIsland from './components/DynamicIsland';
 import FloatingControls from './components/FloatingControls';
 import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
-import { BASE_HOSPITAL } from './data/mockData';
+import { BASE_HOSPITAL, INITIAL_VEHICLES } from './data/mockData';
 import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
-  const [vehicles, setVehicles] = useState([]);
+  const [vehicles, setVehicles] = useState(INITIAL_VEHICLES);
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
   const [detent, setDetent] = useState('half'); // 'peek', 'half', 'full'
@@ -124,7 +124,7 @@ export default function App() {
               const p = prev[idx];
               return !p || p.id !== v.id || p.lat !== v.lat || p.lon !== v.lon || p.speed !== v.speed || p.status !== v.status;
             });
-          if (hasChanged) {
+          if (list.length > 0 && hasChanged) {
             setVehicles(list);
           }
         }
