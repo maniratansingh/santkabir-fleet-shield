@@ -211,9 +211,9 @@ export default {
       });
     }
 
-    // 3. Binary APK Downloads (Enforces Android APK MIME headers and blocks HTML fallback into .txt)
-    if (url.pathname.endsWith('.apk')) {
-      const assetRes = await env.ASSETS.fetch(request);
+    // 3. Binary APK Downloads (Enforces Android APK MIME headers and blocks HTML fallback into .txt/.zip)
+    if (url.pathname.endsWith('.apk') || url.pathname === '/api/download-apk') {
+      const assetRes = await env.ASSETS.fetch(new Request(new URL('/downloads/santkabir-fleet-shield-v1.0.apk', request.url)));
       const contentType = assetRes.headers.get('content-type') || '';
       if (assetRes.status === 404 || contentType.includes('text/html')) {
         return new Response(JSON.stringify({
@@ -230,9 +230,11 @@ export default {
       }
       const headers = new Headers(assetRes.headers);
       headers.set('Content-Type', 'application/vnd.android.package-archive');
-      headers.set('Content-Disposition', 'attachment; filename="santkabir-fleet-shield-v1.0.apk"');
+      headers.set('Content-Disposition', 'attachment; filename="santkabir-fleet-shield-v1.0.apk"; filename*=UTF-8\'\'santkabir-fleet-shield-v1.0.apk');
+      headers.set('X-Content-Type-Options', 'nosniff');
+      headers.set('Cache-Control', 'public, max-age=86400');
       return new Response(assetRes.body, {
-        status: assetRes.status,
+        status: 200,
         headers,
       });
     }

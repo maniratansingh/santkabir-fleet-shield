@@ -262,6 +262,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                 <a
                   href="/downloads/santkabir-fleet-shield-v1.0.apk"
                   download="santkabir-fleet-shield-v1.0.apk"
+                  type="application/vnd.android.package-archive"
                   className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -276,7 +277,8 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                   Field Installation Protocol
                 </h5>
                 <ol className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5 list-decimal pl-4">
-                  <li>Transfer APK to driver phone via private WhatsApp link or USB.</li>
+                  <li>Download and install APK on driver's Android phone (Android 8.0+).</li>
+                  <li><em>Chrome Tip:</em> If Android Chrome labels it as <code>.zip</code>, simply rename the file to <code>.apk</code> in your phone's <strong>Files</strong> app and tap to install.</li>
                   <li>Enable <em>"Install unknown apps"</em> and complete installation.</li>
                   <li>Launch app and scan the <strong>Admin Provisioning QR Code</strong> from Tab 1.</li>
                   <li>Grant <em>"Allow location all the time"</em> and ignore battery optimizations.</li>
