@@ -6,7 +6,7 @@ import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
 import { INITIAL_VEHICLES, INITIAL_CAMPS, BASE_HOSPITAL, calculateDistanceKm } from './data/mockData';
 import { playCampArrivalChime, playAlertTone } from './utils/audio';
-import { CheckCircle2, AlertTriangle, X, Eye, User, Clock, Phone, MapPin } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, X, Eye, User, Clock, Phone, MapPin, Navigation } from 'lucide-react';
 
 export default function App() {
   const [vehicles, setVehicles] = useState(INITIAL_VEHICLES);
@@ -190,8 +190,8 @@ export default function App() {
           let currentSpeed = v.speed;
 
           if (currentStatus === 'moving') {
-            // Advancing along road to camp
-            const stepDelta = 0.07;
+            // Advancing along road to camp at real road speed
+            const stepDelta = 0.18;
             currentStep += stepDelta;
 
             if (currentStep >= maxIndex) {
@@ -211,11 +211,11 @@ export default function App() {
                 });
               }
             } else {
-              currentSpeed = Math.floor(42 + Math.random() * 8);
+              currentSpeed = Math.floor(44 + Math.random() * 6);
             }
           } else if (currentStatus === 'returning') {
             // Returning along road back to Base Hospital
-            const stepDelta = 0.07;
+            const stepDelta = 0.18;
             currentStep -= stepDelta;
 
             if (currentStep <= 0) {
@@ -223,18 +223,18 @@ export default function App() {
               currentStatus = 'at_base';
               currentSpeed = 0;
             } else {
-              currentSpeed = Math.floor(44 + Math.random() * 8);
+              currentSpeed = Math.floor(46 + Math.random() * 6);
             }
           } else if (currentStatus === 'at_camp') {
             // After staying at camp for screening, cycle to returning with boarded patients
             const stayCounter = (v.stayTicks || 0) + 1;
-            if (stayCounter > 8) {
+            if (stayCounter > 12) {
               return {
                 ...v,
                 status: 'returning',
                 stayTicks: 0,
-                patientsOnboard: Math.floor(12 + Math.random() * 10),
-                routeStep: maxIndex - 0.05,
+                patientsOnboard: 0,
+                routeStep: maxIndex - 0.2,
               };
             }
             return { ...v, stayTicks: stayCounter };
@@ -257,20 +257,20 @@ export default function App() {
             bearing = (bearing + 180) % 360;
           }
 
-          // Calculate remaining road distance to destination
-          let distRemainingKm = 0;
-          if (currentStatus === 'moving') {
-            distRemainingKm = calculateDistanceKm(lat, lon, pB[1], pB[0]);
-            for (let j = segIdx + 1; j < maxIndex; j++) {
-              distRemainingKm += calculateDistanceKm(waypoints[j][1], waypoints[j][0], waypoints[j + 1][1], waypoints[j + 1][0]);
-            }
-          } else if (currentStatus === 'returning') {
-            distRemainingKm = calculateDistanceKm(lat, lon, pA[1], pA[0]);
-            for (let j = segIdx - 1; j >= 0; j--) {
-              distRemainingKm += calculateDistanceKm(waypoints[j + 1][1], waypoints[j + 1][0], waypoints[j][1], waypoints[j][0]);
-            }
+          // Calculate exact road distance from Base Hospital along highway
+          let roadDistFromBase = 0;
+          for (let j = 0; j < segIdx; j++) {
+            roadDistFromBase += calculateDistanceKm(waypoints[j][1], waypoints[j][0], waypoints[j + 1][1], waypoints[j + 1][0]);
+          }
+          roadDistFromBase += calculateDistanceKm(pA[1], pA[0], lat, lon);
+
+          // Calculate exact remaining road distance to Camp along highway
+          let roadDistToCamp = calculateDistanceKm(lat, lon, pB[1], pB[0]);
+          for (let j = segIdx + 1; j < maxIndex; j++) {
+            roadDistToCamp += calculateDistanceKm(waypoints[j][1], waypoints[j][0], waypoints[j + 1][1], waypoints[j + 1][0]);
           }
 
+          const distRemainingKm = currentStatus === 'returning' ? roadDistFromBase : roadDistToCamp;
           const etaMins = currentSpeed > 0 ? Math.max(1, Math.round((distRemainingKm / currentSpeed) * 60)) : 0;
 
           return {
@@ -281,6 +281,9 @@ export default function App() {
             bearing,
             routeStep: currentStep,
             status: currentStatus,
+            roadDistFromBaseKm: Math.round(roadDistFromBase * 10) / 10,
+            roadDistToCampKm: Math.round(roadDistToCamp * 10) / 10,
+            totalRoadKm: Math.round((roadDistFromBase + roadDistToCamp) * 10) / 10,
             distRemainingKm: Math.round(distRemainingKm * 10) / 10,
             etaMins,
             lastSeen: Date.now(),
@@ -417,58 +420,76 @@ export default function App() {
             </button>
           </div>
 
-          {/* Screening Progress Bar */}
-          <div className="mt-3 bg-slate-50/80 border border-slate-200/80 dark:bg-slate-950/60 dark:border-slate-800 p-3 rounded-2xl">
-            <div className="flex justify-between text-xs mb-1.5">
-              <span className="text-slate-600 dark:text-slate-400 font-medium">Screening Target</span>
-              <span className="text-sky-700 dark:text-cyan-300 font-bold font-mono">
-                {selectedCamp.currentScreened} / {selectedCamp.targetScreening} checked
-              </span>
-            </div>
-            <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-sky-500 to-emerald-500 transition-all duration-500 rounded-full"
-                style={{ width: `${Math.min(100, Math.round((selectedCamp.currentScreened / selectedCamp.targetScreening) * 100))}%` }}
-              />
-            </div>
-
-            {/* Clinical Breakdown */}
-            <div className="mt-3 grid grid-cols-3 gap-1.5 pt-2 border-t border-slate-200/80 dark:border-slate-800/80 text-center">
-              <div className="p-1.5 rounded-xl bg-amber-50/80 border border-amber-200/70 dark:bg-amber-950/40 dark:border-amber-500/20">
-                <span className="text-[9px] text-amber-700 dark:text-amber-300 uppercase font-semibold block">Cataract</span>
-                <span className="text-xs font-bold text-amber-700 dark:text-amber-400 font-mono">{selectedCamp.cataractIdentified}</span>
-              </div>
-              <div className="p-1.5 rounded-xl bg-sky-50/80 border border-sky-200/70 dark:bg-sky-950/40 dark:border-sky-500/20">
-                <span className="text-[9px] text-sky-700 dark:text-sky-300 uppercase font-semibold block">Glasses</span>
-                <span className="text-xs font-bold text-sky-700 dark:text-sky-400 font-mono">{selectedCamp.refractiveErrors || 50}</span>
-              </div>
-              <div className="p-1.5 rounded-xl bg-emerald-50/80 border border-emerald-200/70 dark:bg-emerald-950/40 dark:border-emerald-500/20">
-                <span className="text-[9px] text-emerald-700 dark:text-emerald-300 uppercase font-semibold block">Glaucoma</span>
-                <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 font-mono">{selectedCamp.glaucomaSuspects || 10}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Doctor and Field Coordinator */}
-          <div className="mt-3 space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
-            <div className="flex items-center gap-2">
-              <User className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400 shrink-0" />
-              <span>Doctor: <strong className="text-slate-900 dark:text-white">{selectedCamp.leadDoctor}</strong></span>
-            </div>
+          {/* Camp Ground Person In-Charge & Contact */}
+          <div className="mt-3 bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200/80 dark:border-slate-800 p-3 rounded-2xl space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span>Hours: {selectedCamp.schedule}</span>
+                <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center text-xs font-bold">
+                  <User className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block leading-tight">Camp In-Charge</span>
+                  <span className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
+                    {selectedCamp.coordinatorName || 'Camp Coordinator'}
+                  </span>
+                </div>
               </div>
               {selectedCamp.coordinatorPhone && (
                 <a 
                   href={`tel:${selectedCamp.coordinatorPhone}`}
-                  className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline font-semibold"
+                  className="px-2.5 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold flex items-center gap-1 shadow-xs transition-colors"
                 >
                   <Phone className="w-3 h-3" />
-                  Call Lead
+                  <span>Call</span>
                 </a>
               )}
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-800/80">
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Hours: {selectedCamp.schedule || '09:00 AM - 04:00 PM'}</span>
+              </div>
+              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/60">
+                500m Designated Zone
+              </span>
+            </div>
+          </div>
+
+          {/* Accurate GPS Coordinates & 1-Click Navigation */}
+          <div className="mt-2.5 p-3 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-white">
+                <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                <span>Accurate Camp Coordinates</span>
+              </div>
+              <span className="text-[11px] font-mono font-bold text-sky-600 dark:text-cyan-400 bg-sky-50 dark:bg-sky-950/60 px-2 py-0.5 rounded-full border border-sky-200/60 dark:border-sky-800">
+                {selectedCamp.lat.toFixed(5)}° N, {selectedCamp.lon.toFixed(5)}° E
+              </span>
+            </div>
+
+            {/* Direct 1-Click Navigation Buttons */}
+            <div className="grid grid-cols-2 gap-2 pt-0.5">
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${selectedCamp.lat},${selectedCamp.lon}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-700 hover:to-sky-700 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5 transition-transform active:scale-98"
+              >
+                <Navigation className="w-3.5 h-3.5" />
+                <span>Google Maps</span>
+                <span className="text-[10px]">↗</span>
+              </a>
+              <a
+                href={`https://maps.apple.com/?daddr=${selectedCamp.lat},${selectedCamp.lon}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white text-xs font-semibold border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                <span>Apple Maps</span>
+                <span className="text-[10px]">↗</span>
+              </a>
             </div>
           </div>
 

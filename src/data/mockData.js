@@ -1,3 +1,5 @@
+import roadRoutesData from './roadRoutes.json';
+
 // Default Eye Hospital Fleet & Camp Data for Sant Kabir Eye Hospital (PIECS)
 
 export const BASE_HOSPITAL = {
@@ -20,11 +22,8 @@ export const INITIAL_CAMPS = [
     lat: 26.7950,
     lon: 82.4630,
     radiusMeters: 500,
-    targetScreening: 250,
-    currentScreened: 174,
-    cataractIdentified: 38,
-    refractiveErrors: 64,
-    glaucomaSuspects: 12,
+    highwayName: 'NH-27 West',
+    roadDistanceKm: roadRoutesData['CAMP-HARRAIYA']?.roadDistanceKm || 34.8,
     status: 'active',
     assignedTeam: 'Team Alpha',
     assignedVehicleId: 'SK-VAN-01',
@@ -32,8 +31,7 @@ export const INITIAL_CAMPS = [
     coordinatorName: 'Rajesh Mishra',
     coordinatorPhone: '+91 94151 88822',
     schedule: '09:00 AM - 04:00 PM',
-    // Route from Basti base along NH-27 towards Harraiya
-    routeWaypoints: [
+    routeWaypoints: roadRoutesData['CAMP-HARRAIYA']?.coordinates || [
       [82.7628, 26.8048],
       [82.7150, 26.8020],
       [82.6320, 26.7990],
@@ -49,20 +47,16 @@ export const INITIAL_CAMPS = [
     lat: 27.1740,
     lon: 82.9320,
     radiusMeters: 600,
-    targetScreening: 300,
-    currentScreened: 242,
-    cataractIdentified: 56,
-    refractiveErrors: 88,
-    glaucomaSuspects: 14,
-    status: 'boarding_patients', // Transporting patients to base hospital for surgery
+    highwayName: 'SH-88 / Bansi Road North',
+    roadDistanceKm: roadRoutesData['CAMP-BANSI']?.roadDistanceKm || 48.3,
+    status: 'boarding_patients',
     assignedTeam: 'Team Beta',
     assignedVehicleId: 'SK-SHUTTLE-02',
     leadDoctor: 'Optom. Priya Singh',
     coordinatorName: 'M. P. Chaudhary',
     coordinatorPhone: '+91 93364 55511',
     schedule: '08:30 AM - 03:30 PM',
-    // Route from Basti base north along Bansi Road (SH-88)
-    routeWaypoints: [
+    routeWaypoints: roadRoutesData['CAMP-BANSI']?.coordinates || [
       [82.7628, 26.8048],
       [82.7850, 26.8850],
       [82.8350, 26.9850],
@@ -78,11 +72,8 @@ export const INITIAL_CAMPS = [
     lat: 26.7780,
     lon: 83.0720,
     radiusMeters: 500,
-    targetScreening: 200,
-    currentScreened: 198,
-    cataractIdentified: 43,
-    refractiveErrors: 72,
-    glaucomaSuspects: 8,
+    highwayName: 'NH-27 East',
+    roadDistanceKm: roadRoutesData['CAMP-KHALILABAD']?.roadDistanceKm || 34.1,
     status: 'concluded',
     assignedTeam: 'Team Gamma',
     assignedVehicleId: 'SK-VISION-03',
@@ -90,8 +81,7 @@ export const INITIAL_CAMPS = [
     coordinatorName: 'Sunil Jaiswal',
     coordinatorPhone: '+91 98380 77733',
     schedule: '09:00 AM - 02:00 PM',
-    // Route from Basti east along NH-27 towards Khalilabad / Maghar
-    routeWaypoints: [
+    routeWaypoints: roadRoutesData['CAMP-KHALILABAD']?.coordinates || [
       [82.7628, 26.8048],
       [82.8350, 26.7950],
       [82.8850, 26.7910],
@@ -107,11 +97,8 @@ export const INITIAL_CAMPS = [
     lat: 27.2050,
     lon: 82.6850,
     radiusMeters: 500,
-    targetScreening: 180,
-    currentScreened: 112,
-    cataractIdentified: 29,
-    refractiveErrors: 45,
-    glaucomaSuspects: 6,
+    highwayName: 'Basti-Domariyaganj Road',
+    roadDistanceKm: roadRoutesData['CAMP-DOMARIYAGANJ']?.roadDistanceKm || 55.8,
     status: 'active',
     assignedTeam: 'Paramedic Unit',
     assignedVehicleId: 'SK-AMBULANCE-04',
@@ -119,8 +106,7 @@ export const INITIAL_CAMPS = [
     coordinatorName: 'Harishankar Tripathi',
     coordinatorPhone: '+91 94500 44488',
     schedule: '10:00 AM - 05:00 PM',
-    // Route north-west through Rudhauli towards Domariyaganj
-    routeWaypoints: [
+    routeWaypoints: roadRoutesData['CAMP-DOMARIYAGANJ']?.coordinates || [
       [82.7628, 26.8048],
       [82.7420, 26.9250],
       [82.7150, 27.0550],
@@ -128,6 +114,14 @@ export const INITIAL_CAMPS = [
     ],
   },
 ];
+
+const harraiyaWps = INITIAL_CAMPS[0].routeWaypoints;
+const bansiWps = INITIAL_CAMPS[1].routeWaypoints;
+const khalilabadWps = INITIAL_CAMPS[2].routeWaypoints;
+
+const hIdx = Math.floor(harraiyaWps.length * 0.48);
+const bIdx = Math.floor(bansiWps.length * 0.44);
+const kIdx = Math.floor(khalilabadWps.length * 0.62);
 
 export const INITIAL_VEHICLES = [
   {
@@ -141,17 +135,21 @@ export const INITIAL_VEHICLES = [
     driverPhone: '+91 94151 40719',
     assignedCampId: 'CAMP-HARRAIYA',
     destinationName: 'Harraiya Community Eye Camp',
+    highwayName: 'NH-27 West',
     status: 'moving',
     speed: 46,
     bearing: 268,
-    routeStep: 2.0,
-    etaMins: 14,
-    distRemainingKm: 17.5,
+    routeStep: hIdx,
+    etaMins: 22,
+    roadDistFromBaseKm: 16.8,
+    roadDistToCampKm: 18.0,
+    distRemainingKm: 18.0,
+    totalRoadKm: 34.8,
     batt: 89,
     network: '4G LTE',
     pingMs: 38,
-    lat: 26.7990,
-    lon: 82.6320,
+    lon: harraiyaWps[hIdx][0],
+    lat: harraiyaWps[hIdx][1],
     patientsOnboard: 0,
     lastSeen: Date.now() - 10000,
   },
@@ -166,17 +164,21 @@ export const INITIAL_VEHICLES = [
     driverPhone: '+91 93364 66677',
     assignedCampId: 'CAMP-BANSI',
     destinationName: 'Bansi Rural Vision & Cataract Camp',
+    highwayName: 'SH-88 / Bansi Road North',
     status: 'moving',
     speed: 48,
     bearing: 27,
-    routeStep: 2.0,
-    etaMins: 26,
-    distRemainingKm: 21.3,
+    routeStep: bIdx,
+    etaMins: 32,
+    roadDistFromBaseKm: 21.2,
+    roadDistToCampKm: 27.1,
+    distRemainingKm: 27.1,
+    totalRoadKm: 48.3,
     batt: 76,
     network: '5G',
     pingMs: 24,
-    lat: 26.9850,
-    lon: 82.8350,
+    lon: bansiWps[bIdx][0],
+    lat: bansiWps[bIdx][1],
     patientsOnboard: 0,
     lastSeen: Date.now() - 25000,
   },
@@ -191,18 +193,22 @@ export const INITIAL_VEHICLES = [
     driverPhone: '+91 98380 12345',
     assignedCampId: 'CAMP-KHALILABAD',
     destinationName: 'Sant Kabir Eye Hospital (Returning to Base)',
+    highwayName: 'NH-27 East',
     status: 'returning',
     speed: 51,
     bearing: 275,
-    routeStep: 2.0,
-    etaMins: 16,
-    distRemainingKm: 12.8,
+    routeStep: kIdx,
+    etaMins: 15,
+    roadDistFromBaseKm: 13.0,
+    roadDistToCampKm: 21.1,
+    distRemainingKm: 13.0,
+    totalRoadKm: 34.1,
     batt: 64,
     network: '4G LTE',
     pingMs: 44,
-    lat: 26.7910,
-    lon: 82.8850,
-    patientsOnboard: 22,
+    lon: khalilabadWps[kIdx][0],
+    lat: khalilabadWps[kIdx][1],
+    patientsOnboard: 0,
     lastSeen: Date.now() - 5000,
   },
   {
@@ -216,12 +222,16 @@ export const INITIAL_VEHICLES = [
     driverPhone: '+91 94500 98765',
     assignedCampId: 'BASE-HOSPITAL',
     destinationName: 'Sant Kabir Eye Hospital Base',
+    highwayName: 'Base Station',
     status: 'at_base',
     speed: 0,
     bearing: 0,
     routeStep: 0,
     etaMins: 0,
+    roadDistFromBaseKm: 0,
+    roadDistToCampKm: 0,
     distRemainingKm: 0,
+    totalRoadKm: 0,
     batt: 98,
     network: 'Wi-Fi Base',
     pingMs: 12,

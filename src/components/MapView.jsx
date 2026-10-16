@@ -465,51 +465,12 @@ export default function MapView({
     try {
       const isDark = forceDark !== null ? forceDark : (theme === 'dark' || currentStyleKeyRef.current === 'dark');
 
-      // 1. Range Rings around Base Hospital (15km, 30km, 50km)
+      // 1. Clean up air range rings if any exist
       if (map.getSource('base-range-rings')) {
-        map.removeLayer('base-range-rings-fill');
-        map.removeLayer('base-range-rings-line');
+        if (map.getLayer('base-range-rings-fill')) map.removeLayer('base-range-rings-fill');
+        if (map.getLayer('base-range-rings-line')) map.removeLayer('base-range-rings-line');
         map.removeSource('base-range-rings');
       }
-
-      const ringRadii = [15, 30, 50]; // Kilometers
-      const ringFeatures = ringRadii.map(r => createGeoJSONCircle([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat], r));
-
-      map.addSource('base-range-rings', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: ringFeatures,
-        },
-      });
-
-      map.addLayer({
-        id: 'base-range-rings-fill',
-        type: 'fill',
-        source: 'base-range-rings',
-        layout: {
-          visibility: showDistanceLines ? 'visible' : 'none',
-        },
-        paint: {
-          'fill-color': isDark ? '#0284c7' : '#0284c7',
-          'fill-opacity': isDark ? 0.02 : 0.015,
-        },
-      });
-
-      map.addLayer({
-        id: 'base-range-rings-line',
-        type: 'line',
-        source: 'base-range-rings',
-        layout: {
-          visibility: showDistanceLines ? 'visible' : 'none',
-        },
-        paint: {
-          'line-color': isDark ? '#38bdf8' : '#0284c7',
-          'line-width': 1.2,
-          'line-opacity': isDark ? 0.35 : 0.28,
-          'line-dasharray': [4, 4],
-        },
-      });
 
       // 2. Zomato/Swiggy-style Delivery Navigation Corridors
       // Clean up previous sources if present
@@ -581,15 +542,14 @@ export default function MapView({
           'line-join': 'round',
         },
         paint: {
-          'line-color': isDark ? '#38bdf8' : '#0284c7',
+          'line-color': isDark ? '#0284c7' : '#007AFF',
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            3.5,
-            2.4,
+            4.5,
+            3.2,
           ],
-          'line-opacity': isDark ? 0.45 : 0.4,
-          'line-dasharray': [3, 2],
+          'line-opacity': isDark ? 0.8 : 0.75,
         },
       });
 
@@ -709,9 +669,9 @@ export default function MapView({
         type: 'line',
         source: 'camp-routes',
         paint: {
-          'line-color': isDark ? '#06b6d4' : '#0284c7',
-          'line-width': 4,
-          'line-opacity': isDark ? 0.18 : 0.12,
+          'line-color': isDark ? '#38bdf8' : '#0284c7',
+          'line-width': 4.5,
+          'line-opacity': isDark ? 0.12 : 0.08,
           'line-blur': 2,
         },
       });
@@ -721,10 +681,9 @@ export default function MapView({
         type: 'line',
         source: 'camp-routes',
         paint: {
-          'line-color': isDark ? '#38bdf8' : '#0284c7',
-          'line-width': 2,
-          'line-opacity': isDark ? 0.75 : 0.65,
-          'line-dasharray': [3, 2.5],
+          'line-color': isDark ? '#334155' : '#cbd5e1',
+          'line-width': 2.5,
+          'line-opacity': isDark ? 0.4 : 0.5,
         },
       });
 
@@ -934,12 +893,15 @@ export default function MapView({
       const upcomingCoords = split.upcomingRoute;
       const midIdx = Math.max(0, Math.floor(upcomingCoords.length / 2));
       const midPoint = upcomingCoords[midIdx] || [v.lon, v.lat];
-      const midLon = (midPoint[0] + v.lon) / 2;
-      const midLat = (midPoint[1] + v.lat) / 2;
+      const midLon = midPoint[0];
+      const midLat = midPoint[1];
 
       const targetCamp = camps.find(c => c.id === v.assignedCampId);
-      const targetName = v.status === 'returning' ? 'Base Hospital' : (targetCamp?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '') || 'Camp');
-      const distRemaining = v.distRemainingKm || Math.round(calculateDistanceKm(v.lat, v.lon, targetCamp?.lat || BASE_HOSPITAL.lat, targetCamp?.lon || BASE_HOSPITAL.lon));
+      const targetName = v.status === 'returning' 
+        ? 'Base Hospital' 
+        : (targetCamp?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '')?.replace(' Eye Screening Camp', '') || 'Camp');
+      const roadDistFromBase = v.roadDistFromBaseKm || 16.8;
+      const roadDistToCamp = v.roadDistToCampKm || v.distRemainingKm || 18.0;
       const eta = v.etaMins || 14;
       const isSelected = v.id === selectedVehicleId;
 
@@ -968,47 +930,14 @@ export default function MapView({
             : (isDark ? 'bg-slate-950/95 text-cyan-300 border-cyan-500/40' : 'bg-white/95 text-blue-900 border-blue-200 shadow-sm')
         }">
           <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : (isDark ? 'bg-cyan-400' : 'bg-emerald-500')} animate-pulse"></span>
-          <span>⚡ ~${eta}m • ${distRemaining} km to ${targetName}</span>
+          <span>🛣️ ${roadDistFromBase} km from Base • ~${roadDistToCamp} km to ${targetName}</span>
         </div>
       `;
     });
   };
 
-  // Add Range Ring Labels on the northern arc of each ring
-  const updateRingLabels = (map) => {
-    if (!map) return;
-    const isDark = theme === 'dark';
-
-    // Remove existing
-    ringLabelMarkersRef.current.forEach(m => m.remove());
-    ringLabelMarkersRef.current = [];
-
-    const ringRadii = [15, 30, 50];
-    ringRadii.forEach((r) => {
-      // Point on the northern boundary of the circle
-      const degLat = r / 110.574;
-      const ringNorthCoord = [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat + degLat];
-
-      const el = document.createElement('div');
-      el.className = 'select-none pointer-events-none flex items-center justify-center';
-      el.style.display = showDistanceLines ? 'flex' : 'none';
-      el.innerHTML = `
-        <div class="px-2 py-0.5 rounded-md border text-[9px] font-mono font-bold uppercase tracking-wider ${
-          isDark 
-            ? 'bg-slate-900/90 text-cyan-300/80 border-cyan-500/30 shadow-xs' 
-            : 'bg-white/90 text-sky-700/80 border-slate-200 shadow-xs'
-        }">
-          ⭕ ${r} km Base Radius
-        </div>
-      `;
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat(ringNorthCoord)
-        .addTo(map);
-
-      ringLabelMarkersRef.current.push(marker);
-    });
-  };
+  // Air Range Rings removed as per user instruction (strictly true road distances only)
+  const updateRingLabels = () => {};
 
   // Initialize Map
   useEffect(() => {
@@ -1228,15 +1157,17 @@ export default function MapView({
           </div>
         </div>
 
-        <!-- Apple Callout Label Pill -->
-        <div class="mt-1 whitespace-nowrap px-2 py-0.5 rounded-full backdrop-blur-md ${
+        <!-- Apple Callout Label Pill with Camp Person In-Charge & GPS -->
+        <div class="mt-1 whitespace-nowrap px-2.5 py-0.5 rounded-full backdrop-blur-md ${
           isDark 
             ? 'bg-slate-950/95 border border-emerald-500/40 text-emerald-200 shadow-md' 
             : 'bg-white/95 border border-emerald-200 text-slate-800 shadow-xs'
         } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105">
           <span class="w-1.5 h-1.5 rounded-full ${incomingVehicle ? 'bg-emerald-400 animate-ping' : 'bg-emerald-500'}"></span>
           <span>${shortCampName}</span>
-          <span class="${isDark ? 'text-emerald-400/90 font-mono' : 'text-emerald-600 font-mono'} font-semibold">(${camp.currentScreened || 0})</span>
+          <span class="text-slate-400 dark:text-slate-600">•</span>
+          <span class="${isDark ? 'text-emerald-300' : 'text-emerald-700'} font-medium">${camp.coordinatorName || 'Lead'}</span>
+          <span class="text-[9px] font-mono opacity-60">(${camp.lat.toFixed(3)}°, ${camp.lon.toFixed(3)}°)</span>
         </div>
       `;
 
@@ -1309,7 +1240,7 @@ export default function MapView({
           ${v.status === 'moving' && v.speed > 0 ? `
             <div class="mb-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md flex items-center gap-1.5 bg-gradient-to-r from-blue-600 via-sky-600 to-indigo-600 text-white border-white/60 text-[9.5px] font-mono font-bold tracking-tight pointer-events-none">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>⚡ ~${v.etaMins || 14}m to Camp (${v.distRemainingKm || 12}km)</span>
+              <span>⚡ ~${v.etaMins || 14}m to Camp (${v.roadDistToCampKm || v.distRemainingKm || 18}km Road)</span>
             </div>
           ` : ''}
 
@@ -1329,7 +1260,9 @@ export default function MapView({
           }">
             <span class="w-2 h-2 rounded-full ${statusDotColor}"></span>
             <span class="text-[10px] font-bold leading-none tracking-tight">${shortName}</span>
-            <span class="text-[9px] font-mono opacity-80">${v.speed > 0 ? `${v.speed} km/h` : (v.patientsOnboard > 0 ? `${v.patientsOnboard} bded` : 'On Site')}</span>
+            <span class="text-slate-400 dark:text-slate-600">•</span>
+            <span class="text-[9.5px] font-medium opacity-90">${v.driverName ? v.driverName.split(' ')[0] : 'Driver'}</span>
+            <span class="text-[9px] font-mono opacity-80">${v.speed > 0 ? `${v.speed} km/h` : 'Standby'}</span>
           </div>
         </div>
       `;

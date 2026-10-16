@@ -44,13 +44,13 @@ try {
   await new Promise(r => setTimeout(r, 4500));
 
   const overviewScreenshot = await send("Page.captureScreenshot", { format: "png" });
-  fs.writeFileSync("/tmp/designated_camp_3d_ambulance.png", Buffer.from(overviewScreenshot.data, "base64"));
-  console.log("Saved /tmp/designated_camp_3d_ambulance.png");
+  fs.writeFileSync("/tmp/clean_road_distance_overview.png", Buffer.from(overviewScreenshot.data, "base64"));
+  console.log("Saved /tmp/clean_road_distance_overview.png");
 
-  // Select first moving ambulance card (Mobile Clinic Ambulance 1)
+  // 1. Select Mobile Clinic Ambulance 1
   await send("Runtime.evaluate", {
     expression: `(() => {
-      const cards = document.querySelectorAll(".cursor-pointer.shadow-2xs, .cursor-pointer");
+      const cards = document.querySelectorAll(".cursor-pointer");
       for (const card of cards) {
         if (card.textContent && card.textContent.includes("Mobile Clinic")) {
           card.click();
@@ -60,11 +60,30 @@ try {
     })()`
   });
 
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise(r => setTimeout(r, 2500));
 
   const selectedScreenshot = await send("Page.captureScreenshot", { format: "png" });
-  fs.writeFileSync("/tmp/designated_camp_selected.png", Buffer.from(selectedScreenshot.data, "base64"));
-  console.log("Saved /tmp/designated_camp_selected.png");
+  fs.writeFileSync("/tmp/clean_vehicle_selected.png", Buffer.from(selectedScreenshot.data, "base64"));
+  console.log("Saved /tmp/clean_vehicle_selected.png");
+
+  // 2. Click on a Camp marker or trigger camp selection to capture clean camp modal
+  await send("Runtime.evaluate", {
+    expression: `(() => {
+      const campPills = document.querySelectorAll(".group.select-none");
+      for (const p of campPills) {
+        if (p.textContent && p.textContent.includes("Harraiya")) {
+          p.click();
+          break;
+        }
+      }
+    })()`
+  });
+
+  await new Promise(r => setTimeout(r, 2000));
+
+  const campModalScreenshot = await send("Page.captureScreenshot", { format: "png" });
+  fs.writeFileSync("/tmp/clean_camp_modal.png", Buffer.from(campModalScreenshot.data, "base64"));
+  console.log("Saved /tmp/clean_camp_modal.png");
 
 } catch (err) {
   console.error("Capture error:", err);

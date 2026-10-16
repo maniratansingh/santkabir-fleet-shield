@@ -35,6 +35,7 @@ export default function AppleSheet({
   const [filter, setFilter] = useState('all'); // 'all', 'moving', 'at_camp', 'at_base'
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
+  const assignedCamp = camps.find((c) => c.id === selectedVehicle?.assignedCampId);
 
   // Cycling detents
   const cycleDetent = () => {
@@ -134,24 +135,62 @@ export default function AppleSheet({
                     {/* Battery Pill */}
                     <div className="flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/40">
                       <Battery className="w-3 h-3" />
-                      <span>{selectedVehicle.battery}%</span>
+                      <span>{selectedVehicle.battery || selectedVehicle.batt || 88}%</span>
                     </div>
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                    {selectedVehicle.plate || selectedVehicle.regNumber || 'UP-51-AT-4211'} • {selectedVehicle.driverName || selectedVehicle.driver || 'Driver'}
+                  <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 truncate">
+                    Driver: <strong className="text-slate-900 dark:text-white font-bold">{selectedVehicle.driverName || 'Ramesh Yadav'}</strong> • <span className="font-mono text-slate-400">{selectedVehicle.plate || 'UP-51-AT-4211'}</span>
                   </div>
-                  <div className="text-[11px] text-sky-600 dark:text-cyan-400 font-medium flex items-center gap-1 mt-1">
+                  <div className="text-[11px] text-sky-600 dark:text-cyan-400 font-medium flex items-center gap-1 mt-1 truncate">
                     <MapPin className="w-3 h-3 shrink-0" />
                     <span className="truncate">
-                      {camps.find(c => c.id === selectedVehicle.assignedCampId)?.name || 'Sant Kabir Eye Hospital Base'}
+                      Destination: {camps.find(c => c.id === selectedVehicle.assignedCampId)?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '') || 'Sant Kabir Base'} 
+                      {assignedCamp?.coordinatorName ? ` (Lead: ${assignedCamp.coordinatorName})` : ''}
                     </span>
                   </div>
                 </div>
               </div>
 
+              {/* Accurate Live GPS & Navigation Hub */}
+              <div className="my-2 p-3 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-white">
+                    <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Live GPS Position</span>
+                  </div>
+                  <span className="text-[11px] font-mono font-bold text-sky-600 dark:text-cyan-400 bg-sky-50 dark:bg-sky-950/60 px-2.5 py-0.5 rounded-full border border-sky-200/60 dark:border-sky-800">
+                    {selectedVehicle.lat.toFixed(5)}° N, {selectedVehicle.lon.toFixed(5)}° E
+                  </span>
+                </div>
+
+                {/* 1-Click External Navigation Buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-0.5">
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${selectedVehicle.lat},${selectedVehicle.lon}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-sky-600 hover:from-blue-700 hover:to-sky-700 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5 transition-transform active:scale-98"
+                  >
+                    <Navigation className="w-3.5 h-3.5" />
+                    <span>Google Maps</span>
+                    <span className="text-[10px]">↗</span>
+                  </a>
+                  <a
+                    href={`https://maps.apple.com/?daddr=${selectedVehicle.lat},${selectedVehicle.lon}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white text-xs font-semibold border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Apple Maps</span>
+                    <span className="text-[10px]">↗</span>
+                  </a>
+                </div>
+              </div>
+
               {/* Zomato / Swiggy Delivery Status Platter */}
               {selectedVehicle.status !== 'at_base' && (
-                <div className="my-2 p-3 rounded-2xl bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent border border-blue-500/25 dark:border-blue-400/20 shadow-xs">
+                <div className="my-1.5 p-3 rounded-2xl bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent border border-blue-500/25 dark:border-blue-400/20 shadow-xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
@@ -166,17 +205,27 @@ export default function AppleSheet({
                     </div>
                   </div>
 
-                  {/* Route Corridor Progress Tracker Bar */}
+                  {/* Route Corridor Progress Tracker Bar with True Road Distances */}
                   <div className="mt-2.5 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                    <span className="truncate max-w-[95px]">Sant Kabir Base</span>
-                    <span className="font-mono text-blue-600 dark:text-cyan-400 font-bold">{selectedVehicle.distRemainingKm || 12} km away</span>
-                    <span className="truncate max-w-[105px] text-right">{camps.find(c => c.id === selectedVehicle.assignedCampId)?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '') || 'Camp'}</span>
+                    <span className="truncate max-w-[110px]">
+                      Base ({selectedVehicle.roadDistFromBaseKm || 16.8} km road)
+                    </span>
+                    <span className="font-mono text-blue-600 dark:text-cyan-400 font-bold">
+                      {selectedVehicle.distRemainingKm || selectedVehicle.roadDistToCampKm || 18} km to Camp
+                    </span>
+                    <span className="truncate max-w-[105px] text-right">
+                      {camps.find(c => c.id === selectedVehicle.assignedCampId)?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '') || 'Camp'}
+                    </span>
                   </div>
 
                   <div className="relative mt-1 w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                     <div 
                       className="h-full rounded-full bg-gradient-to-r from-blue-600 via-sky-400 to-emerald-400 transition-all duration-500"
-                      style={{ width: `${Math.min(95, Math.max(15, Math.round(((selectedVehicle.routeStep || 1.8) / 4) * 100)))}%` }}
+                      style={{ 
+                        width: `${Math.min(96, Math.max(8, Math.round(
+                          ((selectedVehicle.roadDistFromBaseKm || 16) / ((selectedVehicle.totalRoadKm || 34.8) || 1)) * 100
+                        )))}%` 
+                      }}
                     />
                   </div>
                 </div>
@@ -230,7 +279,7 @@ export default function AppleSheet({
               </div>
 
               {/* Micro-Telemetry Grid */}
-              <div className="grid grid-cols-2 gap-2 mt-2">
+              <div className="grid grid-cols-2 gap-2 mt-1">
                 <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold block">Speed</span>
                   <span className="text-xs font-bold text-slate-800 dark:text-white font-mono">
@@ -238,22 +287,22 @@ export default function AppleSheet({
                   </span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Cellular Ping</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Cellular Signal</span>
                   <span className="text-xs font-bold text-slate-800 dark:text-white font-mono flex items-center gap-1">
                     <Signal className="w-3 h-3 text-emerald-500" />
-                    4G LTE • 38ms
+                    {selectedVehicle.network || '4G LTE'} • {selectedVehicle.pingMs || 38}ms
                   </span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Doctor In-Charge</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Driver Assigned</span>
                   <span className="text-xs font-bold text-slate-800 dark:text-white truncate block">
-                    {selectedVehicle.assignedDoctor || selectedVehicle.doctor || 'Dr. S. K. Verma'}
+                    {selectedVehicle.driverName || 'Driver'}
                   </span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Surgical Boarded</span>
-                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400 font-mono">
-                    {selectedVehicle.boardedPatients || selectedVehicle.boardedPassengers || 0} Patients
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Coordinates</span>
+                  <span className="text-xs font-bold text-sky-700 dark:text-cyan-400 font-mono">
+                    {selectedVehicle.lat.toFixed(4)}°, {selectedVehicle.lon.toFixed(4)}°
                   </span>
                 </div>
               </div>
@@ -315,18 +364,27 @@ export default function AppleSheet({
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 truncate block">
-                            {assignedCamp ? assignedCamp.name : 'Sant Kabir Eye Hospital'}
-                          </span>
+                          <div className="text-[10px] text-slate-600 dark:text-slate-300 truncate">
+                            Driver: <strong className="text-slate-800 dark:text-white">{v.driverName}</strong>
+                          </div>
+                          <div className="text-[9.5px] font-mono text-slate-400 truncate">
+                            {v.lat.toFixed(4)}° N, {v.lon.toFixed(4)}° E
+                          </div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        <div className="text-right">
-                          <span className="text-[10px] font-mono text-slate-400 block">
-                            {v.battery}%
-                          </span>
-                        </div>
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-2 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/60 border border-sky-200/80 dark:border-sky-800 text-sky-700 dark:text-cyan-400 text-[10px] font-bold hover:bg-sky-100 transition-colors flex items-center gap-1 shadow-2xs"
+                          title="Navigate in Google Maps"
+                        >
+                          <Navigation className="w-3 h-3" />
+                          <span>Maps</span>
+                        </a>
                         <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-sky-500 transition-colors" />
                       </div>
                     </div>
