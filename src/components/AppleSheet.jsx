@@ -413,6 +413,34 @@ export default function AppleSheet({
               </div>
             </div>
           )}
+
+          {/* Clinical Developer Plaque by Mani Ratan Singh */}
+          <div className="pt-2 mt-1 border-t border-slate-200/70 dark:border-slate-800/70 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 shrink-0 select-none">
+            <span className="flex items-center gap-1 font-mono text-[9px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Sant Kabir Hospital (PIECS)
+            </span>
+            <div className="flex items-center gap-1">
+              <span>Engineered by</span>
+              <a
+                href="https://mrps.in"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-slate-800 dark:text-white hover:text-sky-600 dark:hover:text-cyan-400 transition-colors"
+              >
+                Mani Ratan Singh
+              </a>
+              <span>•</span>
+              <a
+                href="https://github.com/maniratansingh"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sky-600 dark:text-cyan-400 hover:underline"
+              >
+                mrps.in
+              </a>
+            </div>
+          </div>
         </div>
       )}
     </div>

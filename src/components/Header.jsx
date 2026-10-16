@@ -168,14 +168,14 @@ export default function Header({
           )}
         </button>
 
-        {/* Traccar Phone App Setup Button */}
+        {/* Fleet Shield Phone App Setup Button */}
         <button
           onClick={onOpenDriverModal}
-          title="Connect driver phones using Traccar Client"
+          title="Connect driver phones using Sant Kabir Fleet Shield"
           className="flex items-center gap-1 px-2.5 md:px-3 py-1.5 text-xs font-medium bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white rounded-lg shadow-sm border border-sky-400/30 transition-all cursor-pointer"
         >
           <Smartphone className="w-3.5 h-3.5 shrink-0" />
-          <span className="hidden md:inline font-semibold">Traccar Setup</span>
+          <span className="hidden md:inline font-semibold">Fleet Shield</span>
         </button>
 
         {/* Demo Simulation Toggle */}

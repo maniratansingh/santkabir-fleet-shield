@@ -270,7 +270,7 @@ export default function App() {
   const handleToggleSimulation = () => {
     setIsSimulation(prev => {
       const next = !prev;
-      showToast(next ? 'Active Simulation Mode (Live Corridors)' : 'Live Traccar Server Feed Mode', 'info');
+      showToast(next ? 'Active Simulation Mode (Live Corridors)' : 'Live Fleet Shield Feed Mode (mrps.in)', 'info');
       return next;
     });
   };
@@ -377,7 +377,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 6. Traccar Driver Setup Modal */}
+      {/* 6. Sant Kabir Fleet Shield Driver Provisioning Modal (by Mani Ratan Singh) */}
       <DriverSetupModal 
         isOpen={isDriverModalOpen}
         onClose={() => setIsDriverModalOpen(false)}

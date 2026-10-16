@@ -1,7 +1,9 @@
 {
-  "name": "santkabir-eye-camp-fleet",
+  "name": "santkabir-fleet-shield",
   "version": "1.0.0",
-  "description": "Sant Kabir Eye Hospital (PIECS) - Real-time Eye Camp Fleet Monitor Wallboard",
+  "description": "Sant Kabir Fleet Shield — Real-time Outreach Fleet Command Wallboard by Mani Ratan Singh (mrps.in)",
+  "author": "Mani Ratan Singh <https://mrps.in>",
+  "homepage": "https://mrps.in",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +13,7 @@
   "dependencies": {
     "lucide-react": "^1.57.0",
     "maplibre-gl": "^6.14.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

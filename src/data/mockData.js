@@ -76,11 +76,10 @@ export const VEHICLE_LINE_PALETTES = [
 
 export const INITIAL_VEHICLES = [
   {
-    id: 'SK-VAN-01',
+    id: 'SK-AMB-01',
     name: 'Mobile Clinic Ambulance 1',
     type: 'ambulance',
     equipment: 'Slit Lamp, Auto-Refractor, Tonometer',
-    plate: 'UP-51-AT-4211',
     driverName: 'Ramesh Yadav',
     driverPhone: '+91 94151 40719',
     organizerName: 'Rajesh Mishra',
@@ -104,11 +103,10 @@ export const INITIAL_VEHICLES = [
     lastSeen: Date.now() - 10000,
   },
   {
-    id: 'SK-SHUTTLE-02',
+    id: 'SK-AMB-02',
     name: 'Surgical Patient Ambulance A',
     type: 'ambulance',
     equipment: '15-Seater Patient Carrier, First Aid',
-    plate: 'UP-51-B-8930',
     driverName: 'Manoj Kumar',
     driverPhone: '+91 93364 66677',
     organizerName: 'M. P. Chaudhary',
@@ -132,11 +130,10 @@ export const INITIAL_VEHICLES = [
     lastSeen: Date.now() - 25000,
   },
   {
-    id: 'SK-VISION-03',
+    id: 'SK-AMB-03',
     name: 'Vision Outreach Ambulance 2',
     type: 'ambulance',
     equipment: '32-Seater Complete Mobile Eye Clinic',
-    plate: 'UP-51-E-1044',
     driverName: 'Suresh Maurya',
     driverPhone: '+91 98380 12345',
     organizerName: 'Sunil Jaiswal',
