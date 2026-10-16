@@ -132,8 +132,8 @@ export const INITIAL_CAMPS = [
 export const INITIAL_VEHICLES = [
   {
     id: 'SK-VAN-01',
-    name: 'Mobile Screening Van 1',
-    type: 'van',
+    name: 'Mobile Clinic Ambulance 1',
+    type: 'ambulance',
     equipment: 'Slit Lamp, Auto-Refractor, Tonometer',
     plate: 'UP-51-AT-4211',
     assignedDoctor: 'Dr. S. K. Verma',
@@ -154,8 +154,8 @@ export const INITIAL_VEHICLES = [
   },
   {
     id: 'SK-SHUTTLE-02',
-    name: 'Cataract Surgical Shuttle A',
-    type: 'shuttle',
+    name: 'Surgical Patient Ambulance A',
+    type: 'ambulance',
     equipment: '15-Seater Patient Carrier, First Aid',
     plate: 'UP-51-B-8930',
     assignedDoctor: 'Optom. Priya Singh',
@@ -176,8 +176,8 @@ export const INITIAL_VEHICLES = [
   },
   {
     id: 'SK-VISION-03',
-    name: 'Vision Outreach Bus 2',
-    type: 'bus',
+    name: 'Vision Outreach Ambulance 2',
+    type: 'ambulance',
     equipment: '32-Seater Complete Mobile Eye Clinic',
     plate: 'UP-51-E-1044',
     assignedDoctor: 'Dr. Anand Tiwari',
@@ -198,7 +198,7 @@ export const INITIAL_VEHICLES = [
   },
   {
     id: 'SK-AMBULANCE-04',
-    name: 'Emergency Outreach Ambulance',
+    name: 'Emergency Trauma Ambulance 4',
     type: 'ambulance',
     equipment: 'Emergency Ophthalmic Trauma & General BLS',
     plate: 'UP-51-G-0012',

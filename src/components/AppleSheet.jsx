@@ -51,12 +51,8 @@ export default function AppleSheet({
     return true;
   });
 
-  // Vehicle Icon Selector
-  const getVehicleIcon = (type) => {
-    if (type === 'bus') return Bus;
-    if (type === 'ambulance') return Ambulance;
-    return Truck;
-  };
+  // Vehicle Icon Selector - All outreach fleet units are specialized ambulances
+  const getVehicleIcon = () => Ambulance;
 
   // Determine height classes based on detent
   const getDetentHeightClass = () => {
@@ -127,8 +123,8 @@ export default function AppleSheet({
 
               {/* AirTag Hero Header */}
               <div className="py-3 flex items-start gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 text-white flex items-center justify-center shadow-md shrink-0">
-                  {React.createElement(getVehicleIcon(selectedVehicle.type), { className: 'w-6 h-6' })}
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-600 via-red-500 to-rose-400 text-white flex items-center justify-center shadow-md shadow-rose-500/20 shrink-0">
+                  <Ambulance className="w-6 h-6" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">

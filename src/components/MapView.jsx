@@ -179,53 +179,76 @@ function createGeoJSONCircle(center, radiusInKm, points = 64) {
   };
 }
 
-// Apple-style vehicle glyph generator for AirTag pins
-function getVehicleIconSvg(type, isDark, status) {
-  let color = isDark ? '#38bdf8' : '#0284c7';
-  if (status === 'moving') color = isDark ? '#34d399' : '#059669';
-  if (status === 'returning') color = isDark ? '#a78bfa' : '#6366f1';
-  if (status === 'at_base') color = isDark ? '#94a3b8' : '#64748b';
+// Compute road navigation trail originating from Sant Kabir Eye Hospital (Base) to the ambulance
+function getNavigationTrailCoords(v, camps) {
+  const baseCoord = [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat];
+  const vehCoord = [v.lon, v.lat];
 
-  if (type === 'shuttle') {
-    return `
-      <svg class="w-5 h-5" style="color: ${color};" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-1.1 0-2 .9-2 2v7h2"/>
-        <circle cx="7" cy="17" r="2"/>
-        <path d="M9 17h6"/>
-        <circle cx="17" cy="17" r="2"/>
-      </svg>
-    `;
+  if (!campCoordValid(v)) return [baseCoord, vehCoord];
+
+  const camp = camps.find(c => c.id === v.assignedCampId);
+  if (!camp || !camp.routeWaypoints || camp.routeWaypoints.length < 2) {
+    return [baseCoord, vehCoord];
   }
-  if (type === 'bus') {
-    return `
-      <svg class="w-5 h-5" style="color: ${color};" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="4" width="18" height="13" rx="2"/>
-        <circle cx="7" cy="17" r="2"/>
-        <path d="M9 17h6"/>
-        <circle cx="17" cy="17" r="2"/>
-        <path d="M3 10h18"/>
-      </svg>
-    `;
+
+  const wps = camp.routeWaypoints;
+  const trail = [baseCoord];
+
+  // Radial distance of vehicle from base
+  const distVehToBase = Math.hypot(v.lon - BASE_HOSPITAL.lon, v.lat - BASE_HOSPITAL.lat);
+
+  for (let i = 1; i < wps.length; i++) {
+    const wp = wps[i];
+    const distWpToBase = Math.hypot(wp[0] - BASE_HOSPITAL.lon, wp[1] - BASE_HOSPITAL.lat);
+    if (distWpToBase < distVehToBase) {
+      trail.push(wp);
+    }
   }
-  if (type === 'ambulance') {
-    return `
-      <svg class="w-5 h-5 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="1" y="3" width="15" height="13" rx="2"/>
-        <polygon points="16 8 20 8 23 11 23 16 16 16 8"/>
-        <circle cx="5.5" cy="18.5" r="2.5"/>
-        <circle cx="18.5" cy="18.5" r="2.5"/>
-        <path d="M8.5 7.5v4M6.5 9.5h4" stroke-width="2.2"/>
-      </svg>
-    `;
-  }
-  // Mobile screening van with eye glyph
+
+  trail.push(vehCoord);
+  return trail;
+}
+
+function campCoordValid(v) {
+  return typeof v.lon === 'number' && typeof v.lat === 'number';
+}
+
+// Apple-style beautiful medical ambulance glyph generator for AirTag pins
+function getVehicleIconSvg(type, isDark, status) {
+  const isMoving = status === 'moving' || status === 'returning';
+  
+  // High-contrast ambulance theme colors
+  const bodyFill = isDark ? '#1E293B' : '#FFFFFF';
+  const bodyStroke = isDark ? '#E2E8F0' : '#334155';
+  const windowFill = isDark ? '#0284C7' : '#BAE6FD';
+  const redCrossFill = '#EF4444';
+  const sirenColor = isMoving ? '#EF4444' : '#F59E0B';
+
   return `
-    <svg class="w-5 h-5" style="color: ${color};" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="1" y="3" width="15" height="13" rx="2"/>
-      <polygon points="16 8 20 8 23 11 23 16 16 16 8"/>
-      <circle cx="5.5" cy="18.5" r="2.5"/>
-      <circle cx="18.5" cy="18.5" r="2.5"/>
-      <circle cx="8.5" cy="9.5" r="1.5" fill="currentColor"/>
+    <svg class="w-6 h-6 select-none shrink-0" viewBox="0 0 28 24" fill="none">
+      <!-- Flashing Emergency Roof Beacon Bar -->
+      <rect x="10" y="2" width="6" height="2.5" rx="1.25" fill="${sirenColor}" />
+      ${isMoving ? `<circle cx="13" cy="3.2" r="3" fill="${sirenColor}" opacity="0.45" class="animate-ping" />` : ''}
+
+      <!-- Ambulance Body Chassis -->
+      <path d="M2 17V8C2 6.9 2.9 6 4 6H17V17H2Z" fill="${bodyFill}" stroke="${bodyStroke}" stroke-width="1.8" stroke-linejoin="round" />
+      
+      <!-- Front Cab Aerodynamic Slope -->
+      <path d="M17 9H20.8C21.6 9 22.3 9.6 22.7 10.3L25.3 14.2C25.7 14.8 26 15.5 26 16.2V17H17V9Z" fill="${bodyFill}" stroke="${bodyStroke}" stroke-width="1.8" stroke-linejoin="round" />
+      
+      <!-- Cab Window -->
+      <path d="M17.5 10.5H20.8L23.2 14H17.5V10.5Z" fill="${windowFill}" stroke="${bodyStroke}" stroke-width="1.2" />
+      
+      <!-- Medical Red Cross (✚) on Ambulance Body -->
+      <rect x="8.5" y="8.5" width="2.5" height="6.5" rx="0.5" fill="${redCrossFill}" />
+      <rect x="6.5" y="10.5" width="6.5" height="2.5" rx="0.5" fill="${redCrossFill}" />
+
+      <!-- Dual Wheels with Chrome Hubs -->
+      <circle cx="6.5" cy="17.5" r="2.5" fill="#0F172A" stroke="${bodyStroke}" stroke-width="1.4" />
+      <circle cx="6.5" cy="17.5" r="0.9" fill="#E2E8F0" />
+      
+      <circle cx="20.5" cy="17.5" r="2.5" fill="#0F172A" stroke="${bodyStroke}" stroke-width="1.4" />
+      <circle cx="20.5" cy="17.5" r="0.9" fill="#E2E8F0" />
     </svg>
   `;
 }
@@ -301,14 +324,18 @@ export default function MapView({
     const map = mapRef.current;
     map.setStyle(MAP_STYLES[key].style);
 
-    map.once('style.load', () => {
-      addCustomLayers(map);
-      updateBaseMarker();
-      updateCampMarkers();
-      updateRingLabels(map);
-      updateDistanceVectors(map);
-      updateVehicleMarkers();
-    });
+    const onStyleData = () => {
+      if (map.isStyleLoaded()) {
+        map.off('styledata', onStyleData);
+        addCustomLayers(map, key === 'dark');
+        updateBaseMarker();
+        updateCampMarkers();
+        updateRingLabels(map);
+        updateDistanceVectors(map);
+        updateVehicleMarkers();
+      }
+    };
+    map.on('styledata', onStyleData);
   };
 
   useEffect(() => {
@@ -346,9 +373,9 @@ export default function MapView({
   }, [actionTrigger]);
 
   // Add Route lines, Distance Range Rings, and Geofences
-  const addCustomLayers = (map) => {
+  const addCustomLayers = (map, forceDark = null) => {
     try {
-      const isDark = theme === 'dark';
+      const isDark = forceDark !== null ? forceDark : (theme === 'dark' || currentStyleKeyRef.current === 'dark');
 
       // 1. Range Rings around Base Hospital (15km, 30km, 50km)
       if (map.getSource('base-range-rings')) {
@@ -396,22 +423,20 @@ export default function MapView({
         },
       });
 
-      // 2. Direct Distance Vector Lines from Base Hospital to each Vehicle
+      // 2. Solid Blue Navigation Trail Corridor from Sant Kabir Eye Hospital to each Ambulance
       if (map.getSource('base-distance-vectors')) {
-        map.removeLayer('base-distance-vectors-line');
+        if (map.getLayer('base-navigation-trail-casing')) map.removeLayer('base-navigation-trail-casing');
+        if (map.getLayer('base-distance-vectors-line')) map.removeLayer('base-distance-vectors-line');
         map.removeSource('base-distance-vectors');
       }
 
       const distanceLineFeatures = vehicles
-        .filter(v => v.status !== 'at_base')
-        .map(v => ({
+        .filter((v) => v.status !== 'at_base')
+        .map((v) => ({
           type: 'Feature',
           geometry: {
             type: 'LineString',
-            coordinates: [
-              [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat],
-              [v.lon, v.lat],
-            ],
+            coordinates: getNavigationTrailCoords(v, camps),
           },
           properties: {
             vehicleId: v.id,
@@ -428,33 +453,63 @@ export default function MapView({
         },
       });
 
+      // Apple Maps navigation soft blue casing/glow
+      map.addLayer({
+        id: 'base-navigation-trail-casing',
+        type: 'line',
+        source: 'base-distance-vectors',
+        layout: {
+          visibility: showDistanceLines ? 'visible' : 'none',
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': isDark ? '#0284c7' : '#007AFF',
+          'line-width': [
+            'case',
+            ['get', 'isSelected'],
+            10,
+            6,
+          ],
+          'line-opacity': [
+            'case',
+            ['get', 'isSelected'],
+            0.5,
+            0.28,
+          ],
+          'line-blur': 3,
+        },
+      });
+
+      // Apple Maps solid vibrant blue navigation ribbon
       map.addLayer({
         id: 'base-distance-vectors-line',
         type: 'line',
         source: 'base-distance-vectors',
         layout: {
           visibility: showDistanceLines ? 'visible' : 'none',
+          'line-cap': 'round',
+          'line-join': 'round',
         },
         paint: {
           'line-color': [
             'case',
             ['get', 'isSelected'],
-            isDark ? '#22d3ee' : '#0284c7',
-            isDark ? '#38bdf8' : '#0ea5e9',
+            '#007AFF',
+            isDark ? '#38bdf8' : '#0066FF',
           ],
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            3,
-            1.5,
+            5,
+            3.5,
           ],
           'line-opacity': [
             'case',
             ['get', 'isSelected'],
-            0.9,
-            isDark ? 0.45 : 0.4,
+            1.0,
+            0.88,
           ],
-          'line-dasharray': [2, 2],
         },
       });
 
@@ -569,6 +624,7 @@ export default function MapView({
     const visibility = showDistanceLines ? 'visible' : 'none';
     if (map.getLayer('base-range-rings-line')) map.setLayoutProperty('base-range-rings-line', 'visibility', visibility);
     if (map.getLayer('base-range-rings-fill')) map.setLayoutProperty('base-range-rings-fill', 'visibility', visibility);
+    if (map.getLayer('base-navigation-trail-casing')) map.setLayoutProperty('base-navigation-trail-casing', 'visibility', visibility);
     if (map.getLayer('base-distance-vectors-line')) map.setLayoutProperty('base-distance-vectors-line', 'visibility', visibility);
 
     Object.values(distanceMarkersRef.current).forEach(({ element }) => {
@@ -579,24 +635,22 @@ export default function MapView({
     });
   }, [showDistanceLines]);
 
-  // Update Distance Vector Line geometry and Midpoint Distance Badges
+  // Update Road Navigation Trail geometry and Midpoint Distance Badges
   const updateDistanceVectors = (map) => {
     if (!map || !map.getSource('base-distance-vectors')) return;
 
-    const isDark = theme === 'dark';
+    const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
 
     const distanceLineFeatures = vehicles
       .filter(v => v.status !== 'at_base')
       .map(v => {
+        const trailCoords = getNavigationTrailCoords(v, camps);
         const dist = calculateDistanceKm(v.lat, v.lon, BASE_HOSPITAL.lat, BASE_HOSPITAL.lon);
         return {
           type: 'Feature',
           geometry: {
             type: 'LineString',
-            coordinates: [
-              [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat],
-              [v.lon, v.lat],
-            ],
+            coordinates: trailCoords,
           },
           properties: {
             vehicleId: v.id,
@@ -623,9 +677,12 @@ export default function MapView({
     });
 
     vehicles.filter(v => v.status !== 'at_base').forEach((v) => {
+      const trailCoords = getNavigationTrailCoords(v, camps);
+      const midIdx = Math.max(0, Math.floor(trailCoords.length / 2));
+      const midPoint = trailCoords[midIdx] || [v.lon, v.lat];
+      const midLon = (midPoint[0] + v.lon) / 2;
+      const midLat = (midPoint[1] + v.lat) / 2;
       const dist = calculateDistanceKm(v.lat, v.lon, BASE_HOSPITAL.lat, BASE_HOSPITAL.lon);
-      const midLon = (BASE_HOSPITAL.lon + v.lon) / 2;
-      const midLat = (BASE_HOSPITAL.lat + v.lat) / 2;
       const isSelected = v.id === selectedVehicleId;
 
       let badgeObj = distanceMarkersRef.current[v.id];
@@ -647,12 +704,12 @@ export default function MapView({
       }
 
       badgeObj.element.innerHTML = `
-        <div class="px-2 py-0.5 rounded-full border text-[10px] font-mono font-bold tracking-tight shadow-md flex items-center gap-1 ${
+        <div class="px-2.5 py-0.5 rounded-full border text-[10px] font-mono font-bold tracking-tight shadow-md flex items-center gap-1.5 ${
           isSelected 
-            ? (isDark ? 'bg-cyan-950 text-cyan-200 border-cyan-400 scale-110 shadow-cyan-500/30' : 'bg-sky-600 text-white border-sky-700 scale-110 shadow-sky-500/30')
-            : (isDark ? 'bg-slate-950/90 text-cyan-300 border-cyan-500/40' : 'bg-white/95 text-sky-800 border-sky-200 shadow-sm')
+            ? (isDark ? 'bg-cyan-950 text-cyan-200 border-cyan-400 scale-110 shadow-cyan-500/30' : 'bg-blue-600 text-white border-blue-700 scale-110 shadow-blue-500/30')
+            : (isDark ? 'bg-slate-950/95 text-cyan-300 border-cyan-500/40' : 'bg-white/95 text-blue-900 border-blue-200 shadow-sm')
         }">
-          <span class="w-1.5 h-1.5 rounded-full ${isDark ? 'bg-cyan-400' : 'bg-sky-500'}"></span>
+          <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : (isDark ? 'bg-cyan-400' : 'bg-blue-600')} animate-pulse"></span>
           <span>${dist} km from Base</span>
         </div>
       `;
