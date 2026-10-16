@@ -45,6 +45,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // Explicit 404 for any legacy APK or download paths
+    if (url.pathname.endsWith('.apk') || url.pathname.startsWith('/downloads/')) {
+      return new Response('Not Found', { status: 404 });
+    }
+
     // 1. Endpoint: Universal Telemetry Receiver (Supports Traccar Client, OsmAnd, GPSLogger)
     // Works with:
     // - Direct Root URL: https://fleet.mrps.in/?id=12345&lat=26.79&lon=82.71... (Standard Traccar default)
