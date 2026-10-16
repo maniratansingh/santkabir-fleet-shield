@@ -66,6 +66,14 @@ const hIdx = Math.floor(harraiyaWps.length * 0.48);
 const bIdx = Math.floor(bansiWps.length * 0.44);
 const kIdx = Math.floor(khalilabadWps.length * 0.62);
 
+export const VEHICLE_LINE_PALETTES = [
+  { lineColor: '#10B981', glowColor: '#34D399', colorName: 'emerald' },
+  { lineColor: '#007AFF', glowColor: '#38BDF8', colorName: 'blue' },
+  { lineColor: '#8B5CF6', glowColor: '#C084FC', colorName: 'purple' },
+  { lineColor: '#F59E0B', glowColor: '#FCD34D', colorName: 'amber' },
+  { lineColor: '#EC4899', glowColor: '#F472B6', colorName: 'pink' },
+];
+
 export const INITIAL_VEHICLES = [
   {
     id: 'SK-VAN-01',
@@ -76,7 +84,6 @@ export const INITIAL_VEHICLES = [
     driverName: 'Ramesh Yadav',
     driverPhone: '+91 94151 40719',
     organizerName: 'Rajesh Mishra',
-    organizerPhone: '+91 94151 88822',
     sector: 'Harraiya Rural Sector',
     highwayName: 'NH-27 West',
     status: 'moving',
@@ -86,6 +93,9 @@ export const INITIAL_VEHICLES = [
     roadDistFromBaseKm: 16.8,
     totalRoadKm: 34.8,
     routeWaypoints: harraiyaWps,
+    lineColor: '#10B981', // Vibrant Emerald / Mint
+    glowColor: '#34D399',
+    colorName: 'emerald',
     battery: 89,
     network: '4G LTE',
     pingMs: 38,
@@ -102,7 +112,6 @@ export const INITIAL_VEHICLES = [
     driverName: 'Manoj Kumar',
     driverPhone: '+91 93364 66677',
     organizerName: 'M. P. Chaudhary',
-    organizerPhone: '+91 93364 55511',
     sector: 'Bansi Rural Sector',
     highwayName: 'SH-88 / Bansi Road North',
     status: 'moving',
@@ -112,6 +121,9 @@ export const INITIAL_VEHICLES = [
     roadDistFromBaseKm: 21.2,
     totalRoadKm: 48.3,
     routeWaypoints: bansiWps,
+    lineColor: '#007AFF', // Authentic Apple Blue
+    glowColor: '#38BDF8',
+    colorName: 'blue',
     battery: 76,
     network: '5G',
     pingMs: 24,
@@ -128,7 +140,6 @@ export const INITIAL_VEHICLES = [
     driverName: 'Suresh Maurya',
     driverPhone: '+91 98380 12345',
     organizerName: 'Sunil Jaiswal',
-    organizerPhone: '+91 98380 77733',
     sector: 'Sant Kabir Nagar Sector',
     highwayName: 'NH-27 East',
     status: 'returning',
@@ -138,38 +149,15 @@ export const INITIAL_VEHICLES = [
     roadDistFromBaseKm: 13.0,
     totalRoadKm: 34.1,
     routeWaypoints: khalilabadWps,
+    lineColor: '#8B5CF6', // Vivid Royal Violet
+    glowColor: '#C084FC',
+    colorName: 'purple',
     battery: 64,
     network: '4G LTE',
     pingMs: 44,
     lon: khalilabadWps[kIdx] ? khalilabadWps[kIdx][0] : 82.9459,
     lat: khalilabadWps[kIdx] ? khalilabadWps[kIdx][1] : 26.7925,
     lastSeen: Date.now() - 5000,
-  },
-  {
-    id: 'SK-AMBULANCE-04',
-    name: 'Emergency Trauma Ambulance 4',
-    type: 'ambulance',
-    equipment: 'Emergency Ophthalmic Trauma & General BLS',
-    plate: 'UP-51-G-0012',
-    driverName: 'Deepak Shukla',
-    driverPhone: '+91 94500 98765',
-    organizerName: 'Harishankar Tripathi',
-    organizerPhone: '+91 94500 44488',
-    sector: 'Hospital Base Standby',
-    highwayName: 'Base Station',
-    status: 'at_base',
-    speed: 0,
-    bearing: 0,
-    routeStep: 0,
-    roadDistFromBaseKm: 0,
-    totalRoadKm: 55.8,
-    routeWaypoints: OUTREACH_SECTORS.DOMARIYAGANJ.routeWaypoints,
-    battery: 98,
-    network: 'Wi-Fi Base',
-    pingMs: 12,
-    lat: 26.8048,
-    lon: 82.7628,
-    lastSeen: Date.now() - 3000,
   },
 ];
 

@@ -356,14 +356,16 @@ export default function MapView({
       baseMarkerRef.current = null;
     }
 
-    map.setStyle(MAP_STYLES[styleKey].style);
-
-    map.once('style.load', () => {
+    const onStyleReady = () => {
       addCustomLayers(map);
       updateBaseMarker(map);
       updateDistanceVectors(map);
       updateVehicleMarkers(map);
-    });
+    };
+
+    map.setStyle(MAP_STYLES[styleKey].style);
+    map.once('style.load', onStyleReady);
+    map.once('styledata', onStyleReady);
   };
 
   // Synchronize style when theme changes from light to dark or vice-versa
@@ -406,6 +408,8 @@ export default function MapView({
         },
         properties: {
           vehicleId: v.id,
+          lineColor: v.lineColor || '#007AFF',
+          glowColor: v.glowColor || '#38BDF8',
           isSelected: v.id === selectedVehicleId,
         },
       }));
@@ -418,7 +422,7 @@ export default function MapView({
         },
       });
 
-      // Ambient Cyan/Blue Glow Beneath Navigation Trail
+      // Ambient Glowing Halo Beneath Highway Navigation Trail (Dynamic per Vehicle Color)
       map.addLayer({
         id: 'delivery-trail-casing',
         type: 'line',
@@ -429,19 +433,19 @@ export default function MapView({
           'line-join': 'round',
         },
         paint: {
-          'line-color': isDark ? '#38BDF8' : '#0284C7',
+          'line-color': ['get', 'glowColor'],
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            10,
-            6.5,
+            12,
+            7.5,
           ],
-          'line-opacity': isDark ? 0.35 : 0.22,
-          'line-blur': 2.5,
+          'line-opacity': isDark ? 0.45 : 0.3,
+          'line-blur': 3,
         },
       });
 
-      // Solid Apple Maps Highway Navigation Ribbon
+      // Solid Apple Maps Highway Navigation Ribbon (Dynamic per Vehicle Color)
       map.addLayer({
         id: 'delivery-trail-line',
         type: 'line',
@@ -452,19 +456,14 @@ export default function MapView({
           'line-join': 'round',
         },
         paint: {
-          'line-color': [
-            'case',
-            ['get', 'isSelected'],
-            '#007AFF',
-            isDark ? '#0284c7' : '#0066FF',
-          ],
+          'line-color': ['get', 'lineColor'],
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            5,
-            3.8,
+            5.5,
+            4,
           ],
-          'line-opacity': 0.95,
+          'line-opacity': 0.98,
         },
       });
 
@@ -506,6 +505,8 @@ export default function MapView({
       },
       properties: {
         vehicleId: v.id,
+        lineColor: v.lineColor || '#007AFF',
+        glowColor: v.glowColor || '#38BDF8',
         isSelected: v.id === selectedVehicleId,
       },
     }));
@@ -515,6 +516,8 @@ export default function MapView({
         type: 'FeatureCollection',
         features: trailFeatures,
       });
+    } else {
+      addCustomLayers(map);
     }
 
     // Update on-road distance badges
@@ -539,17 +542,16 @@ export default function MapView({
 
       const roadDistFromBase = v.roadDistFromBaseKm || 0;
       const isSelected = v.id === selectedVehicleId;
+      const vColor = v.lineColor || '#007AFF';
+      const vGlow = v.glowColor || '#38BDF8';
 
       let badgeObj = distanceMarkersRef.current[v.id];
 
       const badgeContent = `
-        <div class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold tracking-tight shadow-lg flex items-center gap-1.5 ${
-          isSelected 
-            ? (isDark ? 'bg-cyan-950 text-cyan-200 border-cyan-400 scale-110 shadow-cyan-500/40' : 'bg-blue-600 text-white border-blue-700 scale-110 shadow-blue-500/30')
-            : (isDark ? 'bg-slate-950/95 text-cyan-300 border-cyan-500/40' : 'bg-white/95 text-blue-900 border-blue-200 shadow-sm')
-        }">
-          <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : (isDark ? 'bg-cyan-400' : 'bg-emerald-500')} animate-pulse"></span>
-          <span>🛣️ ${roadDistFromBase} km road from Hospital Base</span>
+        <div class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold tracking-tight shadow-lg flex items-center gap-1.5 transition-all duration-200"
+          style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${isSelected ? vColor : (isDark ? vGlow + '77' : vColor + '66')}; box-shadow: 0 4px 14px ${vColor}35; transform: ${isSelected ? 'scale(1.08)' : 'scale(1)'};">
+          <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'animate-ping' : ''}" style="background-color: ${vColor};"></span>
+          <span style="color: ${isDark ? '#F1F5F9' : '#0F172A'};">🛣️ ${roadDistFromBase} km road from Hospital Base</span>
         </div>
       `;
 
@@ -682,6 +684,8 @@ export default function MapView({
 
     vehicles.forEach((v) => {
       const isSelected = selectedVehicleId === v.id;
+      const vColor = v.lineColor || '#007AFF';
+      const vGlow = v.glowColor || '#38BDF8';
       let markerObj = markersRef.current[v.id];
 
       const shortName = v.name
@@ -690,17 +694,13 @@ export default function MapView({
         .replace('Vision Outreach ', 'Outreach ')
         .replace('Emergency Outreach ', '');
 
-      let statusDotColor = 'bg-slate-400';
-      if (v.status === 'moving') statusDotColor = 'bg-emerald-500 shadow-sm shadow-emerald-500/50';
-      else if (v.status === 'in_field') statusDotColor = 'bg-sky-500 shadow-sm shadow-sky-500/50';
-      else if (v.status === 'returning') statusDotColor = 'bg-indigo-500 shadow-sm shadow-indigo-500/50';
-
       const innerContent = `
         <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-200 ${isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'}">
-          <!-- Upright Speed & Distance Bubble Floating Above Vehicle -->
+          <!-- Upright Speed & Distance Bubble Floating Above Vehicle (Dynamic Vehicle Color) -->
           ${v.status !== 'at_base' ? `
-            <div class="mb-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md flex items-center gap-1.5 bg-gradient-to-r from-blue-600 via-sky-600 to-indigo-600 text-white border-white/60 text-[9.5px] font-mono font-bold tracking-tight pointer-events-none">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+            <div class="mb-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md flex items-center gap-1.5 text-white text-[9.5px] font-mono font-bold tracking-tight pointer-events-none"
+              style="background: linear-gradient(135deg, ${vColor}, ${vGlow}); border-color: rgba(255,255,255,0.7); box-shadow: 0 4px 14px ${vColor}55;">
+              <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
               <span>⚡ ${v.speed > 0 ? `${v.speed} km/h • ` : ''}${v.roadDistFromBaseKm || 0} km from Hospital</span>
             </div>
           ` : ''}
@@ -708,25 +708,21 @@ export default function MapView({
           <!-- 3D Isometric Ambulance Rotated on the Road along Vehicle Bearing -->
           <div class="relative flex items-center justify-center transition-transform duration-500 ease-out" style="transform: rotate(${v.bearing || 0}deg);">
             ${isSelected ? `
-              <div class="absolute w-14 h-16 rounded-full ${isDark ? 'bg-sky-400/30 ring-2 ring-sky-400/50' : 'bg-sky-500/25 ring-2 ring-sky-500/40'} animate-ping pointer-events-none"></div>
+              <div class="absolute w-14 h-16 rounded-full animate-ping pointer-events-none" style="background-color: ${vColor}35; border: 2px solid ${vColor};"></div>
             ` : ''}
             ${get3DAmbulanceSvg(isDark, v.status, isSelected)}
           </div>
 
-          <!-- Apple Frosted Label Pill Below (Driver & Organizer) -->
+          <!-- Apple Frosted Label Pill Below (Driver Only) -->
           <div class="mt-1 px-2.5 py-0.5 rounded-full backdrop-blur-md border shadow-md flex items-center gap-1.5 transition-all duration-200 ${
             isSelected
-              ? (isDark ? 'bg-sky-950/95 text-sky-200 border-sky-400/80 scale-105 shadow-sky-500/30' : 'bg-sky-600 text-white border-sky-700 scale-105 shadow-sky-500/25')
+              ? (isDark ? 'bg-slate-950/95 text-white scale-105' : 'bg-white/95 text-slate-900 scale-105 shadow-md')
               : (isDark ? 'bg-slate-950/90 text-slate-200 border-white/10 group-hover:border-slate-600' : 'bg-white/95 text-slate-800 border-slate-200/80 shadow-xs group-hover:border-slate-300')
-          }">
-            <span class="w-2 h-2 rounded-full ${statusDotColor}"></span>
+          }" style="${isSelected ? `border-color: ${vColor}; box-shadow: 0 0 12px ${vColor}55;` : ''}">
+            <span class="w-2 h-2 rounded-full" style="background-color: ${vColor};"></span>
             <span class="text-[10px] font-bold leading-none tracking-tight">${shortName}</span>
             <span class="text-slate-400 dark:text-slate-600">•</span>
             <span class="text-[9.5px] font-medium opacity-90">Driver: ${v.driverName ? v.driverName.split(' ')[0] : 'Driver'}</span>
-            ${v.organizerName ? `
-              <span class="text-slate-400 dark:text-slate-600">•</span>
-              <span class="text-[9.5px] font-medium opacity-90">Org: ${v.organizerName.split(' ')[0]}</span>
-            ` : ''}
           </div>
         </div>
       `;

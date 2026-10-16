@@ -143,51 +143,38 @@ export default function AppleSheet({
                 </div>
               </div>
 
-              {/* Personnel Platter: Dedicated Driver & Camp Organizer Cards */}
-              <div className="grid grid-cols-2 gap-2 my-1">
-                {/* Driver Card */}
-                <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
-                  <div className="min-w-0 pr-1">
-                    <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase font-semibold">
-                      <User className="w-3 h-3 text-sky-500" />
-                      <span>Driver</span>
-                    </div>
-                    <span className="text-xs font-bold text-slate-900 dark:text-white truncate block mt-0.5">
-                      {selectedVehicle.driverName || 'Driver'}
-                    </span>
+              {/* Dedicated Driver Contact Card (Only Driver Call Option) */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between my-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div 
+                    className="w-10 h-10 rounded-xl text-white flex items-center justify-center shrink-0 shadow-sm"
+                    style={{ backgroundColor: selectedVehicle.lineColor || '#007AFF' }}
+                  >
+                    <User className="w-5 h-5" />
                   </div>
-                  {selectedVehicle.driverPhone && (
-                    <a
-                      href={`tel:${selectedVehicle.driverPhone}`}
-                      className="w-7 h-7 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs transition-colors"
-                      title="Call Driver"
-                    >
-                      <Phone className="w-3 h-3" />
-                    </a>
-                  )}
+                  <div className="min-w-0">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                      Ambulance Driver
+                    </div>
+                    <div className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                      {selectedVehicle.driverName || 'Driver'}
+                    </div>
+                    <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                      {selectedVehicle.driverPhone || '+91 94151 40719'}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Camp Organizer Card */}
-                <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
-                  <div className="min-w-0 pr-1">
-                    <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase font-semibold">
-                      <UserCheck className="w-3 h-3 text-emerald-500" />
-                      <span>Camp Organizer</span>
-                    </div>
-                    <span className="text-xs font-bold text-slate-900 dark:text-white truncate block mt-0.5">
-                      {selectedVehicle.organizerName || 'Organizer'}
-                    </span>
-                  </div>
-                  {selectedVehicle.organizerPhone && (
-                    <a
-                      href={`tel:${selectedVehicle.organizerPhone}`}
-                      className="w-7 h-7 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs transition-colors"
-                      title="Call Camp Organizer"
-                    >
-                      <Phone className="w-3 h-3" />
-                    </a>
-                  )}
-                </div>
+                {selectedVehicle.driverPhone && (
+                  <a
+                    href={`tel:${selectedVehicle.driverPhone}`}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer shrink-0"
+                    title={`Call Driver (${selectedVehicle.driverName})`}
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>Call Driver</span>
+                  </a>
+                )}
               </div>
 
               {/* Accurate Live GPS & 1-Click Navigation */}
@@ -229,16 +216,22 @@ export default function AppleSheet({
 
               {/* Road Highway Distance from Base Hospital */}
               {selectedVehicle.status !== 'at_base' && (
-                <div className="my-1.5 p-3 rounded-2xl bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent border border-blue-500/25 dark:border-blue-400/20 shadow-xs">
+                <div 
+                  className="my-1.5 p-3 rounded-2xl border shadow-xs"
+                  style={{
+                    backgroundColor: `${selectedVehicle.lineColor || '#007AFF'}10`,
+                    borderColor: `${selectedVehicle.lineColor || '#007AFF'}35`
+                  }}
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-cyan-400 font-mono">
+                      <span className="w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: selectedVehicle.lineColor || '#007AFF' }}></span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider font-mono" style={{ color: selectedVehicle.lineColor || '#007AFF' }}>
                         {selectedVehicle.status === 'returning' ? 'Returning to Base Hospital' : 'En Route in Sector'}
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-sm font-extrabold text-blue-700 dark:text-cyan-300 font-mono">
+                      <span className="text-sm font-extrabold font-mono" style={{ color: selectedVehicle.lineColor || '#007AFF' }}>
                         {selectedVehicle.roadDistFromBaseKm || 0} KM ROAD
                       </span>
                     </div>
@@ -246,7 +239,7 @@ export default function AppleSheet({
 
                   <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
                     <span>Sant Kabir Eye Hospital (0 km)</span>
-                    <span className="font-mono text-blue-600 dark:text-cyan-400 font-bold">
+                    <span className="font-mono font-bold" style={{ color: selectedVehicle.lineColor || '#007AFF' }}>
                       {selectedVehicle.speed > 0 ? `${selectedVehicle.speed} km/h` : 'Active'}
                     </span>
                     <span>{selectedVehicle.highwayName || 'Highway'}</span>
@@ -254,11 +247,12 @@ export default function AppleSheet({
 
                   <div className="relative mt-1 w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                     <div 
-                      className="h-full rounded-full bg-gradient-to-r from-blue-600 via-sky-400 to-emerald-400 transition-all duration-500"
+                      className="h-full rounded-full transition-all duration-500"
                       style={{ 
                         width: `${Math.min(100, Math.max(12, Math.round(
                           ((selectedVehicle.roadDistFromBaseKm || 16) / ((selectedVehicle.totalRoadKm || 40) || 1)) * 100
-                        )))}%` 
+                        )))}%`,
+                        backgroundColor: selectedVehicle.lineColor || '#007AFF'
                       }}
                     />
                   </div>
@@ -321,13 +315,12 @@ export default function AppleSheet({
           ) : (
             /* VIEW B: FLEET LIST OVERVIEW */
             <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Filter Tabs */}
+              {/* Filter Tabs (No At Base Tab) */}
               <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 mb-2">
                 {[
-                  { key: 'all', label: 'All (4)' },
+                  { key: 'all', label: `All (${vehicles.length})` },
                   { key: 'moving', label: 'En Route' },
                   { key: 'in_field', label: 'In Field' },
-                  { key: 'at_base', label: 'At Base' },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -347,19 +340,24 @@ export default function AppleSheet({
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
                 {filteredVehicles.map((v) => {
                   const isMoving = v.status === 'moving' || v.status === 'returning';
+                  const vColor = v.lineColor || '#007AFF';
 
                   return (
                     <div
                       key={v.id}
                       onClick={() => onSelectVehicle(v.id)}
-                      className="p-2.5 rounded-2xl bg-white/80 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 hover:border-sky-400 dark:hover:border-cyan-400 transition-all cursor-pointer flex items-center justify-between group shadow-2xs"
+                      className="p-2.5 rounded-2xl bg-white/80 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 hover:border-slate-400 transition-all cursor-pointer flex items-center justify-between group shadow-2xs"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                          isMoving 
-                            ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400' 
-                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                        }`}>
+                        {/* Ambulance Icon Tinted by Vehicle Unique Line Color */}
+                        <div 
+                          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-2xs"
+                          style={{
+                            backgroundColor: `${vColor}15`,
+                            color: vColor,
+                            border: `1px solid ${vColor}30`,
+                          }}
+                        >
                           <Ambulance className="w-4 h-4" />
                         </div>
                         <div className="min-w-0">
@@ -368,14 +366,13 @@ export default function AppleSheet({
                               {v.name}
                             </span>
                             {isMoving && (
-                              <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
+                              <span className="text-[10px] font-mono font-semibold" style={{ color: vColor }}>
                                 {v.speed} km/h
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-slate-600 dark:text-slate-300 truncate">
+                          <div className="text-[10.5px] text-slate-600 dark:text-slate-300 truncate">
                             Driver: <strong className="text-slate-800 dark:text-white">{v.driverName}</strong>
-                            {v.organizerName && <span className="opacity-75"> • Org: {v.organizerName}</span>}
                           </div>
                           <div className="text-[9.5px] font-mono text-slate-400 truncate">
                             {v.lat.toFixed(4)}° N, {v.lon.toFixed(4)}° E
@@ -383,7 +380,20 @@ export default function AppleSheet({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Quick 1-Tap Driver Call Button */}
+                        {v.driverPhone && (
+                          <a
+                            href={`tel:${v.driverPhone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center transition-colors shadow-2xs"
+                            title={`Call Driver (${v.driverName})`}
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+
+                        {/* Navigation in Google Maps */}
                         <a
                           href={`https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}`}
                           target="_blank"

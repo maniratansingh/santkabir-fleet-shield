@@ -188,14 +188,14 @@ export default function App() {
               currentSpeed = Math.floor(44 + Math.random() * 6);
             }
           } else if (currentStatus === 'returning') {
-            // Returning along road back to Base Hospital
+            // Returning along road back towards Base Hospital
             const stepDelta = 0.18;
             currentStep -= stepDelta;
 
-            if (currentStep <= 0) {
-              currentStep = 0;
-              currentStatus = 'at_base';
-              currentSpeed = 0;
+            if (currentStep <= 0.2) {
+              currentStep = 0.2;
+              currentStatus = 'moving'; // Set back out on outreach corridor
+              currentSpeed = Math.floor(42 + Math.random() * 6);
             } else {
               currentSpeed = Math.floor(46 + Math.random() * 6);
             }
