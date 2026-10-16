@@ -175,13 +175,27 @@ function findClosestSegmentIndex(p, waypoints) {
   return bestIdx;
 }
 
+// Compute distance from hospital base with fallback
+function getLiveDistanceKm(v) {
+  if (typeof v.roadDistFromBaseKm === 'number' && v.roadDistFromBaseKm > 0) {
+    return v.roadDistFromBaseKm;
+  }
+  const dist = calculateDistanceKm(BASE_HOSPITAL.lat, BASE_HOSPITAL.lon, Number(v.lat || 0), Number(v.lon || 0));
+  return Math.round(dist * 1.15 * 10) / 10;
+}
+
 // Compute solid highway navigation trail from Sant Kabir Eye Hospital Base to the live vehicle location
 function getHighwayTrail(v) {
   const baseCoord = [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat];
-  const vehCoord = [v.lon, v.lat];
+  const vehCoord = [Number(v.lon || 0), Number(v.lat || 0)];
 
   if (v.status === 'at_base') {
     return [];
+  }
+
+  // If vehicle has live GPS telemetry breadcrumb history
+  if (Array.isArray(v.trail) && v.trail.length > 1) {
+    return [baseCoord, ...v.trail];
   }
 
   const wps = v.routeWaypoints;
@@ -300,6 +314,7 @@ export default function MapView({
   const distanceMarkersRef = useRef({});
   const currentStyleKeyRef = useRef(activeStyleKey);
   const vehiclesRef = useRef(vehicles);
+  const prevSelectedIdRef = useRef(null);
   useEffect(() => {
     vehiclesRef.current = vehicles;
   }, [vehicles]);
@@ -697,7 +712,7 @@ export default function MapView({
             <div class="mb-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md flex items-center gap-1.5 text-white text-[9.5px] font-mono font-bold tracking-tight pointer-events-none"
               style="background: linear-gradient(135deg, ${vColor}, ${vGlow}); border-color: rgba(255,255,255,0.7); box-shadow: 0 4px 14px ${vColor}55;">
               <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-              <span>⚡ ${v.speed > 0 ? `${v.speed} km/h • ` : ''}${v.roadDistFromBaseKm || 0} km from Hospital</span>
+              <span>⚡ ${v.speed > 0 ? `${v.speed} km/h • ` : ''}${getLiveDistanceKm(v)} km from Hospital</span>
             </div>
           ` : ''}
 
@@ -736,13 +751,13 @@ export default function MapView({
         };
 
         const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([v.lon, v.lat])
+          .setLngLat([Number(v.lon || 0), Number(v.lat || 0)])
           .addTo(map);
 
         markersRef.current[v.id] = { marker, element: el };
       } else {
         markerObj.element.innerHTML = innerContent;
-        markerObj.marker.setLngLat([v.lon, v.lat]);
+        markerObj.marker.setLngLat([Number(v.lon || 0), Number(v.lat || 0)]);
       }
     });
   };
@@ -751,16 +766,21 @@ export default function MapView({
     updateVehicleMarkers();
 
     if (selectedVehicleId && mapRef.current) {
-      const selected = vehicles.find((v) => v.id === selectedVehicleId);
-      if (selected) {
-        mapRef.current.flyTo({
-          center: [selected.lon, selected.lat],
-          zoom: 13.5,
-          speed: 1.2,
-          curve: 1.4,
-          essential: true,
-        });
+      if (prevSelectedIdRef.current !== selectedVehicleId) {
+        prevSelectedIdRef.current = selectedVehicleId;
+        const selected = vehicles.find((v) => v.id === selectedVehicleId);
+        if (selected) {
+          mapRef.current.flyTo({
+            center: [Number(selected.lon || 0), Number(selected.lat || 0)],
+            zoom: 13.5,
+            speed: 1.2,
+            curve: 1.4,
+            essential: true,
+          });
+        }
       }
+    } else {
+      prevSelectedIdRef.current = null;
     }
   }, [vehicles, selectedVehicleId, theme]);
 

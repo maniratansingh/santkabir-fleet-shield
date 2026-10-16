@@ -16,6 +16,26 @@ import {
   Clock, 
   ShieldCheck
 } from 'lucide-react';
+import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
+
+function getVehicleDistance(v) {
+  if (!v) return 0;
+  if (typeof v.roadDistFromBaseKm === 'number' && v.roadDistFromBaseKm > 0) {
+    return v.roadDistFromBaseKm;
+  }
+  const dist = calculateDistanceKm(BASE_HOSPITAL.lat, BASE_HOSPITAL.lon, Number(v.lat || 0), Number(v.lon || 0));
+  return Math.round(dist * 1.15 * 10) / 10;
+}
+
+function formatLastSeen(lastSeen) {
+  if (!lastSeen) return 'Live Active';
+  const diffSec = Math.max(1, Math.round((Date.now() - lastSeen) / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  return `${diffHr}h ago`;
+}
 
 export default function AppleSheet({
   vehicles = [],
@@ -129,11 +149,11 @@ export default function AppleSheet({
                     {/* Battery Pill */}
                     <div className="flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/40">
                       <Battery className="w-3 h-3" />
-                      <span>{selectedVehicle.battery || 88}%</span>
+                      <span>{selectedVehicle.battery ?? selectedVehicle.batt ?? 100}%</span>
                     </div>
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate font-mono">
-                    Plate: <strong className="text-slate-800 dark:text-slate-200">{selectedVehicle.plate || 'UP-51-AT-4211'}</strong>
+                    Plate: <strong className="text-slate-800 dark:text-slate-200">{selectedVehicle.plate || selectedVehicle.id}</strong>
                   </div>
                   <div className="text-[11px] text-sky-600 dark:text-cyan-400 font-medium flex items-center gap-1 mt-1 truncate">
                     <MapPin className="w-3 h-3 shrink-0" />
@@ -186,7 +206,7 @@ export default function AppleSheet({
                     <span>Live GPS Position</span>
                   </div>
                   <span className="text-[11px] font-mono font-bold text-sky-600 dark:text-cyan-400 bg-sky-50 dark:bg-sky-950/60 px-2.5 py-0.5 rounded-full border border-sky-200/60 dark:border-sky-800">
-                    {selectedVehicle.lat.toFixed(5)}° N, {selectedVehicle.lon.toFixed(5)}° E
+                    {Number(selectedVehicle.lat || 0).toFixed(5)}° N, {Number(selectedVehicle.lon || 0).toFixed(5)}° E
                   </span>
                 </div>
 
@@ -233,7 +253,7 @@ export default function AppleSheet({
                     </div>
                     <div className="text-right">
                       <span className="text-sm font-extrabold font-mono" style={{ color: selectedVehicle.lineColor || '#007AFF' }}>
-                        {selectedVehicle.roadDistFromBaseKm || 0} KM ROAD
+                        {getVehicleDistance(selectedVehicle)} KM ROAD
                       </span>
                     </div>
                   </div>
@@ -251,7 +271,7 @@ export default function AppleSheet({
                       className="h-full rounded-full transition-all duration-500"
                       style={{ 
                         width: `${Math.min(100, Math.max(12, Math.round(
-                          ((selectedVehicle.roadDistFromBaseKm || 16) / ((selectedVehicle.totalRoadKm || 40) || 1)) * 100
+                          (getVehicleDistance(selectedVehicle) / ((selectedVehicle.totalRoadKm || 40) || 1)) * 100
                         )))}%`,
                         backgroundColor: selectedVehicle.lineColor || '#007AFF'
                       }}
@@ -308,9 +328,7 @@ export default function AppleSheet({
                   <span className="text-[10px] text-slate-400 uppercase font-semibold block">Last Update</span>
                   <span className="text-xs font-bold text-slate-800 dark:text-white font-mono flex items-center gap-1">
                     <Signal className="w-3 h-3 text-emerald-500" />
-                    {selectedVehicle.lastSeen 
-                      ? `${Math.max(1, Math.round((Date.now() - selectedVehicle.lastSeen) / 1000))}s ago` 
-                      : 'Live Active'}
+                    {formatLastSeen(selectedVehicle.lastSeen)}
                   </span>
                 </div>
               </div>
@@ -391,7 +409,7 @@ export default function AppleSheet({
                             Driver: <strong className="text-slate-800 dark:text-white">{v.driverName}</strong>
                           </div>
                           <div className="text-[9.5px] font-mono text-slate-400 truncate">
-                            {v.lat.toFixed(4)}° N, {v.lon.toFixed(4)}° E
+                            {Number(v.lat || 0).toFixed(4)}° N, {Number(v.lon || 0).toFixed(4)}° E
                           </div>
                         </div>
                       </div>

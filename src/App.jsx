@@ -49,6 +49,10 @@ export default function App() {
   };
 
   const tourIndexRef = useRef(0);
+  const vehiclesRef = useRef(vehicles);
+  useEffect(() => {
+    vehiclesRef.current = vehicles;
+  }, [vehicles]);
 
   // Show temporary toast notification
   const showToast = (message, type = 'info') => {
@@ -73,17 +77,21 @@ export default function App() {
   useEffect(() => {
     if (!isAutoTour) return;
 
-    if (!vehicles || vehicles.length === 0) {
-      setFitTrigger(prev => prev + 1);
-      return;
-    }
-
-    const tourItems = [
-      ...vehicles.map(v => ({ type: 'vehicle', id: v.id, name: v.name, driver: v.driverName })),
-      { type: 'all', name: 'Fleet Overview' },
-    ];
-
     const tourInterval = setInterval(() => {
+      const currentVehicles = vehiclesRef.current || [];
+      if (!currentVehicles || currentVehicles.length === 0) {
+        setSelectedVehicleId(null);
+        setFitTrigger(prev => prev + 1);
+        setDetent('peek');
+        showToast('📺 TV Auto-Tour: Hospital Base Standby (0 reporting)', 'info');
+        return;
+      }
+
+      const tourItems = [
+        ...currentVehicles.map(v => ({ type: 'vehicle', id: v.id, name: v.name, driver: v.driverName })),
+        { type: 'all', name: 'Fleet Overview' },
+      ];
+
       tourIndexRef.current = (tourIndexRef.current + 1) % tourItems.length;
       const current = tourItems[tourIndexRef.current];
 
@@ -100,7 +108,7 @@ export default function App() {
     }, 12000);
 
     return () => clearInterval(tourInterval);
-  }, [isAutoTour, vehicles]);
+  }, [isAutoTour]);
 
   // Fetch real data from Cloudflare Pages API
   useEffect(() => {
@@ -110,7 +118,15 @@ export default function App() {
         if (vehRes && vehRes.ok) {
           const vehData = await vehRes.json();
           const list = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
-          setVehicles(list);
+          const prev = vehiclesRef.current || [];
+          const hasChanged = prev.length !== list.length || 
+            list.some((v, idx) => {
+              const p = prev[idx];
+              return !p || p.id !== v.id || p.lat !== v.lat || p.lon !== v.lon || p.speed !== v.speed || p.status !== v.status;
+            });
+          if (hasChanged) {
+            setVehicles(list);
+          }
         }
       } catch (err) {
         console.warn('Backend API not reachable (standby mode):', err);

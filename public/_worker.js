@@ -6,6 +6,41 @@
 // In-memory telemetry cache for active fleet ambulances
 const liveVehicles = new Map();
 
+const BASE_LAT = 26.797313;
+const BASE_LON = 82.718401;
+
+// Haversine formula to calculate accurate distance in km
+function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+}
+
+// Distinct vibrant Apple palette per ambulance
+const COLOR_PALETTE = [
+  { line: '#007AFF', glow: '#38BDF8' }, // Apple Blue / Sky
+  { line: '#10B981', glow: '#34D399' }, // Emerald
+  { line: '#F59E0B', glow: '#FBBF24' }, // Amber
+  { line: '#8B5CF6', glow: '#A78BFA' }, // Purple
+  { line: '#EC4899', glow: '#F472B6' }, // Rose Pink
+  { line: '#06B6D4', glow: '#22D3EE' }, // Cyan
+];
+
+function getVehicleColors(id) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffffffff;
+  const idx = Math.abs(hash) % COLOR_PALETTE.length;
+  return COLOR_PALETTE[idx];
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -95,6 +130,15 @@ export default {
 
       const vehId = String(id).trim().toUpperCase();
       const existing = liveVehicles.get(vehId) || {};
+      const colors = getVehicleColors(vehId);
+      const cleanLat = Number(lat.toFixed(6));
+      const cleanLon = Number(lon.toFixed(6));
+      const distKm = calculateDistanceKm(BASE_LAT, BASE_LON, cleanLat, cleanLon);
+      const roadDistKm = Math.round(distKm * 1.15 * 10) / 10;
+
+      // Keep last 30 coordinates for live highway trail breadcrumbs
+      const prevTrail = Array.isArray(existing.trail) ? existing.trail : [];
+      const updatedTrail = [...prevTrail.slice(-29), [cleanLon, cleanLat]];
 
       const record = {
         id: vehId,
@@ -102,13 +146,20 @@ export default {
         type: 'ambulance',
         driverName: driver ? String(driver).trim() : (existing.driverName || 'Driver'),
         driverPhone: existing.driverPhone || '',
-        status: speedKmH > 3 ? 'moving' : 'in_field',
-        lat: Number(lat.toFixed(6)),
-        lon: Number(lon.toFixed(6)),
+        plate: existing.plate || vehId,
+        status: speedKmH > 3 ? 'moving' : (distKm < 0.25 ? 'at_base' : 'in_field'),
+        lat: cleanLat,
+        lon: cleanLon,
         speed: speedKmH,
         bearing: Math.round(((bearing % 360) + 360) % 360),
         altitude: Math.round(altitude),
         batt: Math.min(100, Math.max(0, Math.round(batt))),
+        battery: Math.min(100, Math.max(0, Math.round(batt))),
+        distFromBaseKm: distKm,
+        roadDistFromBaseKm: roadDistKm,
+        lineColor: existing.lineColor || colors.line,
+        glowColor: existing.glowColor || colors.glow,
+        trail: updatedTrail,
         lastSeen: timestamp,
         updatedAt: Date.now(),
       };
@@ -133,6 +184,14 @@ export default {
 
     // 2. Endpoint: /api/vehicles (Returns dynamically registered live fleet)
     if (url.pathname === '/api/vehicles' || url.pathname === '/api/vehicles/') {
+      // Purge entries inactive for more than 12 hours
+      const now = Date.now();
+      for (const [vKey, vVal] of liveVehicles.entries()) {
+        if (now - (vVal.updatedAt || vVal.lastSeen || 0) > 12 * 60 * 60 * 1000) {
+          liveVehicles.delete(vKey);
+        }
+      }
+
       const list = Array.from(liveVehicles.values());
       return new Response(JSON.stringify({
         success: true,

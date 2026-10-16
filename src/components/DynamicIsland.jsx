@@ -228,41 +228,47 @@ export default function DynamicIsland({
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
               Active Ambulances, Drivers & Camp Organizers
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {vehicles.map(v => (
-                <div 
-                  key={v.id} 
-                  className="p-2 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between"
-                >
-                  <div className="min-w-0 pr-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${v.status === 'moving' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-                      <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                        {v.name}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-600 dark:text-slate-300 mt-0.5 truncate">
-                      Driver: <strong className="text-slate-800 dark:text-white">{v.driverName}</strong>
-                      {v.organizerName && <span> • Org: {v.organizerName}</span>}
-                    </div>
-                    <div className="text-[9.5px] font-mono text-slate-400">
-                      {v.lat.toFixed(4)}° N, {v.lon.toFixed(4)}° E
-                    </div>
-                  </div>
-
-                  <a 
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="shrink-0 px-2.5 py-1 rounded-xl bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-cyan-400 text-[10px] font-bold hover:bg-sky-100 transition-colors flex items-center gap-1 shadow-2xs"
+            {vehicles.length === 0 ? (
+              <div className="p-3 text-center rounded-2xl bg-slate-50/60 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
+                Hospital base on standby. Live telemetry will display here automatically when drivers launch the app.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {vehicles.map(v => (
+                  <div 
+                    key={v.id} 
+                    className="p-2 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between"
                   >
-                    <span>Maps</span>
-                    <span>↗</span>
-                  </a>
-                </div>
-              ))}
-            </div>
+                    <div className="min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${v.status === 'moving' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                        <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                          {v.name}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-600 dark:text-slate-300 mt-0.5 truncate">
+                        Driver: <strong className="text-slate-800 dark:text-white">{v.driverName}</strong>
+                        {v.organizerName && <span> • Org: {v.organizerName}</span>}
+                      </div>
+                      <div className="text-[9.5px] font-mono text-slate-400">
+                        {Number(v.lat || 0).toFixed(4)}° N, {Number(v.lon || 0).toFixed(4)}° E
+                      </div>
+                    </div>
+
+                    <a 
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="shrink-0 px-2.5 py-1 rounded-xl bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-cyan-400 text-[10px] font-bold hover:bg-sky-100 transition-colors flex items-center gap-1 shadow-2xs"
+                    >
+                      <span>Maps</span>
+                      <span>↗</span>
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
