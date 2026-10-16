@@ -520,61 +520,11 @@ export default function MapView({
       addCustomLayers(map);
     }
 
-    // Update on-road distance badges
-    const activeVehIds = new Set(activeVehicles.map(v => v.id));
-
-    // Remove deleted vehicle distance badges
-    Object.keys(distanceMarkersRef.current).forEach((id) => {
-      if (!activeVehIds.has(id)) {
-        distanceMarkersRef.current[id].marker.remove();
-        delete distanceMarkersRef.current[id];
-      }
+    // Clean up any old on-road badges so no duplicate clutter remains near the hospital
+    Object.values(distanceMarkersRef.current).forEach(({ marker }) => {
+      try { marker.remove(); } catch (e) {}
     });
-
-    activeVehicles.forEach((v) => {
-      const trail = getHighwayTrail(v);
-      if (!trail || trail.length < 2) return;
-
-      const midIdx = Math.max(0, Math.floor(trail.length / 2));
-      const midPoint = trail[midIdx] || [v.lon, v.lat];
-      const midLon = midPoint[0];
-      const midLat = midPoint[1];
-
-      const roadDistFromBase = v.roadDistFromBaseKm || 0;
-      const isSelected = v.id === selectedVehicleId;
-      const vColor = v.lineColor || '#007AFF';
-      const vGlow = v.glowColor || '#38BDF8';
-
-      let badgeObj = distanceMarkersRef.current[v.id];
-
-      const badgeContent = `
-        <div class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold tracking-tight shadow-lg flex items-center gap-1.5 transition-all duration-200"
-          style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${isSelected ? vColor : (isDark ? vGlow + '77' : vColor + '66')}; box-shadow: 0 4px 14px ${vColor}35; transform: ${isSelected ? 'scale(1.08)' : 'scale(1)'};">
-          <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'animate-ping' : ''}" style="background-color: ${vColor};"></span>
-          <span style="color: ${isDark ? '#F1F5F9' : '#0F172A'};">🛣️ ${roadDistFromBase} km road from Hospital Base</span>
-        </div>
-      `;
-
-      if (!badgeObj || !document.body.contains(badgeObj.element)) {
-        if (badgeObj) {
-          try { badgeObj.marker.remove(); } catch (e) {}
-        }
-        const el = document.createElement('div');
-        el.className = 'select-none transition-all duration-200 pointer-events-none';
-        el.style.display = showDistanceLines ? 'flex' : 'none';
-        el.innerHTML = badgeContent;
-
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([midLon, midLat])
-          .addTo(map);
-
-        distanceMarkersRef.current[v.id] = { marker, element: el };
-      } else {
-        badgeObj.element.innerHTML = badgeContent;
-        badgeObj.marker.setLngLat([midLon, midLat]);
-        badgeObj.element.style.display = showDistanceLines ? 'flex' : 'none';
-      }
-    });
+    distanceMarkersRef.current = {};
   };
 
   // Initialize Map
