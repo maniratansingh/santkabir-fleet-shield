@@ -259,42 +259,84 @@ function getDeliveryRouteSplit(v, camps) {
   };
 }
 
-// Apple-style beautiful medical ambulance glyph generator for AirTag pins
-function getVehicleIconSvg(type, isDark, status) {
+// Authentic 3D Isometric Ambulance with specular lighting, dual headlights, and drop shadow
+function get3DAmbulanceSvg(isDark, status, isSelected) {
   const isMoving = status === 'moving' || status === 'returning';
-  
-  // High-contrast ambulance theme colors
-  const bodyFill = isDark ? '#1E293B' : '#FFFFFF';
-  const bodyStroke = isDark ? '#E2E8F0' : '#334155';
-  const windowFill = isDark ? '#0284C7' : '#BAE6FD';
-  const redCrossFill = '#EF4444';
   const sirenColor = isMoving ? '#EF4444' : '#F59E0B';
+  const uniqueId = Math.random().toString(36).substr(2, 6);
 
   return `
-    <svg class="w-6 h-6 select-none shrink-0" viewBox="0 0 28 24" fill="none">
-      <!-- Flashing Emergency Roof Beacon Bar -->
-      <rect x="10" y="2" width="6" height="2.5" rx="1.25" fill="${sirenColor}" />
-      ${isMoving ? `<circle cx="13" cy="3.2" r="3" fill="${sirenColor}" opacity="0.45" class="animate-ping" />` : ''}
+    <svg class="w-12 h-14 select-none drop-shadow-2xl" viewBox="0 0 52 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="ambWindshield_${uniqueId}" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#38BDF8"/>
+          <stop offset="100%" stop-color="#0284C7"/>
+        </linearGradient>
+        <linearGradient id="ambHood_${uniqueId}" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#FFFFFF"/>
+          <stop offset="100%" stop-color="#E2E8F0"/>
+        </linearGradient>
+        <linearGradient id="ambRoof_${uniqueId}" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="${isDark ? '#F8FAFC' : '#FFFFFF'}"/>
+          <stop offset="100%" stop-color="${isDark ? '#E2E8F0' : '#F1F5F9'}"/>
+        </linearGradient>
+        <linearGradient id="headlightBeam_${uniqueId}" x1="0%" y1="100%" x2="0%" y2="0%">
+          <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.6"/>
+          <stop offset="100%" stop-color="#FEF08A" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="shadowBlur_${uniqueId}" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="1.5" />
+        </filter>
+      </defs>
 
-      <!-- Ambulance Body Chassis -->
-      <path d="M2 17V8C2 6.9 2.9 6 4 6H17V17H2Z" fill="${bodyFill}" stroke="${bodyStroke}" stroke-width="1.8" stroke-linejoin="round" />
-      
-      <!-- Front Cab Aerodynamic Slope -->
-      <path d="M17 9H20.8C21.6 9 22.3 9.6 22.7 10.3L25.3 14.2C25.7 14.8 26 15.5 26 16.2V17H17V9Z" fill="${bodyFill}" stroke="${bodyStroke}" stroke-width="1.8" stroke-linejoin="round" />
-      
-      <!-- Cab Window -->
-      <path d="M17.5 10.5H20.8L23.2 14H17.5V10.5Z" fill="${windowFill}" stroke="${bodyStroke}" stroke-width="1.2" />
-      
-      <!-- Medical Red Cross (✚) on Ambulance Body -->
-      <rect x="8.5" y="8.5" width="2.5" height="6.5" rx="0.5" fill="${redCrossFill}" />
-      <rect x="6.5" y="10.5" width="6.5" height="2.5" rx="0.5" fill="${redCrossFill}" />
+      <!-- 3D Ground Drop Shadow Beneath Chassis -->
+      <ellipse cx="26" cy="40" rx="17" ry="19" fill="#000000" opacity="${isDark ? '0.55' : '0.35'}" filter="url(#shadowBlur_${uniqueId})" />
 
-      <!-- Dual Wheels with Chrome Hubs -->
-      <circle cx="6.5" cy="17.5" r="2.5" fill="#0F172A" stroke="${bodyStroke}" stroke-width="1.4" />
-      <circle cx="6.5" cy="17.5" r="0.9" fill="#E2E8F0" />
-      
-      <circle cx="20.5" cy="17.5" r="2.5" fill="#0F172A" stroke="${bodyStroke}" stroke-width="1.4" />
-      <circle cx="20.5" cy="17.5" r="0.9" fill="#E2E8F0" />
+      ${isMoving ? `
+        <!-- Forward 3D Headlight Beams illuminating road pavement ahead -->
+        <polygon points="17,16 6,0 20,0 19,16" fill="url(#headlightBeam_${uniqueId})" />
+        <polygon points="33,16 32,0 46,0 35,16" fill="url(#headlightBeam_${uniqueId})" />
+      ` : ''}
+
+      <!-- 3D Lower Chassis Underbody & Bumpers -->
+      <rect x="13" y="15" width="26" height="36" rx="6" fill="#0F172A" />
+      <rect x="15" y="49" width="22" height="3.5" rx="1.5" fill="#475569" />
+      <rect x="15" y="14" width="22" height="3" rx="1.5" fill="#CBD5E1" />
+
+      <!-- Dual Chrome Headlights -->
+      <circle cx="17.5" cy="15.5" r="2" fill="#FEF08A" stroke="#EAB308" stroke-width="0.8" />
+      <circle cx="34.5" cy="15.5" r="2" fill="#FEF08A" stroke="#EAB308" stroke-width="0.8" />
+
+      <!-- 3D Main Body Shell with Depth Extrusion -->
+      <rect x="14" y="16" width="24" height="33" rx="5" fill="url(#ambRoof_${uniqueId})" stroke="#64748B" stroke-width="1.2" />
+
+      <!-- 3D Extruded Left & Right Flank Shadow Facets -->
+      <path d="M14 20 L16 22 L16 47 L14 46 Z" fill="#CBD5E1" />
+      <path d="M38 20 L36 22 L36 47 L38 46 Z" fill="#94A3B8" />
+
+      <!-- Aerodynamic Slanted Cab Hood -->
+      <path d="M16 16 L36 16 L34 22 L18 22 Z" fill="url(#ambHood_${uniqueId})" stroke="#94A3B8" stroke-width="0.8" />
+
+      <!-- 3D Curved Reflective Windshield Glass -->
+      <path d="M17.5 22 L34.5 22 L33 28 L19 28 Z" fill="url(#ambWindshield_${uniqueId})" stroke="#0284C7" stroke-width="0.8" />
+      <line x1="20" y1="23" x2="28" y2="27" stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round" opacity="0.9" />
+
+      <!-- 3D Emergency Roof Light Bar (Siren) -->
+      <rect x="19" y="27" width="14" height="4" rx="2" fill="#1E293B" stroke="#0F172A" stroke-width="0.5" />
+      <rect x="19.5" y="27.5" width="6" height="3" rx="1.5" fill="${sirenColor}" />
+      <rect x="26.5" y="27.5" width="6" height="3" rx="1.5" fill="#3B82F6" />
+      ${isMoving ? `<circle cx="26" cy="29" r="6" fill="${sirenColor}" opacity="0.6" class="animate-ping" />` : ''}
+
+      <!-- 3D Raised Patient Compartment Roof -->
+      <rect x="17" y="31" width="18" height="16" rx="3" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="0.8" />
+
+      <!-- Bold Medical Red Cross (✚) on 3D Roof -->
+      <rect x="24.5" y="34" width="3" height="10" rx="0.6" fill="#EF4444" />
+      <rect x="21" y="37.5" width="10" height="3" rx="0.6" fill="#EF4444" />
+
+      <!-- Rear Amber Tail Emergency Lights -->
+      <circle cx="17.5" cy="48" r="1.5" fill="#F59E0B" />
+      <circle cx="34.5" cy="48" r="1.5" fill="#F59E0B" />
     </svg>
   `;
 }
@@ -686,24 +728,24 @@ export default function MapView({
         },
       });
 
-      // 4. Geofence rings around each Camp Site
+      // 4. Designated Camp Areas (500m Real Geodesic Ground Perimeters)
       if (map.getSource('camp-geofences')) {
-        map.removeLayer('camp-geofence-fill');
+        if (map.getLayer('camp-area-fill')) map.removeLayer('camp-area-fill');
+        if (map.getLayer('camp-area-glow')) map.removeLayer('camp-area-glow');
+        if (map.getLayer('camp-area-boundary')) map.removeLayer('camp-area-boundary');
         map.removeSource('camp-geofences');
       }
 
-      const campFeatures = camps.map((camp) => ({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [camp.lon, camp.lat],
-        },
-        properties: {
+      const campFeatures = camps.map((camp) => {
+        const radiusKm = (camp.radiusMeters || 500) / 1000;
+        const circleFeat = createGeoJSONCircle([camp.lon, camp.lat], radiusKm, 64);
+        circleFeat.properties = {
           id: camp.id,
           name: camp.name,
-          radius: camp.radiusMeters || 500,
-        },
-      }));
+          radiusMeters: camp.radiusMeters || 500,
+        };
+        return circleFeat;
+      });
 
       map.addSource('camp-geofences', {
         type: 'geojson',
@@ -713,22 +755,40 @@ export default function MapView({
         },
       });
 
+      // Translucent Emerald Medical Zone Ground Fill
       map.addLayer({
-        id: 'camp-geofence-fill',
-        type: 'circle',
+        id: 'camp-area-fill',
+        type: 'fill',
         source: 'camp-geofences',
         paint: {
-          'circle-radius': [
-            'interpolate', ['exponential', 2], ['zoom'],
-            9, 10,
-            12, 40,
-            15, 140
-          ],
-          'circle-color': isDark ? '#06b6d4' : '#0284c7',
-          'circle-opacity': isDark ? 0.16 : 0.12,
-          'circle-stroke-width': 2,
-          'circle-stroke-color': isDark ? '#22d3ee' : '#0284c7',
-          'circle-stroke-opacity': isDark ? 0.7 : 0.5,
+          'fill-color': isDark ? '#059669' : '#10B981',
+          'fill-opacity': isDark ? 0.22 : 0.16,
+        },
+      });
+
+      // Soft Ambient Boundary Glow
+      map.addLayer({
+        id: 'camp-area-glow',
+        type: 'line',
+        source: 'camp-geofences',
+        paint: {
+          'line-color': isDark ? '#34d399' : '#10B981',
+          'line-width': 7,
+          'line-opacity': 0.35,
+          'line-blur': 3,
+        },
+      });
+
+      // Crisp Dashed Designated Zone Perimeter Line
+      map.addLayer({
+        id: 'camp-area-boundary',
+        type: 'line',
+        source: 'camp-geofences',
+        paint: {
+          'line-color': isDark ? '#6ee7b7' : '#059669',
+          'line-width': 2.5,
+          'line-opacity': 0.88,
+          'line-dasharray': [4, 3],
         },
       });
     } catch (e) {
@@ -757,28 +817,53 @@ export default function MapView({
     });
   }, [showDistanceLines]);
 
-  // Zomato/Swiggy Delivery Dash Flow Animation (Streaming forward pulses into destination)
+  // Live Navigation Line Animation (Streaming forward pulses + flashing glow into destination)
   useEffect(() => {
+    let animId;
+    let lastDashUpdate = 0;
     let step = 0;
     const dashPatterns = [
-      [0.2, 2.5, 2.3],
-      [0.7, 2.5, 1.8],
-      [1.2, 2.5, 1.3],
-      [1.7, 2.5, 0.8],
-      [2.2, 2.5, 0.3],
-      [2.5, 2.5, 0.0],
+      [0.1, 2.5, 2.4],
+      [0.5, 2.5, 2.0],
+      [1.0, 2.5, 1.5],
+      [1.5, 2.5, 1.0],
+      [2.0, 2.5, 0.5],
+      [2.5, 2.5, 0.1],
     ];
 
-    const animInterval = setInterval(() => {
+    const animate = (timestamp) => {
       const map = mapRef.current;
-      if (!map || !map.isStyleLoaded() || !map.getLayer('delivery-incoming-flow')) return;
-      step = (step + 1) % dashPatterns.length;
-      try {
-        map.setPaintProperty('delivery-incoming-flow', 'line-dasharray', dashPatterns[step]);
-      } catch (e) {}
-    }, 120);
+      if (map && map.isStyleLoaded()) {
+        try {
+          // 1. Flashing & Breathing Glow Effect on Blue Navigation Corridor
+          if (map.getLayer('delivery-incoming-casing')) {
+            const pulse = (Math.sin(timestamp * 0.005) + 1) / 2; // oscillates smoothly between 0 and 1
+            const opacity = 0.25 + 0.45 * pulse; // breathes between 0.25 and 0.70
+            const width = 8 + 4 * pulse; // pulses between 8px and 12px
+            map.setPaintProperty('delivery-incoming-casing', 'line-opacity', opacity);
+            map.setPaintProperty('delivery-incoming-casing', 'line-width', width);
+          }
 
-    return () => clearInterval(animInterval);
+          // 2. Dash flow movement every ~80ms
+          if (timestamp - lastDashUpdate > 80) {
+            lastDashUpdate = timestamp;
+            if (map.getLayer('delivery-incoming-flow')) {
+              step = (step + 1) % dashPatterns.length;
+              map.setPaintProperty('delivery-incoming-flow', 'line-dasharray', dashPatterns[step]);
+            }
+          }
+
+          // Force canvas re-render so animations stream actively even when map is static
+          map.triggerRepaint();
+        } catch (e) {}
+      }
+      animId = requestAnimationFrame(animate);
+    };
+
+    animId = requestAnimationFrame(animate);
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
   }, []);
 
   // Update Road Navigation Trail geometry and Midpoint Distance Badges
@@ -1102,31 +1187,39 @@ export default function MapView({
         .replace(' Eye Screening Camp', '');
 
       el.innerHTML = `
+        <!-- Designated Camp Perimeter Badge -->
+        <div class="mb-1 whitespace-nowrap px-2 py-0.5 rounded-full ${
+          isDark ? 'bg-emerald-950/90 border border-emerald-500/40 text-emerald-300' : 'bg-emerald-50/95 border border-emerald-300 text-emerald-800'
+        } text-[8.5px] font-semibold tracking-tight shadow-xs flex items-center gap-1 pointer-events-none">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Designated Camp Zone (500m)</span>
+        </div>
+
         ${incomingVehicle ? `
           <!-- Zomato/Swiggy Delivery Destination Header -->
-          <div class="mb-1 whitespace-nowrap px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-bold shadow-md border border-white/50 flex items-center gap-1 animate-bounce-subtle pointer-events-none">
+          <div class="mb-1 whitespace-nowrap px-2.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-[9px] font-bold shadow-md border border-white/60 flex items-center gap-1 animate-bounce-subtle pointer-events-none">
             <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-            <span>Destination (Camp)</span>
+            <span>🎯 DESTINATION • Incoming Ambulance</span>
           </div>
         ` : ''}
 
         <div class="relative flex items-center justify-center">
           <!-- Gentle Sonar Ripple Ring -->
-          <div class="absolute w-14 h-14 rounded-full ${isDark ? 'bg-cyan-400/20' : 'bg-sky-500/15'} radar-ring pointer-events-none"></div>
+          <div class="absolute w-14 h-14 rounded-full ${isDark ? 'bg-emerald-400/20' : 'bg-emerald-500/15'} radar-ring pointer-events-none"></div>
 
           ${incomingVehicle ? `
             <!-- Zomato/Swiggy Destination Beacon Pulse Rings -->
-            <div class="absolute -inset-3 rounded-full bg-emerald-500/30 animate-ping pointer-events-none"></div>
-            <div class="absolute -inset-6 rounded-full bg-teal-500/15 animate-pulse pointer-events-none"></div>
+            <div class="absolute -inset-3 rounded-full bg-emerald-500/35 animate-ping pointer-events-none"></div>
+            <div class="absolute -inset-6 rounded-full bg-teal-500/20 animate-pulse pointer-events-none"></div>
           ` : ''}
           
-          <!-- Apple Maps Circular POI Disc -->
+          <!-- Apple Maps Camp Medical POI Disc -->
           <div class="w-8 h-8 rounded-full ${
             incomingVehicle
               ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 border-2 border-white shadow-[0_4px_14px_rgba(16,185,129,0.5)] text-white'
               : (isDark 
-                  ? 'bg-gradient-to-tr from-cyan-600 to-sky-400 border-2 border-white/90 shadow-[0_4px_14px_rgba(6,182,212,0.5)] text-white' 
-                  : 'bg-gradient-to-tr from-sky-600 to-cyan-500 border-2 border-white shadow-[0_4px_12px_rgba(2,132,199,0.3)] text-white')
+                  ? 'bg-gradient-to-tr from-emerald-700 to-teal-500 border-2 border-white/90 shadow-[0_4px_14px_rgba(16,185,129,0.5)] text-white' 
+                  : 'bg-gradient-to-tr from-emerald-600 to-teal-600 border-2 border-white shadow-[0_4px_12px_rgba(5,150,105,0.35)] text-white')
           } flex items-center justify-center hover:scale-110 transition-transform">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
               <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
@@ -1138,12 +1231,12 @@ export default function MapView({
         <!-- Apple Callout Label Pill -->
         <div class="mt-1 whitespace-nowrap px-2 py-0.5 rounded-full backdrop-blur-md ${
           isDark 
-            ? 'bg-slate-950/95 border border-cyan-500/40 text-cyan-200 shadow-md' 
-            : 'bg-white/95 border border-slate-200 text-slate-800 shadow-xs'
+            ? 'bg-slate-950/95 border border-emerald-500/40 text-emerald-200 shadow-md' 
+            : 'bg-white/95 border border-emerald-200 text-slate-800 shadow-xs'
         } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105">
           <span class="w-1.5 h-1.5 rounded-full ${incomingVehicle ? 'bg-emerald-400 animate-ping' : 'bg-emerald-500'}"></span>
           <span>${shortCampName}</span>
-          <span class="${isDark ? 'text-cyan-400/90 font-mono' : 'text-sky-600 font-mono'} font-semibold">(${camp.currentScreened || 0})</span>
+          <span class="${isDark ? 'text-emerald-400/90 font-mono' : 'text-emerald-600 font-mono'} font-semibold">(${camp.currentScreened || 0})</span>
         </div>
       `;
 
@@ -1212,53 +1305,31 @@ export default function MapView({
 
       markerObj.element.innerHTML = `
         <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-200 ${isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'}">
-          <!-- Zomato/Swiggy Live ETA Bubble Floating Above Vehicle -->
+          <!-- Zomato/Swiggy Live ETA Bubble Floating Above Vehicle (Upright) -->
           ${v.status === 'moving' && v.speed > 0 ? `
-            <div class="mb-2.5 whitespace-nowrap px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md flex items-center gap-1.5 bg-gradient-to-r from-blue-600 via-sky-600 to-indigo-600 text-white border-white/60 text-[9.5px] font-mono font-bold tracking-tight pointer-events-none">
+            <div class="mb-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md flex items-center gap-1.5 bg-gradient-to-r from-blue-600 via-sky-600 to-indigo-600 text-white border-white/60 text-[9.5px] font-mono font-bold tracking-tight pointer-events-none">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>⚡ ~${v.etaMins || 14}m to Camp</span>
+              <span>⚡ ~${v.etaMins || 14}m to Camp (${v.distRemainingKm || 12}km)</span>
             </div>
           ` : ''}
 
-          <!-- Live Heading Chevron (Apple Maps navigation style) -->
-          ${v.speed > 1 ? `
-            <div style="transform: rotate(${v.bearing || 0}deg);" class="absolute -top-3.5 transition-transform duration-300 pointer-events-none">
-              <svg class="w-3.5 h-3.5 ${isDark ? 'text-sky-400 drop-shadow-[0_0_6px_rgba(56,189,248,0.8)]' : 'text-sky-600 drop-shadow'}" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="12,2 22,22 12,17 2,22"/>
-              </svg>
-            </div>
-          ` : ''}
-
-          <!-- Find My Precision Sonar Ping Rings -->
-          ${isSelected ? `
-            <div class="absolute -inset-2 rounded-full ${isDark ? 'bg-sky-400/25 ring-2 ring-sky-400/40' : 'bg-sky-500/20 ring-2 ring-sky-500/30'} animate-ping pointer-events-none"></div>
-            <div class="absolute -inset-4 rounded-full ${isDark ? 'bg-cyan-400/10' : 'bg-sky-400/10'} animate-pulse pointer-events-none"></div>
-          ` : ''}
-
-          <!-- AirTag Circular Metallic Platter Disc -->
-          <div class="relative w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
-            isDark
-              ? 'bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950 border border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.6)] text-white'
-              : 'bg-gradient-to-b from-white via-slate-50 to-slate-100 border border-slate-200/90 shadow-[0_4px_14px_rgba(0,0,0,0.18)] text-slate-800'
-          } ${
-            isSelected 
-              ? (isDark ? 'ring-2 ring-sky-400 ring-offset-2 ring-offset-slate-950' : 'ring-2 ring-sky-600 ring-offset-2 ring-offset-white') 
-              : ''
-          }">
-            ${getVehicleIconSvg(v.type, isDark, v.status)}
-
-            <!-- Live Status Pip at 4 o'clock -->
-            <span class="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border-2 ${isDark ? 'border-slate-900' : 'border-white'} ${statusDotColor}"></span>
+          <!-- 3D Isometric Ambulance Rotated on the Road along Vehicle Bearing -->
+          <div class="relative flex items-center justify-center transition-transform duration-500 ease-out" style="transform: rotate(${v.bearing || 0}deg);">
+            ${isSelected ? `
+              <div class="absolute w-14 h-16 rounded-full ${isDark ? 'bg-sky-400/30 ring-2 ring-sky-400/50' : 'bg-sky-500/25 ring-2 ring-sky-500/40'} animate-ping pointer-events-none"></div>
+            ` : ''}
+            ${get3DAmbulanceSvg(isDark, v.status, isSelected)}
           </div>
 
-          <!-- Apple Frosted Label Pill Below -->
-          <div class="mt-1 px-2 py-0.5 rounded-full backdrop-blur-md border shadow-md flex items-center gap-1.5 transition-all duration-200 ${
+          <!-- Apple Frosted Label Pill Below (Upright) -->
+          <div class="mt-1 px-2.5 py-0.5 rounded-full backdrop-blur-md border shadow-md flex items-center gap-1.5 transition-all duration-200 ${
             isSelected
               ? (isDark ? 'bg-sky-950/95 text-sky-200 border-sky-400/80 scale-105 shadow-sky-500/30' : 'bg-sky-600 text-white border-sky-700 scale-105 shadow-sky-500/25')
               : (isDark ? 'bg-slate-950/90 text-slate-200 border-white/10 group-hover:border-slate-600' : 'bg-white/95 text-slate-800 border-slate-200/80 shadow-xs group-hover:border-slate-300')
           }">
+            <span class="w-2 h-2 rounded-full ${statusDotColor}"></span>
             <span class="text-[10px] font-bold leading-none tracking-tight">${shortName}</span>
-            <span class="text-[9px] font-mono opacity-80">${v.speed > 0 ? `${v.speed} km/h` : (v.patientsOnboard > 0 ? `${v.patientsOnboard} bded` : 'Idle')}</span>
+            <span class="text-[9px] font-mono opacity-80">${v.speed > 0 ? `${v.speed} km/h` : (v.patientsOnboard > 0 ? `${v.patientsOnboard} bded` : 'On Site')}</span>
           </div>
         </div>
       `;
