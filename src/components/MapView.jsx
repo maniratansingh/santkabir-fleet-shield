@@ -153,33 +153,7 @@ const MAP_STYLES = {
   },
 };
 
-// Generate Geographic Circle for Distance Range Rings (in Kilometers)
-function createGeoJSONCircle(center, radiusInKm, points = 64) {
-  const [lon, lat] = center;
-  const coords = [];
-  const latRad = (lat * Math.PI) / 180;
-  const degLat = radiusInKm / 110.574;
-  const degLon = radiusInKm / (111.32 * Math.cos(latRad));
-
-  for (let i = 0; i <= points; i++) {
-    const theta = (i / points) * (2 * Math.PI);
-    const x = degLon * Math.cos(theta);
-    const y = degLat * Math.sin(theta);
-    coords.push([lon + x, lat + y]);
-  }
-  return {
-    type: 'Feature',
-    geometry: {
-      type: 'Polygon',
-      coordinates: [coords],
-    },
-    properties: {
-      radiusKm: radiusInKm,
-    },
-  };
-}
-
-// Closest segment projection for road corridor waypoint snapping
+// Closest segment projection for highway waypoint snapping
 function findClosestSegmentIndex(p, waypoints) {
   let minDistance = Infinity;
   let bestIdx = 0;
@@ -202,61 +176,27 @@ function findClosestSegmentIndex(p, waypoints) {
   return bestIdx;
 }
 
-// Compute Zomato/Swiggy-style split navigation lines:
-// 1. upcomingRoute: animated delivery corridor leading into the user/camp destination ("coming to my location")
-// 2. completedTrail: solid navigation trail behind ambulance to the base hospital
-function getDeliveryRouteSplit(v, camps) {
+// Compute solid highway navigation trail from Sant Kabir Eye Hospital Base to the live vehicle location
+function getHighwayTrail(v) {
   const baseCoord = [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat];
   const vehCoord = [v.lon, v.lat];
 
-  const camp = camps.find(c => c.id === v.assignedCampId);
-  if (!camp || !camp.routeWaypoints || camp.routeWaypoints.length < 2) {
-    return {
-      upcomingRoute: [vehCoord, [camp?.lon || BASE_HOSPITAL.lon, camp?.lat || BASE_HOSPITAL.lat]],
-      completedTrail: [baseCoord, vehCoord],
-    };
+  if (v.status === 'at_base') {
+    return [];
   }
 
-  const wps = camp.routeWaypoints;
+  const wps = v.routeWaypoints;
+  if (!wps || wps.length < 2) {
+    return [baseCoord, vehCoord];
+  }
+
   const k = findClosestSegmentIndex(vehCoord, wps);
-
-  if (v.status === 'returning') {
-    // Returning to Base Hospital
-    // upcomingRoute: from vehicle to Base Hospital along remaining waypoints
-    const upcoming = [vehCoord];
-    for (let i = k; i >= 0; i--) {
-      upcoming.push(wps[i]);
-    }
-    // completedTrail: from Camp to vehicle
-    const completed = [];
-    for (let i = wps.length - 1; i > k; i--) {
-      completed.push(wps[i]);
-    }
-    completed.push(vehCoord);
-    return {
-      upcomingRoute: upcoming.length > 1 ? upcoming : [vehCoord, baseCoord],
-      completedTrail: completed.length > 1 ? completed : [[camp.lon, camp.lat], vehCoord],
-    };
-  }
-
-  // Moving to Camp Destination ("coming to my location" like Zomato / Swiggy)
-  // completedTrail: from Base Hospital through passed waypoints to current vehicle position
-  const completed = [];
+  const trail = [baseCoord];
   for (let i = 0; i <= k; i++) {
-    completed.push(wps[i]);
+    trail.push(wps[i]);
   }
-  completed.push(vehCoord);
-
-  // upcomingRoute: from current vehicle position through upcoming waypoints to Camp Destination
-  const upcoming = [vehCoord];
-  for (let i = k + 1; i < wps.length; i++) {
-    upcoming.push(wps[i]);
-  }
-
-  return {
-    upcomingRoute: upcoming.length > 1 ? upcoming : [vehCoord, [camp.lon, camp.lat]],
-    completedTrail: completed.length > 1 ? completed : [baseCoord, vehCoord],
-  };
+  trail.push(vehCoord);
+  return trail;
 }
 
 // Authentic 3D Isometric Ambulance with specular lighting, dual headlights, and drop shadow
@@ -266,7 +206,7 @@ function get3DAmbulanceSvg(isDark, status, isSelected) {
   const uniqueId = Math.random().toString(36).substr(2, 6);
 
   return `
-    <svg class="w-12 h-14 select-none drop-shadow-2xl" viewBox="0 0 52 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="48" height="56" class="w-12 h-14 select-none drop-shadow-2xl" viewBox="0 0 52 64" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="ambWindshield_${uniqueId}" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stop-color="#38BDF8"/>
@@ -342,188 +282,134 @@ function get3DAmbulanceSvg(isDark, status, isSelected) {
 }
 
 export default function MapView({ 
-  vehicles, 
-  camps, 
-  selectedVehicleId, 
-  onSelectVehicle, 
-  onSelectCamp, 
+  vehicles = [], 
+  selectedVehicleId = null, 
+  onSelectVehicle = () => {}, 
   fitTrigger, 
   theme = 'light',
   activeStyleKey = 'light',
   onStyleChange,
   showDistanceLines = true,
-  detent = 'half',
-  actionTrigger = null,
+  onToggleDistanceLines,
+  onResetView,
 }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef({});
-  const campMarkersRef = useRef({});
   const baseMarkerRef = useRef(null);
   const distanceMarkersRef = useRef({});
-  const ringLabelMarkersRef = useRef([]);
+  const currentStyleKeyRef = useRef(activeStyleKey);
+  const [styleDropdownOpen, setStyleDropdownOpen] = useState(false);
 
-  // Responsive padding calculation (adapts dynamically to Apple Sheet position)
-  const getResponsivePadding = () => {
-    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-    
-    return {
-      top: isMobile ? 80 : 70,
-      bottom: isMobile ? (detent === 'peek' ? 90 : 360) : (detent === 'peek' ? 80 : 80),
-      left: isDesktop ? (detent === 'peek' ? 70 : 410) : 25,
-      right: isDesktop ? 70 : 25,
-    };
-  };
-
-  // Helper to fit all camps & vehicles in camera view
+  // Helper to fit all active vehicles & hospital base in camera view
   const fitAll = () => {
     const map = mapRef.current;
     if (!map) return;
 
-    try {
-      const bounds = new maplibregl.LngLatBounds();
-      bounds.extend([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]);
+    const bounds = new maplibregl.LngLatBounds();
+    bounds.extend([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]);
 
-      camps.forEach((c) => {
-        if (c.lon && c.lat) bounds.extend([c.lon, c.lat]);
-      });
-      vehicles.forEach((v) => {
-        if (v.lon && v.lat) bounds.extend([v.lon, v.lat]);
-      });
+    vehicles.forEach((v) => {
+      bounds.extend([v.lon, v.lat]);
+    });
 
-      map.fitBounds(bounds, {
-        padding: getResponsivePadding(),
-        maxZoom: 13,
-        duration: 1200,
-      });
-    } catch (err) {
-      console.warn('fitBounds error:', err);
-    }
+    map.fitBounds(bounds, {
+      padding: { top: 120, bottom: 180, left: 100, right: 100 },
+      maxZoom: 13,
+      duration: 1000,
+    });
   };
 
-  const currentStyleKeyRef = useRef(activeStyleKey || (theme === 'dark' ? 'dark' : 'light'));
-
-  // Switch Map Style safely
-  const changeStyle = (key) => {
-    if (!mapRef.current || !MAP_STYLES[key]) return;
-    currentStyleKeyRef.current = key;
-    if (onStyleChange) onStyleChange(key);
+  // Center camera on a specific vehicle
+  const focusVehicle = (vehId) => {
     const map = mapRef.current;
-    map.setStyle(MAP_STYLES[key].style);
+    if (!map) return;
+    const veh = vehicles.find((v) => v.id === vehId);
+    if (!veh) return;
 
-    const onStyleData = () => {
-      if (map.isStyleLoaded()) {
-        map.off('styledata', onStyleData);
-        addCustomLayers(map, key === 'dark');
-        updateBaseMarker();
-        updateCampMarkers();
-        updateRingLabels(map);
-        updateDistanceVectors(map);
-        updateVehicleMarkers();
-      }
-    };
-    map.on('styledata', onStyleData);
+    map.flyTo({
+      center: [veh.lon, veh.lat],
+      zoom: 13.5,
+      pitch: 35,
+      bearing: veh.bearing || 0,
+      speed: 1.2,
+      curve: 1.4,
+      essential: true,
+    });
   };
 
-  useEffect(() => {
-    if (activeStyleKey && activeStyleKey !== currentStyleKeyRef.current) {
-      changeStyle(activeStyleKey);
-    }
-  }, [activeStyleKey]);
+  // Switch map layer style seamlessly
+  const switchMapStyle = (styleKey) => {
+    const map = mapRef.current;
+    if (!map || styleKey === currentStyleKeyRef.current) return;
 
-  // Respond to action triggers (resetNorth, centerBase, focusRoute, focusDistance)
+    currentStyleKeyRef.current = styleKey;
+    if (onStyleChange) onStyleChange(styleKey);
+
+    // Clear existing marker DOM references so they get fresh attachment to new style
+    Object.values(markersRef.current).forEach(m => { try { m.marker.remove(); } catch (e) {} });
+    markersRef.current = {};
+    Object.values(distanceMarkersRef.current).forEach(m => { try { m.marker.remove(); } catch (e) {} });
+    distanceMarkersRef.current = {};
+    if (baseMarkerRef.current) {
+      try { baseMarkerRef.current.remove(); } catch (e) {}
+      baseMarkerRef.current = null;
+    }
+
+    map.setStyle(MAP_STYLES[styleKey].style);
+
+    map.once('style.load', () => {
+      addCustomLayers(map);
+      updateBaseMarker(map);
+      updateDistanceVectors(map);
+      updateVehicleMarkers(map);
+    });
+  };
+
+  // Synchronize style when theme changes from light to dark or vice-versa
   useEffect(() => {
-    if (!actionTrigger || !mapRef.current) return;
-    const { type } = actionTrigger;
-    if (type === 'resetNorth') {
-      mapRef.current.easeTo({ bearing: 0, pitch: 20, duration: 800 });
-    } else if (type === 'centerBase') {
-      mapRef.current.flyTo({ center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat], zoom: 12.5, speed: 1.2 });
-    } else if (type === 'focusRoute') {
-      const veh = vehicles.find(v => v.id === selectedVehicleId);
-      const camp = veh ? camps.find(c => c.id === veh.assignedCampId) : null;
-      if (camp && camp.routeWaypoints) {
-        const bounds = new maplibregl.LngLatBounds();
-        bounds.extend([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]);
-        camp.routeWaypoints.forEach(pt => bounds.extend(pt));
-        mapRef.current.fitBounds(bounds, { padding: getResponsivePadding(), duration: 1000 });
-      }
-    } else if (type === 'focusDistance') {
-      const veh = vehicles.find(v => v.id === selectedVehicleId);
-      if (veh) {
-        const bounds = new maplibregl.LngLatBounds();
-        bounds.extend([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]);
-        bounds.extend([veh.lon, veh.lat]);
-        mapRef.current.fitBounds(bounds, { padding: getResponsivePadding(), duration: 1000 });
+    const targetStyleKey = theme === 'dark' ? 'dark' : 'light';
+    if (currentStyleKeyRef.current !== targetStyleKey && (currentStyleKeyRef.current === 'dark' || currentStyleKeyRef.current === 'light')) {
+      switchMapStyle(targetStyleKey);
+    }
+  }, [theme]);
+
+  // Trigger camera fit when requested by parent
+  useEffect(() => {
+    if (fitTrigger > 0) {
+      if (selectedVehicleId) {
+        focusVehicle(selectedVehicleId);
+      } else {
+        fitAll();
       }
     }
-  }, [actionTrigger]);
+  }, [fitTrigger, selectedVehicleId]);
 
-  // Add Route lines, Distance Range Rings, and Geofences
-  const addCustomLayers = (map, forceDark = null) => {
+  // Add Custom Highway Road Trail Layers
+  const addCustomLayers = (map) => {
     try {
-      const isDark = forceDark !== null ? forceDark : (theme === 'dark' || currentStyleKeyRef.current === 'dark');
+      const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
 
-      // 1. Clean up air range rings if any exist
-      if (map.getSource('base-range-rings')) {
-        if (map.getLayer('base-range-rings-fill')) map.removeLayer('base-range-rings-fill');
-        if (map.getLayer('base-range-rings-line')) map.removeLayer('base-range-rings-line');
-        map.removeSource('base-range-rings');
-      }
-
-      // 2. Zomato/Swiggy-style Delivery Navigation Corridors
-      // Clean up previous sources if present
-      if (map.getSource('delivery-incoming-routes')) {
-        if (map.getLayer('delivery-incoming-casing')) map.removeLayer('delivery-incoming-casing');
-        if (map.getLayer('delivery-incoming-road')) map.removeLayer('delivery-incoming-road');
-        if (map.getLayer('delivery-incoming-flow')) map.removeLayer('delivery-incoming-flow');
-        map.removeSource('delivery-incoming-routes');
-      }
+      // 1. Solid Highway Road Trail Behind Vehicle from Hospital Base
       if (map.getSource('delivery-trail-routes')) {
+        if (map.getLayer('delivery-trail-casing')) map.removeLayer('delivery-trail-casing');
         if (map.getLayer('delivery-trail-line')) map.removeLayer('delivery-trail-line');
         map.removeSource('delivery-trail-routes');
       }
-      if (map.getSource('base-distance-vectors')) {
-        if (map.getLayer('base-navigation-trail-casing')) map.removeLayer('base-navigation-trail-casing');
-        if (map.getLayer('base-distance-vectors-line')) map.removeLayer('base-distance-vectors-line');
-        map.removeSource('base-distance-vectors');
-      }
 
-      const activeVehicles = vehicles.filter((v) => v.status !== 'at_base');
+      const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
+      const trailFeatures = activeVehicles.map((v) => ({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: getHighwayTrail(v),
+        },
+        properties: {
+          vehicleId: v.id,
+          isSelected: v.id === selectedVehicleId,
+        },
+      }));
 
-      const incomingFeatures = activeVehicles.map((v) => {
-        const split = getDeliveryRouteSplit(v, camps);
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: split.upcomingRoute,
-          },
-          properties: {
-            vehicleId: v.id,
-            isSelected: v.id === selectedVehicleId,
-            status: v.status,
-          },
-        };
-      });
-
-      const trailFeatures = activeVehicles.map((v) => {
-        const split = getDeliveryRouteSplit(v, camps);
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: split.completedTrail,
-          },
-          properties: {
-            vehicleId: v.id,
-            isSelected: v.id === selectedVehicleId,
-          },
-        };
-      });
-
-      // A. Completed Road Trail Behind Vehicle (Solid subtle highway trail)
       map.addSource('delivery-trail-routes', {
         type: 'geojson',
         data: {
@@ -532,8 +418,9 @@ export default function MapView({
         },
       });
 
+      // Ambient Cyan/Blue Glow Beneath Navigation Trail
       map.addLayer({
-        id: 'delivery-trail-line',
+        id: 'delivery-trail-casing',
         type: 'line',
         source: 'delivery-trail-routes',
         layout: {
@@ -542,59 +429,23 @@ export default function MapView({
           'line-join': 'round',
         },
         paint: {
-          'line-color': isDark ? '#0284c7' : '#007AFF',
+          'line-color': isDark ? '#38BDF8' : '#0284C7',
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            4.5,
-            3.2,
+            10,
+            6.5,
           ],
-          'line-opacity': isDark ? 0.8 : 0.75,
+          'line-opacity': isDark ? 0.35 : 0.22,
+          'line-blur': 2.5,
         },
       });
 
-      // B. Upcoming Delivery Route Leading to Destination ("Lines coming to my location")
-      map.addSource('delivery-incoming-routes', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: incomingFeatures,
-        },
-      });
-
-      // 1) Soft Glowing Ambient Delivery Corridor
+      // Solid Apple Maps Highway Navigation Ribbon
       map.addLayer({
-        id: 'delivery-incoming-casing',
+        id: 'delivery-trail-line',
         type: 'line',
-        source: 'delivery-incoming-routes',
-        layout: {
-          visibility: showDistanceLines ? 'visible' : 'none',
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': isDark ? '#00e5ff' : '#007AFF',
-          'line-width': [
-            'case',
-            ['get', 'isSelected'],
-            12,
-            7.5,
-          ],
-          'line-opacity': [
-            'case',
-            ['get', 'isSelected'],
-            0.5,
-            0.3,
-          ],
-          'line-blur': 3,
-        },
-      });
-
-      // 2) Solid Apple Maps Blue Navigation Ribbon
-      map.addLayer({
-        id: 'delivery-incoming-road',
-        type: 'line',
-        source: 'delivery-incoming-routes',
+        source: 'delivery-trail-routes',
         layout: {
           visibility: showDistanceLines ? 'visible' : 'none',
           'line-cap': 'round',
@@ -610,265 +461,54 @@ export default function MapView({
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            5.5,
-            4,
+            5,
+            3.8,
           ],
           'line-opacity': 0.95,
         },
       });
 
-      // 3) Zomato/Swiggy Animated Dash Flow (Streaming pulses towards destination)
-      map.addLayer({
-        id: 'delivery-incoming-flow',
-        type: 'line',
-        source: 'delivery-incoming-routes',
-        layout: {
-          visibility: showDistanceLines ? 'visible' : 'none',
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': '#FFFFFF',
-          'line-width': 2.2,
-          'line-opacity': 0.95,
-          'line-dasharray': [1.5, 2.5],
-        },
-      });
-
-      // 3. Highway Route Corridors from Base Hospital to each Eye Camp
-      if (map.getSource('camp-routes')) {
-        map.removeLayer('camp-routes-casing');
-        map.removeLayer('camp-routes-line');
-        map.removeSource('camp-routes');
-      }
-
-      const routeFeatures = camps
-        .filter((c) => c.routeWaypoints && c.routeWaypoints.length > 0)
-        .map((c) => ({
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: c.routeWaypoints,
-          },
-          properties: {
-            campId: c.id,
-            name: c.name,
-          },
-        }));
-
-      map.addSource('camp-routes', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: routeFeatures,
-        },
-      });
-
-      map.addLayer({
-        id: 'camp-routes-casing',
-        type: 'line',
-        source: 'camp-routes',
-        paint: {
-          'line-color': isDark ? '#38bdf8' : '#0284c7',
-          'line-width': 4.5,
-          'line-opacity': isDark ? 0.12 : 0.08,
-          'line-blur': 2,
-        },
-      });
-
-      map.addLayer({
-        id: 'camp-routes-line',
-        type: 'line',
-        source: 'camp-routes',
-        paint: {
-          'line-color': isDark ? '#334155' : '#cbd5e1',
-          'line-width': 2.5,
-          'line-opacity': isDark ? 0.4 : 0.5,
-        },
-      });
-
-      // 4. Designated Camp Areas (500m Real Geodesic Ground Perimeters)
-      if (map.getSource('camp-geofences')) {
-        if (map.getLayer('camp-area-fill')) map.removeLayer('camp-area-fill');
-        if (map.getLayer('camp-area-glow')) map.removeLayer('camp-area-glow');
-        if (map.getLayer('camp-area-boundary')) map.removeLayer('camp-area-boundary');
-        map.removeSource('camp-geofences');
-      }
-
-      const campFeatures = camps.map((camp) => {
-        const radiusKm = (camp.radiusMeters || 500) / 1000;
-        const circleFeat = createGeoJSONCircle([camp.lon, camp.lat], radiusKm, 64);
-        circleFeat.properties = {
-          id: camp.id,
-          name: camp.name,
-          radiusMeters: camp.radiusMeters || 500,
-        };
-        return circleFeat;
-      });
-
-      map.addSource('camp-geofences', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: campFeatures,
-        },
-      });
-
-      // Translucent Emerald Medical Zone Ground Fill
-      map.addLayer({
-        id: 'camp-area-fill',
-        type: 'fill',
-        source: 'camp-geofences',
-        paint: {
-          'fill-color': isDark ? '#059669' : '#10B981',
-          'fill-opacity': isDark ? 0.22 : 0.16,
-        },
-      });
-
-      // Soft Ambient Boundary Glow
-      map.addLayer({
-        id: 'camp-area-glow',
-        type: 'line',
-        source: 'camp-geofences',
-        paint: {
-          'line-color': isDark ? '#34d399' : '#10B981',
-          'line-width': 7,
-          'line-opacity': 0.35,
-          'line-blur': 3,
-        },
-      });
-
-      // Crisp Dashed Designated Zone Perimeter Line
-      map.addLayer({
-        id: 'camp-area-boundary',
-        type: 'line',
-        source: 'camp-geofences',
-        paint: {
-          'line-color': isDark ? '#6ee7b7' : '#059669',
-          'line-width': 2.5,
-          'line-opacity': 0.88,
-          'line-dasharray': [4, 3],
-        },
-      });
     } catch (e) {
       console.warn('Custom layer registration error:', e);
     }
   };
 
-  // Update Distance Lines & Range Rings visibility whenever prop changes
+  // Update Distance Lines visibility whenever prop changes
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.loaded()) return;
+    if (!map) return;
 
-    const visibility = showDistanceLines ? 'visible' : 'none';
-    if (map.getLayer('base-range-rings-line')) map.setLayoutProperty('base-range-rings-line', 'visibility', visibility);
-    if (map.getLayer('base-range-rings-fill')) map.setLayoutProperty('base-range-rings-fill', 'visibility', visibility);
-    if (map.getLayer('delivery-incoming-casing')) map.setLayoutProperty('delivery-incoming-casing', 'visibility', visibility);
-    if (map.getLayer('delivery-incoming-road')) map.setLayoutProperty('delivery-incoming-road', 'visibility', visibility);
-    if (map.getLayer('delivery-incoming-flow')) map.setLayoutProperty('delivery-incoming-flow', 'visibility', visibility);
-    if (map.getLayer('delivery-trail-line')) map.setLayoutProperty('delivery-trail-line', 'visibility', visibility);
+    ['delivery-trail-casing', 'delivery-trail-line'].forEach((layerId) => {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', showDistanceLines ? 'visible' : 'none');
+      }
+    });
 
     Object.values(distanceMarkersRef.current).forEach(({ element }) => {
-      element.style.display = showDistanceLines ? 'flex' : 'none';
-    });
-    ringLabelMarkersRef.current.forEach((marker) => {
-      marker.getElement().style.display = showDistanceLines ? 'flex' : 'none';
+      if (element) {
+        element.style.display = showDistanceLines ? 'flex' : 'none';
+      }
     });
   }, [showDistanceLines]);
 
-  // Live Navigation Line Animation (Streaming forward pulses + flashing glow into destination)
-  useEffect(() => {
-    let animId;
-    let lastDashUpdate = 0;
-    let step = 0;
-    const dashPatterns = [
-      [0.1, 2.5, 2.4],
-      [0.5, 2.5, 2.0],
-      [1.0, 2.5, 1.5],
-      [1.5, 2.5, 1.0],
-      [2.0, 2.5, 0.5],
-      [2.5, 2.5, 0.1],
-    ];
-
-    const animate = (timestamp) => {
-      const map = mapRef.current;
-      if (map && map.isStyleLoaded()) {
-        try {
-          // 1. Flashing & Breathing Glow Effect on Blue Navigation Corridor
-          if (map.getLayer('delivery-incoming-casing')) {
-            const pulse = (Math.sin(timestamp * 0.005) + 1) / 2; // oscillates smoothly between 0 and 1
-            const opacity = 0.25 + 0.45 * pulse; // breathes between 0.25 and 0.70
-            const width = 8 + 4 * pulse; // pulses between 8px and 12px
-            map.setPaintProperty('delivery-incoming-casing', 'line-opacity', opacity);
-            map.setPaintProperty('delivery-incoming-casing', 'line-width', width);
-          }
-
-          // 2. Dash flow movement every ~80ms
-          if (timestamp - lastDashUpdate > 80) {
-            lastDashUpdate = timestamp;
-            if (map.getLayer('delivery-incoming-flow')) {
-              step = (step + 1) % dashPatterns.length;
-              map.setPaintProperty('delivery-incoming-flow', 'line-dasharray', dashPatterns[step]);
-            }
-          }
-
-          // Force canvas re-render so animations stream actively even when map is static
-          map.triggerRepaint();
-        } catch (e) {}
-      }
-      animId = requestAnimationFrame(animate);
-    };
-
-    animId = requestAnimationFrame(animate);
-    return () => {
-      if (animId) cancelAnimationFrame(animId);
-    };
-  }, []);
-
-  // Update Road Navigation Trail geometry and Midpoint Distance Badges
+  // Update Highway Navigation Trail geometry and On-Road Distance Badges
   const updateDistanceVectors = (map) => {
     if (!map) return;
 
     const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
     const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
 
-    const incomingFeatures = activeVehicles.map((v) => {
-      const split = getDeliveryRouteSplit(v, camps);
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: split.upcomingRoute,
-        },
-        properties: {
-          vehicleId: v.id,
-          isSelected: v.id === selectedVehicleId,
-          status: v.status,
-        },
-      };
-    });
-
-    const trailFeatures = activeVehicles.map((v) => {
-      const split = getDeliveryRouteSplit(v, camps);
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: split.completedTrail,
-        },
-        properties: {
-          vehicleId: v.id,
-          isSelected: v.id === selectedVehicleId,
-        },
-      };
-    });
-
-    if (map.getSource('delivery-incoming-routes')) {
-      map.getSource('delivery-incoming-routes').setData({
-        type: 'FeatureCollection',
-        features: incomingFeatures,
-      });
-    }
+    const trailFeatures = activeVehicles.map((v) => ({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: getHighwayTrail(v),
+      },
+      properties: {
+        vehicleId: v.id,
+        isSelected: v.id === selectedVehicleId,
+      },
+    }));
 
     if (map.getSource('delivery-trail-routes')) {
       map.getSource('delivery-trail-routes').setData({
@@ -877,7 +517,7 @@ export default function MapView({
       });
     }
 
-    // Update midpoint distance badges on the map
+    // Update on-road distance badges
     const activeVehIds = new Set(activeVehicles.map(v => v.id));
 
     // Remove deleted vehicle distance badges
@@ -889,55 +529,51 @@ export default function MapView({
     });
 
     activeVehicles.forEach((v) => {
-      const split = getDeliveryRouteSplit(v, camps);
-      const upcomingCoords = split.upcomingRoute;
-      const midIdx = Math.max(0, Math.floor(upcomingCoords.length / 2));
-      const midPoint = upcomingCoords[midIdx] || [v.lon, v.lat];
+      const trail = getHighwayTrail(v);
+      if (!trail || trail.length < 2) return;
+
+      const midIdx = Math.max(0, Math.floor(trail.length / 2));
+      const midPoint = trail[midIdx] || [v.lon, v.lat];
       const midLon = midPoint[0];
       const midLat = midPoint[1];
 
-      const targetCamp = camps.find(c => c.id === v.assignedCampId);
-      const targetName = v.status === 'returning' 
-        ? 'Base Hospital' 
-        : (targetCamp?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '')?.replace(' Eye Screening Camp', '') || 'Camp');
-      const roadDistFromBase = v.roadDistFromBaseKm || 16.8;
-      const roadDistToCamp = v.roadDistToCampKm || v.distRemainingKm || 18.0;
-      const eta = v.etaMins || 14;
+      const roadDistFromBase = v.roadDistFromBaseKm || 0;
       const isSelected = v.id === selectedVehicleId;
 
       let badgeObj = distanceMarkersRef.current[v.id];
 
-      if (!badgeObj) {
-        const el = document.createElement('div');
-        el.className = 'select-none transition-all duration-200 pointer-events-none';
-        el.style.display = showDistanceLines ? 'flex' : 'none';
-
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([midLon, midLat])
-          .addTo(map);
-
-        distanceMarkersRef.current[v.id] = { marker, element: el };
-        badgeObj = distanceMarkersRef.current[v.id];
-      } else {
-        badgeObj.marker.setLngLat([midLon, midLat]);
-        badgeObj.element.style.display = showDistanceLines ? 'flex' : 'none';
-      }
-
-      badgeObj.element.innerHTML = `
+      const badgeContent = `
         <div class="px-2.5 py-1 rounded-full border text-[10px] font-mono font-bold tracking-tight shadow-lg flex items-center gap-1.5 ${
           isSelected 
             ? (isDark ? 'bg-cyan-950 text-cyan-200 border-cyan-400 scale-110 shadow-cyan-500/40' : 'bg-blue-600 text-white border-blue-700 scale-110 shadow-blue-500/30')
             : (isDark ? 'bg-slate-950/95 text-cyan-300 border-cyan-500/40' : 'bg-white/95 text-blue-900 border-blue-200 shadow-sm')
         }">
           <span class="w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : (isDark ? 'bg-cyan-400' : 'bg-emerald-500')} animate-pulse"></span>
-          <span>🛣️ ${roadDistFromBase} km from Base • ~${roadDistToCamp} km to ${targetName}</span>
+          <span>🛣️ ${roadDistFromBase} km road from Hospital Base</span>
         </div>
       `;
+
+      if (!badgeObj || !document.body.contains(badgeObj.element)) {
+        if (badgeObj) {
+          try { badgeObj.marker.remove(); } catch (e) {}
+        }
+        const el = document.createElement('div');
+        el.className = 'select-none transition-all duration-200 pointer-events-none';
+        el.style.display = showDistanceLines ? 'flex' : 'none';
+        el.innerHTML = badgeContent;
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([midLon, midLat])
+          .addTo(map);
+
+        distanceMarkersRef.current[v.id] = { marker, element: el };
+      } else {
+        badgeObj.element.innerHTML = badgeContent;
+        badgeObj.marker.setLngLat([midLon, midLat]);
+        badgeObj.element.style.display = showDistanceLines ? 'flex' : 'none';
+      }
     });
   };
-
-  // Air Range Rings removed as per user instruction (strictly true road distances only)
-  const updateRingLabels = () => {};
 
   // Initialize Map
   useEffect(() => {
@@ -953,239 +589,85 @@ export default function MapView({
       attributionControl: false,
     });
 
+    mapRef.current = map;
+
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-left');
 
     map.on('load', () => {
       map.resize();
       addCustomLayers(map);
-      updateBaseMarker();
-      updateCampMarkers();
-      updateRingLabels(map);
+      updateBaseMarker(map);
       updateDistanceVectors(map);
-      updateVehicleMarkers();
+      updateVehicleMarkers(map);
 
       setTimeout(() => {
         map.resize();
-        fitAll();
+        fitAll(map);
       }, 150);
     });
 
-    // Clicking anywhere on open map deselects active vehicle
-    map.on('click', (e) => {
-      if (e.originalEvent && e.originalEvent.target && (e.originalEvent.target.closest('.maplibre-marker') || e.originalEvent.target.closest('.maplibregl-marker'))) {
-        return;
-      }
-      onSelectVehicle(null);
-    });
-
-    map.on('error', (e) => {
-      console.warn('MapLibre error:', e);
-    });
-
-    mapRef.current = map;
-
-    const handleResize = () => {
-      if (mapRef.current) {
-        mapRef.current.resize();
-      }
-    };
-    window.addEventListener('resize', handleResize);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
-      Object.values(markersRef.current).forEach(({ marker }) => marker.remove());
-      markersRef.current = {};
-      Object.values(campMarkersRef.current).forEach((marker) => marker.remove());
-      campMarkersRef.current = {};
-      Object.values(distanceMarkersRef.current).forEach(({ marker }) => marker.remove());
-      distanceMarkersRef.current = {};
-      ringLabelMarkersRef.current.forEach((marker) => marker.remove());
-      ringLabelMarkersRef.current = [];
-      if (baseMarkerRef.current) {
-        baseMarkerRef.current.remove();
-        baseMarkerRef.current = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
       }
-      map.remove();
-      mapRef.current = null;
     };
   }, []);
 
-  // Update vectors whenever vehicles, selectedVehicleId, or theme changes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (map && map.loaded()) {
-      updateDistanceVectors(map);
-    }
-  }, [vehicles, selectedVehicleId, theme, showDistanceLines]);
-
-  // Trigger fit when fitTrigger or detent changes
-  useEffect(() => {
-    fitAll();
-  }, [fitTrigger, detent]);
-
-  // Base Hospital Landmark Marker (Apple Maps style POI)
-  const updateBaseMarker = () => {
-    const map = mapRef.current;
+  // Update Base Hospital Marker (Apple Maps Style Red Medical Landmark)
+  const updateBaseMarker = (mapParam) => {
+    const map = mapParam || mapRef.current;
     if (!map) return;
 
     if (baseMarkerRef.current) {
       baseMarkerRef.current.remove();
-      baseMarkerRef.current = null;
     }
 
     const isDark = theme === 'dark';
     const el = document.createElement('div');
-    el.className = 'group relative flex flex-col items-center justify-center cursor-pointer select-none';
-    el.onclick = (e) => {
-      e.stopPropagation();
-      map.flyTo({ center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat], zoom: 13.5, speed: 1.2 });
+    el.className = 'relative flex flex-col items-center justify-center cursor-pointer group select-none';
+    el.onclick = () => {
+      map.flyTo({
+        center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat],
+        zoom: 14,
+        speed: 1.2,
+      });
     };
 
     el.innerHTML = `
-      <div class="relative flex items-center justify-center">
-        <!-- Soft Apple Beacon Halo -->
-        <div class="absolute w-14 h-14 rounded-full ${isDark ? 'bg-rose-500/20' : 'bg-rose-500/15'} animate-ping pointer-events-none"></div>
-        <div class="absolute w-10 h-10 rounded-full ${isDark ? 'bg-rose-500/25' : 'bg-rose-500/20'} pointer-events-none"></div>
+      <!-- Soft Pulse Aura -->
+      <div class="absolute w-12 h-12 rounded-full ${isDark ? 'bg-rose-500/20' : 'bg-rose-500/15'} radar-ring pointer-events-none"></div>
 
-        <!-- Apple Maps Red Landmark Squircle -->
-        <div class="w-9 h-9 rounded-2xl bg-gradient-to-tr from-rose-600 via-red-500 to-rose-400 border-2 ${
-          isDark ? 'border-white/90 shadow-[0_4px_16px_rgba(244,63,94,0.5)]' : 'border-white shadow-[0_4px_14px_rgba(225,29,72,0.35)]'
-        } flex items-center justify-center text-white transition-transform duration-200 hover:scale-110">
-          <svg class="w-5 h-5 drop-shadow-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <path d="M12 4v16M4 12h16"/>
-          </svg>
-        </div>
+      <!-- Apple Maps Red Medical Disc -->
+      <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-600 to-red-500 border-2 border-white shadow-[0_4px_12px_rgba(225,29,72,0.4)] flex items-center justify-center text-white hover:scale-110 transition-transform">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <path d="M12 6v12M6 12h12"/>
+        </svg>
       </div>
 
-      <!-- Attached Apple Callout Label -->
+      <!-- Apple Frosted Label Pill -->
       <div class="mt-1 whitespace-nowrap px-2.5 py-0.5 rounded-full backdrop-blur-md ${
-        isDark 
-          ? 'bg-slate-950/95 border border-rose-500/40 text-rose-200 shadow-md' 
-          : 'bg-white/95 border border-rose-200 text-rose-950 shadow-sm font-semibold'
-      } text-[10px] tracking-tight flex items-center gap-1">
-        <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+        isDark ? 'bg-slate-950/90 border border-white/10 text-white' : 'bg-white/95 border border-slate-200 text-slate-900 shadow-xs'
+      } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105">
+        <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
         <span>Sant Kabir Hospital (Base)</span>
       </div>
     `;
 
-    baseMarkerRef.current = new maplibregl.Marker({ element: el })
+    const marker = new maplibregl.Marker({ element: el })
       .setLngLat([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat])
       .addTo(map);
+
+    baseMarkerRef.current = marker;
   };
 
   useEffect(() => {
     updateBaseMarker();
-    if (mapRef.current && mapRef.current.loaded()) {
-      updateRingLabels(mapRef.current);
-    }
   }, [theme]);
 
-  // Update Camp Markers (Apple Maps POI Disc Style)
-  const updateCampMarkers = () => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const isDark = theme === 'dark';
-    const currentCampIds = new Set(camps.map(c => c.id));
-    
-    Object.keys(campMarkersRef.current).forEach((id) => {
-      if (!currentCampIds.has(id)) {
-        campMarkersRef.current[id].remove();
-        delete campMarkersRef.current[id];
-      }
-    });
-
-    camps.forEach((camp) => {
-      if (campMarkersRef.current[camp.id]) {
-        campMarkersRef.current[camp.id].remove();
-      }
-
-      const incomingVehicle = vehicles.find((v) => v.assignedCampId === camp.id && v.status === 'moving');
-
-      const el = document.createElement('div');
-      el.className = 'relative flex flex-col items-center justify-center cursor-pointer group select-none';
-      el.onclick = (e) => {
-        e.stopPropagation();
-        if (onSelectCamp) onSelectCamp(camp);
-      };
-
-      const shortCampName = camp.name
-        .replace(' Community Eye Camp', '')
-        .replace(' Rural Vision & Cataract Camp', '')
-        .replace(' Outreach Centre', '')
-        .replace(' Eye Screening Camp', '');
-
-      el.innerHTML = `
-        <!-- Designated Camp Perimeter Badge -->
-        <div class="mb-1 whitespace-nowrap px-2 py-0.5 rounded-full ${
-          isDark ? 'bg-emerald-950/90 border border-emerald-500/40 text-emerald-300' : 'bg-emerald-50/95 border border-emerald-300 text-emerald-800'
-        } text-[8.5px] font-semibold tracking-tight shadow-xs flex items-center gap-1 pointer-events-none">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Designated Camp Zone (500m)</span>
-        </div>
-
-        ${incomingVehicle ? `
-          <!-- Zomato/Swiggy Delivery Destination Header -->
-          <div class="mb-1 whitespace-nowrap px-2.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-[9px] font-bold shadow-md border border-white/60 flex items-center gap-1 animate-bounce-subtle pointer-events-none">
-            <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-            <span>🎯 DESTINATION • Incoming Ambulance</span>
-          </div>
-        ` : ''}
-
-        <div class="relative flex items-center justify-center">
-          <!-- Gentle Sonar Ripple Ring -->
-          <div class="absolute w-14 h-14 rounded-full ${isDark ? 'bg-emerald-400/20' : 'bg-emerald-500/15'} radar-ring pointer-events-none"></div>
-
-          ${incomingVehicle ? `
-            <!-- Zomato/Swiggy Destination Beacon Pulse Rings -->
-            <div class="absolute -inset-3 rounded-full bg-emerald-500/35 animate-ping pointer-events-none"></div>
-            <div class="absolute -inset-6 rounded-full bg-teal-500/20 animate-pulse pointer-events-none"></div>
-          ` : ''}
-          
-          <!-- Apple Maps Camp Medical POI Disc -->
-          <div class="w-8 h-8 rounded-full ${
-            incomingVehicle
-              ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 border-2 border-white shadow-[0_4px_14px_rgba(16,185,129,0.5)] text-white'
-              : (isDark 
-                  ? 'bg-gradient-to-tr from-emerald-700 to-teal-500 border-2 border-white/90 shadow-[0_4px_14px_rgba(16,185,129,0.5)] text-white' 
-                  : 'bg-gradient-to-tr from-emerald-600 to-teal-600 border-2 border-white shadow-[0_4px_12px_rgba(5,150,105,0.35)] text-white')
-          } flex items-center justify-center hover:scale-110 transition-transform">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
-          </div>
-        </div>
-
-        <!-- Apple Callout Label Pill with Camp Person In-Charge & GPS -->
-        <div class="mt-1 whitespace-nowrap px-2.5 py-0.5 rounded-full backdrop-blur-md ${
-          isDark 
-            ? 'bg-slate-950/95 border border-emerald-500/40 text-emerald-200 shadow-md' 
-            : 'bg-white/95 border border-emerald-200 text-slate-800 shadow-xs'
-        } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105">
-          <span class="w-1.5 h-1.5 rounded-full ${incomingVehicle ? 'bg-emerald-400 animate-ping' : 'bg-emerald-500'}"></span>
-          <span>${shortCampName}</span>
-          <span class="text-slate-400 dark:text-slate-600">•</span>
-          <span class="${isDark ? 'text-emerald-300' : 'text-emerald-700'} font-medium">${camp.coordinatorName || 'Lead'}</span>
-          <span class="text-[9px] font-mono opacity-60">(${camp.lat.toFixed(3)}°, ${camp.lon.toFixed(3)}°)</span>
-        </div>
-      `;
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([camp.lon, camp.lat])
-        .addTo(map);
-
-      campMarkersRef.current[camp.id] = marker;
-    });
-  };
-
-  useEffect(() => {
-    updateCampMarkers();
-  }, [camps, theme, vehicles]);
-
   // Update Vehicle Markers with Apple AirTag Platter Style
-  const updateVehicleMarkers = () => {
-    const map = mapRef.current;
+  const updateVehicleMarkers = (mapParam) => {
+    const map = mapParam || mapRef.current;
     if (!map) return;
 
     const isDark = theme === 'dark';
@@ -1193,7 +675,7 @@ export default function MapView({
 
     Object.keys(markersRef.current).forEach((id) => {
       if (!currentVehIds.has(id)) {
-        markersRef.current[id].marker.remove();
+        try { markersRef.current[id].marker.remove(); } catch (e) {}
         delete markersRef.current[id];
       }
     });
@@ -1201,27 +683,6 @@ export default function MapView({
     vehicles.forEach((v) => {
       const isSelected = selectedVehicleId === v.id;
       let markerObj = markersRef.current[v.id];
-
-      if (!markerObj || !markerObj.marker.getElement() || !markerObj.marker.getElement().parentElement) {
-        if (markerObj) {
-          try { markerObj.marker.remove(); } catch (e) {}
-        }
-        const el = document.createElement('div');
-        el.className = 'select-none pointer-events-auto';
-        el.onclick = (e) => {
-          e.stopPropagation();
-          onSelectVehicle(v.id);
-        };
-
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([v.lon, v.lat])
-          .addTo(map);
-
-        markersRef.current[v.id] = { marker, element: el };
-        markerObj = markersRef.current[v.id];
-      } else {
-        markerObj.marker.setLngLat([v.lon, v.lat]);
-      }
 
       const shortName = v.name
         .replace('Mobile Screening ', '')
@@ -1231,16 +692,16 @@ export default function MapView({
 
       let statusDotColor = 'bg-slate-400';
       if (v.status === 'moving') statusDotColor = 'bg-emerald-500 shadow-sm shadow-emerald-500/50';
-      else if (v.status === 'at_camp') statusDotColor = 'bg-sky-500 shadow-sm shadow-sky-500/50';
+      else if (v.status === 'in_field') statusDotColor = 'bg-sky-500 shadow-sm shadow-sky-500/50';
       else if (v.status === 'returning') statusDotColor = 'bg-indigo-500 shadow-sm shadow-indigo-500/50';
 
-      markerObj.element.innerHTML = `
+      const innerContent = `
         <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-200 ${isSelected ? 'scale-110 z-30' : 'hover:scale-105 z-20'}">
-          <!-- Zomato/Swiggy Live ETA Bubble Floating Above Vehicle (Upright) -->
-          ${v.status === 'moving' && v.speed > 0 ? `
+          <!-- Upright Speed & Distance Bubble Floating Above Vehicle -->
+          ${v.status !== 'at_base' ? `
             <div class="mb-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full shadow-lg border backdrop-blur-md flex items-center gap-1.5 bg-gradient-to-r from-blue-600 via-sky-600 to-indigo-600 text-white border-white/60 text-[9.5px] font-mono font-bold tracking-tight pointer-events-none">
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>⚡ ~${v.etaMins || 14}m to Camp (${v.roadDistToCampKm || v.distRemainingKm || 18}km Road)</span>
+              <span>⚡ ${v.speed > 0 ? `${v.speed} km/h • ` : ''}${v.roadDistFromBaseKm || 0} km from Hospital</span>
             </div>
           ` : ''}
 
@@ -1252,7 +713,7 @@ export default function MapView({
             ${get3DAmbulanceSvg(isDark, v.status, isSelected)}
           </div>
 
-          <!-- Apple Frosted Label Pill Below (Upright) -->
+          <!-- Apple Frosted Label Pill Below (Driver & Organizer) -->
           <div class="mt-1 px-2.5 py-0.5 rounded-full backdrop-blur-md border shadow-md flex items-center gap-1.5 transition-all duration-200 ${
             isSelected
               ? (isDark ? 'bg-sky-950/95 text-sky-200 border-sky-400/80 scale-105 shadow-sky-500/30' : 'bg-sky-600 text-white border-sky-700 scale-105 shadow-sky-500/25')
@@ -1261,11 +722,36 @@ export default function MapView({
             <span class="w-2 h-2 rounded-full ${statusDotColor}"></span>
             <span class="text-[10px] font-bold leading-none tracking-tight">${shortName}</span>
             <span class="text-slate-400 dark:text-slate-600">•</span>
-            <span class="text-[9.5px] font-medium opacity-90">${v.driverName ? v.driverName.split(' ')[0] : 'Driver'}</span>
-            <span class="text-[9px] font-mono opacity-80">${v.speed > 0 ? `${v.speed} km/h` : 'Standby'}</span>
+            <span class="text-[9.5px] font-medium opacity-90">Driver: ${v.driverName ? v.driverName.split(' ')[0] : 'Driver'}</span>
+            ${v.organizerName ? `
+              <span class="text-slate-400 dark:text-slate-600">•</span>
+              <span class="text-[9.5px] font-medium opacity-90">Org: ${v.organizerName.split(' ')[0]}</span>
+            ` : ''}
           </div>
         </div>
       `;
+
+      if (!markerObj || !document.body.contains(markerObj.element)) {
+        if (markerObj) {
+          try { markerObj.marker.remove(); } catch (e) {}
+        }
+        const el = document.createElement('div');
+        el.className = 'select-none pointer-events-auto';
+        el.innerHTML = innerContent;
+        el.onclick = (e) => {
+          e.stopPropagation();
+          onSelectVehicle(v.id);
+        };
+
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([v.lon, v.lat])
+          .addTo(map);
+
+        markersRef.current[v.id] = { marker, element: el };
+      } else {
+        markerObj.element.innerHTML = innerContent;
+        markerObj.marker.setLngLat([v.lon, v.lat]);
+      }
     });
   };
 
@@ -1286,10 +772,78 @@ export default function MapView({
     }
   }, [vehicles, selectedVehicleId, theme]);
 
+  // Update distance vectors when vehicles change
+  useEffect(() => {
+    if (mapRef.current) {
+      updateDistanceVectors(mapRef.current);
+    }
+  }, [vehicles, selectedVehicleId, showDistanceLines, theme]);
+
   return (
     <div className="relative flex-1 w-full h-full min-h-[400px] overflow-hidden">
-      {/* Absolute positioned full-bleed map canvas */}
+      {/* MapLibre WebGL Canvas Container */}
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
+
+      {/* Floating Apple Map Controls (Top Right) */}
+      <div className="absolute top-3 right-3 z-20 flex flex-col gap-2">
+        {/* Style Selector Popover */}
+        <div className="relative">
+          <button
+            onClick={() => setStyleDropdownOpen(prev => !prev)}
+            title="Map Style"
+            className="w-10 h-10 rounded-2xl glass-panel shadow-lg flex items-center justify-center text-slate-700 dark:text-slate-200 hover:text-sky-600 dark:hover:text-cyan-400 transition-colors border border-slate-200/90 dark:border-white/10 cursor-pointer"
+          >
+            <Layers className="w-4 h-4" />
+          </button>
+
+          {styleDropdownOpen && (
+            <div className="absolute right-0 top-12 w-44 glass-panel rounded-2xl shadow-2xl p-1.5 border border-slate-200/90 dark:border-white/10 z-30 animate-in fade-in zoom-in-95">
+              <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400 px-2 py-1">
+                Map Style
+              </div>
+              {Object.entries(MAP_STYLES).map(([key, item]) => (
+                <button
+                  key={key}
+                  onClick={() => {
+                    switchMapStyle(key);
+                    setStyleDropdownOpen(false);
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-medium transition-colors flex items-center justify-between cursor-pointer ${
+                    currentStyleKeyRef.current === key
+                      ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-cyan-400 font-bold'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>{item.name}</span>
+                  {currentStyleKeyRef.current === key && <span className="text-xs">✓</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Toggle Distance Lines */}
+        <button
+          onClick={onToggleDistanceLines}
+          title={showDistanceLines ? 'Hide Highway Trail' : 'Show Highway Trail'}
+          className={`w-10 h-10 rounded-2xl glass-panel shadow-lg flex items-center justify-center transition-colors border border-slate-200/90 dark:border-white/10 cursor-pointer ${
+            showDistanceLines 
+              ? 'text-sky-600 dark:text-cyan-400 bg-sky-50/50 dark:bg-sky-950/40' 
+              : 'text-slate-400 dark:text-slate-500'
+          }`}
+        >
+          <Ruler className="w-4 h-4" />
+        </button>
+
+        {/* Reset Camera to Fit Fleet */}
+        <button
+          onClick={onResetView || fitAll}
+          title="Fit All Fleet Units"
+          className="w-10 h-10 rounded-2xl glass-panel shadow-lg flex items-center justify-center text-slate-700 dark:text-slate-200 hover:text-sky-600 dark:hover:text-cyan-400 transition-colors border border-slate-200/90 dark:border-white/10 cursor-pointer"
+        >
+          <Navigation className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }

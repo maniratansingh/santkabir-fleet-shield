@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Sun, Moon, QrCode, CloudSun, ChevronDown, CheckCircle2, Award, Activity, X } from 'lucide-react';
+import { Eye, Sun, Moon, QrCode, CloudSun, ChevronDown, CheckCircle2, Activity, X, Navigation, Ambulance } from 'lucide-react';
 
 export default function DynamicIsland({
   vehicles = [],
-  camps = [],
   theme = 'light',
   onToggleTheme,
   onOpenDriverModal,
@@ -34,11 +33,12 @@ export default function DynamicIsland({
 
   // Aggregated Fleet Status
   const movingCount = vehicles.filter((v) => v.status === 'moving' || v.status === 'returning').length;
-  const standbyCount = vehicles.length - movingCount;
+  const inFieldCount = vehicles.filter((v) => v.status === 'in_field').length;
+  const standbyCount = vehicles.filter((v) => v.status === 'at_base').length;
 
   return (
     <header className="fixed top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-auto max-w-[94vw] transition-all duration-300">
-      {/* If Arrival Alert is active: Apple Dynamic Island Live Activity Sonar Capsule */}
+      {/* If Alert is active: Apple Dynamic Island Live Activity Sonar Capsule */}
       {arrivalAlert ? (
         <div 
           onClick={onFocusArrival}
@@ -55,10 +55,10 @@ export default function DynamicIsland({
           {/* Alert Message */}
           <div className="flex flex-col pr-1">
             <span className="text-[9px] font-mono font-bold tracking-wider uppercase text-emerald-600 dark:text-emerald-400 leading-none">
-              500m Geofence • Arrival Sonar
+              Field Outreach Update
             </span>
             <span className="text-xs font-bold text-slate-900 dark:text-white leading-tight mt-0.5">
-              {arrivalAlert.vehicleName} arrived at {arrivalAlert.campName}
+              {arrivalAlert.vehicleName} • Driver: {arrivalAlert.driverName || 'En Route'}
             </span>
           </div>
 
@@ -124,7 +124,7 @@ export default function DynamicIsland({
             </span>
             <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">•</span>
             <span className="text-xs font-medium text-sky-600 dark:text-cyan-400 hidden sm:inline">
-              {camps.length} Camps
+              {vehicles.length} Outreach Units
             </span>
           </div>
 
@@ -144,7 +144,7 @@ export default function DynamicIsland({
 
           {/* Action Controls */}
           <div className="flex items-center gap-1 pl-1 border-l border-slate-200 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
-            {/* Traccar Setup Modal Button */}
+            {/* Traccar Smartphone Setup */}
             <button
               onClick={onOpenDriverModal}
               title="Traccar Smartphone Setup"
@@ -165,7 +165,7 @@ export default function DynamicIsland({
             {/* Chevron for expansion */}
             <button 
               onClick={() => setIsExpanded(prev => !prev)}
-              className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+              className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
             >
               <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
             </button>
@@ -204,8 +204,8 @@ export default function DynamicIsland({
               <span className="text-lg font-extrabold text-sky-900 dark:text-sky-200 font-mono">{standbyCount} Available</span>
             </div>
             <div className="p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40">
-              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-semibold block">Designated Camps</span>
-              <span className="text-lg font-extrabold text-indigo-900 dark:text-indigo-200 font-mono">{camps.length} Sites</span>
+              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-semibold block">Field Teams</span>
+              <span className="text-lg font-extrabold text-indigo-900 dark:text-indigo-200 font-mono">{vehicles.length} Units</span>
             </div>
             <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
               <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-semibold block">District</span>
@@ -213,34 +213,35 @@ export default function DynamicIsland({
             </div>
           </div>
 
-          {/* Designated Camp Sites List with In-Charge Person and Navigation Links */}
+          {/* Deployed Field Units & Personnel List */}
           <div className="space-y-1.5 pt-1">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-              Active Camp Ground In-Charge & GPS Navigation
+              Active Ambulances, Drivers & Camp Organizers
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {camps.map(c => (
+              {vehicles.map(v => (
                 <div 
-                  key={c.id} 
+                  key={v.id} 
                   className="p-2 rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between"
                 >
                   <div className="min-w-0 pr-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${v.status === 'moving' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
                       <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                        {c.name.replace(' Community Eye Camp', '').replace(' Rural Vision & Cataract Camp', '').replace(' Outreach Centre', '').replace(' Eye Screening Camp', '')}
+                        {v.name}
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                      Lead: <strong className="text-slate-700 dark:text-slate-200">{c.coordinatorName || 'In-Charge'}</strong>
+                    <div className="text-[10px] text-slate-600 dark:text-slate-300 mt-0.5 truncate">
+                      Driver: <strong className="text-slate-800 dark:text-white">{v.driverName}</strong>
+                      {v.organizerName && <span> • Org: {v.organizerName}</span>}
                     </div>
                     <div className="text-[9.5px] font-mono text-slate-400">
-                      {c.lat.toFixed(4)}° N, {c.lon.toFixed(4)}° E
+                      {v.lat.toFixed(4)}° N, {v.lon.toFixed(4)}° E
                     </div>
                   </div>
 
                   <a 
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lon}`}
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}

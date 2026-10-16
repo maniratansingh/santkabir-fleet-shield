@@ -1,12 +1,9 @@
 import React, { useState } from 'react';
 import { 
-  Truck, 
-  Bus, 
   Ambulance, 
   MapPin, 
   Phone, 
   Battery, 
-  BatteryCharging, 
   Signal, 
   Navigation, 
   ChevronRight, 
@@ -14,17 +11,15 @@ import {
   Volume2, 
   Ruler, 
   User, 
+  UserCheck,
   X, 
-  CheckCircle2, 
   Clock, 
-  Users,
-  Compass
+  ShieldCheck
 } from 'lucide-react';
 import { playCampArrivalChime } from '../utils/audio';
 
 export default function AppleSheet({
   vehicles = [],
-  camps = [],
   selectedVehicleId = null,
   onSelectVehicle,
   onFocusRoute,
@@ -32,10 +27,9 @@ export default function AppleSheet({
   detent = 'half', // 'peek', 'half', 'full'
   onChangeDetent,
 }) {
-  const [filter, setFilter] = useState('all'); // 'all', 'moving', 'at_camp', 'at_base'
+  const [filter, setFilter] = useState('all'); // 'all', 'moving', 'in_field', 'at_base'
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
-  const assignedCamp = camps.find((c) => c.id === selectedVehicle?.assignedCampId);
 
   // Cycling detents
   const cycleDetent = () => {
@@ -47,18 +41,15 @@ export default function AppleSheet({
   // Filtered vehicles
   const filteredVehicles = vehicles.filter((v) => {
     if (filter === 'moving') return v.status === 'moving' || v.status === 'returning';
-    if (filter === 'at_camp') return v.status === 'at_camp';
+    if (filter === 'in_field') return v.status === 'in_field';
     if (filter === 'at_base') return v.status === 'at_base';
     return true;
   });
 
-  // Vehicle Icon Selector - All outreach fleet units are specialized ambulances
-  const getVehicleIcon = () => Ambulance;
-
   // Determine height classes based on detent
   const getDetentHeightClass = () => {
     if (detent === 'peek') return 'h-16';
-    if (detent === 'half') return 'h-[380px]';
+    if (detent === 'half') return 'h-[400px]';
     return 'h-[580px] max-h-[85vh]';
   };
 
@@ -86,10 +77,12 @@ export default function AppleSheet({
             </div>
             <div>
               <span className="text-xs font-bold text-slate-900 dark:text-white block leading-tight">
-                {selectedVehicle ? selectedVehicle.name : 'Outreach Eye Fleet'}
+                {selectedVehicle ? selectedVehicle.name : 'Sant Kabir Eye Hospital Fleet'}
               </span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                {selectedVehicle ? `${selectedVehicle.status.replace('_', ' ')} • ${selectedVehicle.speed} km/h` : `${vehicles.filter(v => v.status === 'moving').length} en route • Tap to expand`}
+                {selectedVehicle 
+                  ? `Driver: ${selectedVehicle.driverName} • ${selectedVehicle.speed} km/h` 
+                  : `${vehicles.filter(v => v.status === 'moving').length} en route • Tap to expand`}
               </span>
             </div>
           </div>
@@ -112,7 +105,7 @@ export default function AppleSheet({
                   className="flex items-center gap-1 text-xs font-semibold text-sky-600 dark:text-cyan-400 hover:underline cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" />
-                  All Vehicles
+                  All Ambulances
                 </button>
                 <button
                   onClick={() => onSelectVehicle(null)}
@@ -135,23 +128,69 @@ export default function AppleSheet({
                     {/* Battery Pill */}
                     <div className="flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/40">
                       <Battery className="w-3 h-3" />
-                      <span>{selectedVehicle.battery || selectedVehicle.batt || 88}%</span>
+                      <span>{selectedVehicle.battery || 88}%</span>
                     </div>
                   </div>
-                  <div className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5 truncate">
-                    Driver: <strong className="text-slate-900 dark:text-white font-bold">{selectedVehicle.driverName || 'Ramesh Yadav'}</strong> • <span className="font-mono text-slate-400">{selectedVehicle.plate || 'UP-51-AT-4211'}</span>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate font-mono">
+                    Plate: <strong className="text-slate-800 dark:text-slate-200">{selectedVehicle.plate || 'UP-51-AT-4211'}</strong>
                   </div>
                   <div className="text-[11px] text-sky-600 dark:text-cyan-400 font-medium flex items-center gap-1 mt-1 truncate">
                     <MapPin className="w-3 h-3 shrink-0" />
                     <span className="truncate">
-                      Destination: {camps.find(c => c.id === selectedVehicle.assignedCampId)?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '') || 'Sant Kabir Base'} 
-                      {assignedCamp?.coordinatorName ? ` (Lead: ${assignedCamp.coordinatorName})` : ''}
+                      Sector: {selectedVehicle.sector || selectedVehicle.highwayName || 'Rural Outreach'}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Accurate Live GPS & Navigation Hub */}
+              {/* Personnel Platter: Dedicated Driver & Camp Organizer Cards */}
+              <div className="grid grid-cols-2 gap-2 my-1">
+                {/* Driver Card */}
+                <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+                  <div className="min-w-0 pr-1">
+                    <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase font-semibold">
+                      <User className="w-3 h-3 text-sky-500" />
+                      <span>Driver</span>
+                    </div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white truncate block mt-0.5">
+                      {selectedVehicle.driverName || 'Driver'}
+                    </span>
+                  </div>
+                  {selectedVehicle.driverPhone && (
+                    <a
+                      href={`tel:${selectedVehicle.driverPhone}`}
+                      className="w-7 h-7 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs transition-colors"
+                      title="Call Driver"
+                    >
+                      <Phone className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+
+                {/* Camp Organizer Card */}
+                <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+                  <div className="min-w-0 pr-1">
+                    <div className="flex items-center gap-1 text-[10px] text-slate-400 uppercase font-semibold">
+                      <UserCheck className="w-3 h-3 text-emerald-500" />
+                      <span>Camp Organizer</span>
+                    </div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white truncate block mt-0.5">
+                      {selectedVehicle.organizerName || 'Organizer'}
+                    </span>
+                  </div>
+                  {selectedVehicle.organizerPhone && (
+                    <a
+                      href={`tel:${selectedVehicle.organizerPhone}`}
+                      className="w-7 h-7 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs transition-colors"
+                      title="Call Camp Organizer"
+                    >
+                      <Phone className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Accurate Live GPS & 1-Click Navigation */}
               <div className="my-2 p-3 rounded-2xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-white">
@@ -188,42 +227,37 @@ export default function AppleSheet({
                 </div>
               </div>
 
-              {/* Zomato / Swiggy Delivery Status Platter */}
+              {/* Road Highway Distance from Base Hospital */}
               {selectedVehicle.status !== 'at_base' && (
                 <div className="my-1.5 p-3 rounded-2xl bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent border border-blue-500/25 dark:border-blue-400/20 shadow-xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-cyan-400 font-mono">
-                        {selectedVehicle.status === 'returning' ? 'Patient Return Transit' : 'Live Delivery to Camp'}
+                        {selectedVehicle.status === 'returning' ? 'Returning to Base Hospital' : 'En Route in Sector'}
                       </span>
                     </div>
                     <div className="text-right">
                       <span className="text-sm font-extrabold text-blue-700 dark:text-cyan-300 font-mono">
-                        ~{selectedVehicle.etaMins || 14} MINS
+                        {selectedVehicle.roadDistFromBaseKm || 0} KM ROAD
                       </span>
                     </div>
                   </div>
 
-                  {/* Route Corridor Progress Tracker Bar with True Road Distances */}
-                  <div className="mt-2.5 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                    <span className="truncate max-w-[110px]">
-                      Base ({selectedVehicle.roadDistFromBaseKm || 16.8} km road)
-                    </span>
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                    <span>Sant Kabir Eye Hospital (0 km)</span>
                     <span className="font-mono text-blue-600 dark:text-cyan-400 font-bold">
-                      {selectedVehicle.distRemainingKm || selectedVehicle.roadDistToCampKm || 18} km to Camp
+                      {selectedVehicle.speed > 0 ? `${selectedVehicle.speed} km/h` : 'Active'}
                     </span>
-                    <span className="truncate max-w-[105px] text-right">
-                      {camps.find(c => c.id === selectedVehicle.assignedCampId)?.name?.replace(' Community Eye Camp', '')?.replace(' Rural Vision & Cataract Camp', '')?.replace(' Outreach Centre', '') || 'Camp'}
-                    </span>
+                    <span>{selectedVehicle.highwayName || 'Highway'}</span>
                   </div>
 
                   <div className="relative mt-1 w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                     <div 
                       className="h-full rounded-full bg-gradient-to-r from-blue-600 via-sky-400 to-emerald-400 transition-all duration-500"
                       style={{ 
-                        width: `${Math.min(96, Math.max(8, Math.round(
-                          ((selectedVehicle.roadDistFromBaseKm || 16) / ((selectedVehicle.totalRoadKm || 34.8) || 1)) * 100
+                        width: `${Math.min(100, Math.max(12, Math.round(
+                          ((selectedVehicle.roadDistFromBaseKm || 16) / ((selectedVehicle.totalRoadKm || 40) || 1)) * 100
                         )))}%` 
                       }}
                     />
@@ -231,8 +265,8 @@ export default function AppleSheet({
                 </div>
               )}
 
-              {/* Apple Signature 4-Column Action Platter */}
-              <div className="grid grid-cols-4 gap-2 my-2 py-2.5 px-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
+              {/* Apple Signature Action Platter */}
+              <div className="grid grid-cols-3 gap-2 my-2 py-2.5 px-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
                 {/* 1. Play Chime */}
                 <button
                   onClick={() => playCampArrivalChime()}
@@ -244,7 +278,7 @@ export default function AppleSheet({
                   <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">Play Chime</span>
                 </button>
 
-                {/* 2. Route Corridor */}
+                {/* 2. Focus Route Corridor */}
                 <button
                   onClick={onFocusRoute}
                   className="flex flex-col items-center gap-1 text-center cursor-pointer group"
@@ -252,23 +286,12 @@ export default function AppleSheet({
                   <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-700 shadow-xs flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
                     <Navigation className="w-4 h-4" />
                   </div>
-                  <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">Route</span>
+                  <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">Route Trail</span>
                 </button>
 
-                {/* 3. Distance Radar */}
-                <button
-                  onClick={onFocusDistance}
-                  className="flex flex-col items-center gap-1 text-center cursor-pointer group"
-                >
-                  <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-700 shadow-xs flex items-center justify-center text-cyan-600 dark:text-cyan-400 group-hover:scale-105 transition-transform">
-                    <Ruler className="w-4 h-4" />
-                  </div>
-                  <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">Distance</span>
-                </button>
-
-                {/* 4. Call Driver */}
+                {/* 3. Call Driver Direct */}
                 <a
-                  href={`tel:${selectedVehicle.driverPhone || selectedVehicle.phone || '+919415140719'}`}
+                  href={`tel:${selectedVehicle.driverPhone || '+919415140719'}`}
                   className="flex flex-col items-center gap-1 text-center cursor-pointer group"
                 >
                   <div className="w-10 h-10 rounded-full bg-emerald-600 text-white shadow-xs flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -287,22 +310,10 @@ export default function AppleSheet({
                   </span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Cellular Signal</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Cellular Link</span>
                   <span className="text-xs font-bold text-slate-800 dark:text-white font-mono flex items-center gap-1">
                     <Signal className="w-3 h-3 text-emerald-500" />
                     {selectedVehicle.network || '4G LTE'} • {selectedVehicle.pingMs || 38}ms
-                  </span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Driver Assigned</span>
-                  <span className="text-xs font-bold text-slate-800 dark:text-white truncate block">
-                    {selectedVehicle.driverName || 'Driver'}
-                  </span>
-                </div>
-                <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/50 border border-slate-200/80 dark:border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">Coordinates</span>
-                  <span className="text-xs font-bold text-sky-700 dark:text-cyan-400 font-mono">
-                    {selectedVehicle.lat.toFixed(4)}°, {selectedVehicle.lon.toFixed(4)}°
                   </span>
                 </div>
               </div>
@@ -315,8 +326,8 @@ export default function AppleSheet({
                 {[
                   { key: 'all', label: 'All (4)' },
                   { key: 'moving', label: 'En Route' },
-                  { key: 'at_camp', label: 'At Camp' },
-                  { key: 'at_base', label: 'Base' },
+                  { key: 'in_field', label: 'In Field' },
+                  { key: 'at_base', label: 'At Base' },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -335,9 +346,7 @@ export default function AppleSheet({
               {/* Scrollable Vehicle Cards List */}
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
                 {filteredVehicles.map((v) => {
-                  const Icon = getVehicleIcon(v.type);
                   const isMoving = v.status === 'moving' || v.status === 'returning';
-                  const assignedCamp = camps.find((c) => c.id === v.assignedCampId);
 
                   return (
                     <div
@@ -351,7 +360,7 @@ export default function AppleSheet({
                             ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400' 
                             : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
                         }`}>
-                          <Icon className="w-4 h-4" />
+                          <Ambulance className="w-4 h-4" />
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -366,6 +375,7 @@ export default function AppleSheet({
                           </div>
                           <div className="text-[10px] text-slate-600 dark:text-slate-300 truncate">
                             Driver: <strong className="text-slate-800 dark:text-white">{v.driverName}</strong>
+                            {v.organizerName && <span className="opacity-75"> • Org: {v.organizerName}</span>}
                           </div>
                           <div className="text-[9.5px] font-mono text-slate-400 truncate">
                             {v.lat.toFixed(4)}° N, {v.lon.toFixed(4)}° E
