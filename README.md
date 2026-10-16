@@ -54,10 +54,10 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 - **Continuous Kiosk Monitoring**: Automatically cycles camera focus across reporting ambulances in 12-second intervals.
 - **Standby Fallback**: When zero ambulances are actively reporting, smoothly docks on the Sant Kabir Eye Hospital base in Basti.
 
-### 4. Hardened Driver Android APK (`in.mrps.fleetshield`)
-- **Zero Tampering**: Configuration and server endpoints locked behind an administrative Master PIN; service kill switch disabled.
-- **Admin QR Provisioning**: Instantly configures permanent Asset ID (`SK-AMB-01`), Driver Name, and server endpoints by scanning the dashboard's provisioning QR code.
-- **Unkillable Foreground Daemon**: Android Foreground Service with `START_STICKY`, `BootCompletedReceiver`, and battery optimization bypass.
+### 4. Custom Driver Android APK (`santkabir-fleet-shield-v1.0.apk`)
+- **Preconfigured Defaults**: Pre-tuned for 5-second real-time GPS updates and high accuracy.
+- **Default Telemetry Endpoint**: Preconfigured with your server endpoint (`https://fleet.mrps.in/api/location`).
+- **Background Daemon**: Runs as an Android Foreground Service with `START_STICKY` and `BootCompletedReceiver`.
 - **Direct Download**: Hosted directly at `/downloads/santkabir-fleet-shield-v1.0.apk` with strict MIME enforcement (`application/vnd.android.package-archive`).
 
 ---
@@ -173,7 +173,7 @@ npm run preview
 2. **Transfer to Device**: Send the APK to the driver's Android device via WhatsApp or USB and install.
 3. **Scan Provisioning QR**: Open the app, point the camera at the **Admin Provisioning QR Code** displayed on the command dashboard (`Tab 1`).
 4. **Grant Permissions**: Allow background location permissions (*"Allow all the time"*).
-5. **Locked**: The app permanently locks configuration behind the Master Admin PIN and streams live GPS telemetry back to the base hospital.
+5. **Active Telemetry**: The app starts background tracking and streams live GPS telemetry back to the base hospital.
 
 ---
 

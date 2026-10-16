@@ -133,7 +133,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             <div className="p-3 rounded-2xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200/80 dark:border-sky-800/60 flex items-start gap-2.5">
               <Lock className="w-4 h-4 text-sky-600 dark:text-cyan-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>Zero Driver Tampering:</strong> Scan this QR code once with the driver's phone camera on initial install. It automatically locks the permanent <strong>Asset ID</strong> and <strong>Driver Name</strong>. All settings are locked behind the Master Admin PIN.
+                <strong>Driver Provisioning:</strong> Configure the permanent <strong>Ambulance Asset ID</strong> and <strong>Driver Name</strong> below. Enter these into the app or point the driver's phone camera at this QR code on install to stream GPS telemetry directly to the hospital base.
               </div>
             </div>
 
@@ -240,7 +240,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-start gap-2.5">
               <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>Private Internal Release:</strong> The <strong>Sant Kabir Fleet Shield APK</strong> is compiled with hardcoded server endpoints and admin PIN protection. It is distributed directly to drivers via WhatsApp or private file transfer.
+                <strong>Private Internal Release:</strong> The <strong>Sant Kabir Fleet Shield APK</strong> is compiled with your default Cloudflare server endpoint and signed by Mani Ratan Singh. It can be distributed directly to drivers via WhatsApp or private file transfer.
               </div>
             </div>
 
