@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.FleetShield" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#0284C7</item>
+        <item name="colorPrimaryVariant">#0369A1</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:statusBarColor">#060D17</item>
+        <item name="android:navigationBarColor">#060D17</item>
+    </style>
+</resources>
