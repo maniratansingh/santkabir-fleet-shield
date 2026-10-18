@@ -82,44 +82,66 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // TV Kiosk Auto-Tour Mode (Continuous monitoring: cycles focus across active fleet or frames base hospital)
+  // TV Kiosk Auto-Tour Mode (Continuous monitoring: adaptive pacing for active vs blind spot cars)
   useEffect(() => {
     if (!isAutoTour) return;
 
-    const tourInterval = setInterval(() => {
+    let timeoutId;
+
+    const runTourStep = () => {
       const currentVehicles = vehiclesRef.current || [];
       if (!currentVehicles || currentVehicles.length === 0) {
         setSelectedVehicleId(null);
         setFitTrigger(prev => prev + 1);
         setDetent('peek');
         showToast('📺 TV Auto-Tour: Hospital Base Standby (0 reporting)', 'info');
+        timeoutId = setTimeout(runTourStep, 8000);
         return;
       }
 
       const tourItems = [
-        ...currentVehicles.map(v => ({ type: 'vehicle', id: v.id, name: v.name, driver: v.driverName })),
+        ...currentVehicles.map(v => ({ 
+          type: 'vehicle', 
+          id: v.id, 
+          name: v.name, 
+          driver: v.driverName,
+          isSignalGap: Boolean(v.isSignalGap),
+          gapMinutes: v.gapMinutes || 1,
+        })),
         { type: 'all', name: 'Fleet Overview' },
       ];
 
       tourIndexRef.current = (tourIndexRef.current + 1) % tourItems.length;
       const current = tourItems[tourIndexRef.current];
 
+      let nextDelay = 12000;
+
       if (current.type === 'vehicle') {
         setSelectedVehicleId(current.id);
         setDetent('peek'); // keep UI minimal during TV auto-tour
-        showToast(`📺 TV Auto-Tour: Focusing ${current.name} (${current.driver || 'Driver'})`, 'info');
+        if (current.isSignalGap) {
+          showToast(`📺 TV Auto-Tour: ${current.name} (⏳ Signal Gap ${current.gapMinutes}m)`, 'warning');
+          nextDelay = 6000; // Shorter dwell time on network blind spot vehicles
+        } else {
+          showToast(`📺 TV Auto-Tour: Focusing ${current.name} (${current.driver || 'Driver'})`, 'info');
+          nextDelay = 12000; // Full 12s focus on actively moving vehicles
+        }
       } else {
         setSelectedVehicleId(null);
         setFitTrigger(prev => prev + 1);
         setDetent('peek');
         showToast('📺 TV Auto-Tour: Purvanchal Fleet Overview', 'info');
+        nextDelay = 10000;
       }
-    }, 12000);
 
-    return () => clearInterval(tourInterval);
+      timeoutId = setTimeout(runTourStep, nextDelay);
+    };
+
+    timeoutId = setTimeout(runTourStep, 2000);
+    return () => clearTimeout(timeoutId);
   }, [isAutoTour]);
 
-  // Fetch real data from Cloudflare API with Sticky Fleet Store & Memoization
+  // Fetch real data from Cloudflare API with True 2-Way Sync & Blind Spot Protection
   useEffect(() => {
     const fetchRealData = async () => {
       try {
@@ -127,53 +149,69 @@ export default function App() {
         if (vehRes && vehRes.ok) {
           const vehData = await vehRes.json();
           const liveList = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
-          if (liveList.length > 0) {
-            setVehicles(() => {
-              const store = fleetStoreRef.current;
-              
-              liveList.forEach(liveV => {
-                const existing = store.get(liveV.id) || {};
-                const colors = getUniqueVehicleColor(liveV.id);
-                const loc = getNearestRuralLocation(Number(liveV.lat || 0), Number(liveV.lon || 0));
+          const store = fleetStoreRef.current;
+          const liveIds = new Set(liveList.map(v => v.id));
 
-                // Only recompute road geometry if position moved significantly (>80m)
-                const hasMoved = !existing.lat || 
-                  Math.abs(existing.lat - liveV.lat) > 0.0008 || 
-                  Math.abs(existing.lon - liveV.lon) > 0.0008;
-
-                let roadDist = existing.roadDistFromBaseKm;
-                let corridor = existing.highwayName;
-
-                if (hasMoved || !roadDist) {
-                  const split = getDeliveryRouteSplit({ ...existing, ...liveV });
-                  roadDist = split.roadDistFromBaseKm;
-                  corridor = split.corridorName || corridor;
-                }
-
-                store.set(liveV.id, {
-                  ...existing,
-                  ...liveV,
-                  isLive: true,
-                  lineColor: liveV.lineColor || existing.lineColor || colors.line,
-                  glowColor: liveV.glowColor || existing.glowColor || colors.glow,
-                  driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
-                  villageName: loc.village,
-                  villageBlock: loc.block,
-                  villageDistrict: loc.district,
-                  villageBadge: loc.badge,
-                  villageLabel: loc.label,
-                  highwayName: corridor || loc.badge,
-                  roadDistFromBaseKm: roadDist || liveV.roadDistFromBaseKm || 0,
-                  lastSeen: liveV.lastSeen || Date.now(),
-                });
-              });
-
-              // Stable alphanumeric sorting: AMB-001, AMB-002, AMB-003... (Never jumps during scroll)
-              return Array.from(store.values()).sort((a, b) => 
-                String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
-              );
-            });
+          // 1. Two-Way Sync: Remove vehicles pruned by server (older than 35m or cleared)
+          for (const storedId of Array.from(store.keys())) {
+            if (!liveIds.has(storedId)) {
+              store.delete(storedId);
+            }
           }
+
+          // 2. If no vehicles reporting, clear screen cleanly without manual refresh
+          if (liveList.length === 0) {
+            setVehicles([]);
+            return;
+          }
+
+          // 3. Upsert live and blind-spot vehicles
+          liveList.forEach(liveV => {
+            const existing = store.get(liveV.id) || {};
+            const colors = getUniqueVehicleColor(liveV.id);
+            const loc = getNearestRuralLocation(Number(liveV.lat || 0), Number(liveV.lon || 0));
+
+            // Only recompute road geometry if position moved significantly (>80m)
+            const hasMoved = !existing.lat || 
+              Math.abs(existing.lat - liveV.lat) > 0.0008 || 
+              Math.abs(existing.lon - liveV.lon) > 0.0008;
+
+            let roadDist = existing.roadDistFromBaseKm;
+            let corridor = existing.highwayName;
+
+            if (hasMoved || !roadDist) {
+              const split = getDeliveryRouteSplit({ ...existing, ...liveV });
+              roadDist = split.roadDistFromBaseKm;
+              corridor = split.corridorName || corridor;
+            }
+
+            store.set(liveV.id, {
+              ...existing,
+              ...liveV,
+              isLive: Boolean(liveV.isLive !== false),
+              isSignalGap: Boolean(liveV.isSignalGap),
+              gapMinutes: liveV.gapMinutes || 0,
+              isParked: Boolean(liveV.isParked),
+              lineColor: liveV.lineColor || existing.lineColor || colors.line,
+              glowColor: liveV.glowColor || existing.glowColor || colors.glow,
+              driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
+              villageName: loc.village,
+              villageBlock: loc.block,
+              villageDistrict: loc.district,
+              villageBadge: loc.badge,
+              villageLabel: loc.label,
+              highwayName: corridor || loc.badge,
+              roadDistFromBaseKm: roadDist || liveV.roadDistFromBaseKm || 0,
+              lastSeen: liveV.lastSeen || Date.now(),
+            });
+          });
+
+          // Stable alphanumeric sorting: AMB-001, AMB-002, AMB-003...
+          setVehicles(
+            Array.from(store.values()).sort((a, b) => 
+              String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+            )
+          );
         }
       } catch (err) {
         console.warn('Backend API not reachable (standby mode):', err);

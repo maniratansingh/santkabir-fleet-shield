@@ -1014,20 +1014,36 @@ export default function MapView({
       const loc = getNearestRuralLocation(Number(v.lat || 0), Number(v.lon || 0));
       let markerObj = markersRef.current[v.id];
 
-      const speedStr = v.speed > 0 ? `${v.speed} km/h` : 'Stopped';
-      const distStr = `${liveDist} km Base`;
+      const isGap = Boolean(v.isSignalGap);
+      const isParked = Boolean(v.isParked);
+      const gapMins = v.gapMinutes || 1;
+      const badgeColor = isGap ? '#F59E0B' : (isParked ? '#94A3B8' : vColor);
 
-      const capsuleContent = `
-        <span class="w-2 h-2 rounded-full shrink-0" style="background-color: ${vColor}; box-shadow: 0 0 6px ${vColor};"></span>
-        <span class="font-extrabold text-[10.5px]" style="color: ${vColor};">${v.id}</span>
-        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-        <span>${speedStr}</span>
-        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-        <span class="px-1.5 py-0.2 rounded-md text-[9px] font-bold ${
+      let statusBadge;
+      if (isGap) {
+        statusBadge = `<span class="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30">⏳ Gap ${gapMins}m</span>`;
+      } else if (isParked) {
+        statusBadge = `<span class="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-slate-500/15 text-slate-500 dark:text-slate-400 border border-slate-500/30">Standby</span>`;
+      } else {
+        statusBadge = `<span class="px-1.5 py-0.2 rounded-md text-[9px] font-bold ${
           loc.isCamp 
             ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' 
             : 'bg-sky-500/15 text-sky-600 dark:text-cyan-400 border border-sky-500/30'
-        }">${loc.badge}</span>
+        }">${loc.badge}</span>`;
+      }
+
+      const speedStr = isGap 
+        ? 'Last Seen' 
+        : (isParked ? 'Parked' : (v.speed > 0 ? `${v.speed} km/h` : 'Stopped'));
+      const distStr = `${liveDist} km Base`;
+
+      const capsuleContent = `
+        <span class="w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
+        <span class="font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
+        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+        <span>${speedStr}</span>
+        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+        ${statusBadge}
         <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
         <span class="text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
       `;
@@ -1036,14 +1052,14 @@ export default function MapView({
         <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
           <!-- Single Capsule with Rural Village / Camp Indicator -->
           <div class="marker-capsule-text mb-1 px-2.5 py-1 rounded-full border shadow-lg flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono transition-all backdrop-blur-md pointer-events-auto"
-            style="background: ${isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${vColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 14px ${vColor}35;">
+            style="background: ${isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 14px ${badgeColor}35;">
             ${capsuleContent}
           </div>
 
           <!-- 3D Isometric Ambulance with Soft Apple Halo (Zero Strobe/Blink) -->
           <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center transition-transform duration-300 pointer-events-auto" style="transform: rotate(${v.bearing || 0}deg);">
             <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
-            ${get3DAmbulanceSvg(isDark, v.status, isSelected, vColor, v.id)}
+            ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
           </div>
         </div>
       `;
@@ -1053,7 +1069,7 @@ export default function MapView({
           try { markerObj.marker.remove(); } catch (e) {}
         }
         const el = document.createElement('div');
-        el.className = 'select-none pointer-events-auto transition-transform duration-500 ease-out';
+        el.className = 'select-none pointer-events-auto transition-all duration-700 ease-out';
         el.innerHTML = innerContent;
         el.onclick = (e) => {
           e.stopPropagation();

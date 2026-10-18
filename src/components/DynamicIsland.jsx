@@ -32,10 +32,10 @@ export default function DynamicIsland({
     return () => clearInterval(timer);
   }, []);
 
-  // Aggregated Fleet Status
-  const movingCount = vehicles.filter((v) => v.status === 'moving' || v.status === 'returning').length;
-  const inFieldCount = vehicles.filter((v) => v.status === 'in_field').length;
-  const standbyCount = vehicles.filter((v) => v.status === 'at_base').length;
+  // Aggregated Fleet Status with Signal Gap Tracking
+  const movingCount = vehicles.filter((v) => !v.isSignalGap && (v.status === 'moving' || v.status === 'returning')).length;
+  const inFieldCount = vehicles.filter((v) => !v.isSignalGap && v.status === 'in_field').length;
+  const signalGapCount = vehicles.filter((v) => v.isSignalGap).length;
 
   return (
     <header className="fixed top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-auto max-w-[94vw] transition-all duration-300">
@@ -116,7 +116,9 @@ export default function DynamicIsland({
           {/* Live Fleet Status Pill (Steady Aura, Zero Blink) */}
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className={`relative inline-flex rounded-full h-2 w-2 shadow-[0_0_8px_rgba(16,185,129,0.6)] ${vehicles.length > 0 ? 'bg-emerald-500' : 'bg-sky-500'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 shadow-[0_0_8px_rgba(16,185,129,0.6)] ${
+                vehicles.length === 0 ? 'bg-sky-500' : (signalGapCount > 0 ? 'bg-amber-500' : 'bg-emerald-500')
+              }`}></span>
             </span>
             {vehicles.length === 0 ? (
               <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
@@ -127,7 +129,16 @@ export default function DynamicIsland({
                 <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
                   {movingCount} En Route
                 </span>
-                {inFieldCount > 0 && (
+                {signalGapCount > 0 && (
+                  <>
+                    <span className="text-slate-300 dark:text-slate-600">•</span>
+                    <span className="text-xs font-bold text-amber-500 dark:text-amber-400 flex items-center gap-1">
+                      <span>⏳</span>
+                      <span>{signalGapCount} Blind Spot</span>
+                    </span>
+                  </>
+                )}
+                {inFieldCount > 0 && signalGapCount === 0 && (
                   <>
                     <span className="text-slate-300 dark:text-slate-600">•</span>
                     <span className="text-xs font-medium text-sky-600 dark:text-cyan-400">
@@ -137,7 +148,7 @@ export default function DynamicIsland({
                 )}
                 <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">•</span>
                 <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hidden sm:inline">
-                  {vehicles.length} Active Ambulances
+                  {vehicles.length} Active Fleet
                 </span>
               </>
             )}

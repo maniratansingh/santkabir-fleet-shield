@@ -302,20 +302,42 @@ export default {
 
     // 3. Endpoint: /api/vehicles (Returns dynamically registered live fleet)
     if (url.pathname === '/api/vehicles' || url.pathname === '/api/vehicles/') {
-      // Purge entries inactive for more than 12 hours
+      // 3-Stage Rural Lifecycle: Live (<60s) -> Signal Gap (1m - 15m) -> Parked (15m - 35m) -> Decommission (>35m)
       const now = Date.now();
+      const DECOMMISSION_TIMEOUT_MS = 35 * 60 * 1000; // 35 minutes
+
       for (const [vKey, vVal] of liveVehicles.entries()) {
-        if (now - (vVal.updatedAt || vVal.lastSeen || 0) > 12 * 60 * 60 * 1000) {
+        const lastSeen = vVal.updatedAt || vVal.lastSeen || 0;
+        if (now - lastSeen > DECOMMISSION_TIMEOUT_MS) {
           liveVehicles.delete(vKey);
         }
       }
 
-      const list = Array.from(liveVehicles.values());
+      const list = Array.from(liveVehicles.values()).map(vVal => {
+        const lastSeen = vVal.updatedAt || vVal.lastSeen || 0;
+        const ageSec = Math.max(0, Math.floor((now - lastSeen) / 1000));
+        const gapMinutes = Math.floor(ageSec / 60);
+
+        const isLive = ageSec < 60;
+        const isSignalGap = ageSec >= 60 && ageSec <= 15 * 60;
+        const isParked = ageSec > 15 * 60;
+
+        return {
+          ...vVal,
+          ageSec,
+          gapMinutes,
+          isLive,
+          isSignalGap,
+          isParked,
+          networkState: isLive ? 'live' : (isSignalGap ? 'gap' : 'parked'),
+        };
+      });
+
       return new Response(JSON.stringify({
         success: true,
         vehicles: list,
         count: list.length,
-        timestamp: Date.now(),
+        timestamp: now,
         app: 'Sant Kabir Fleet Shield',
         developer: 'Mani Ratan Singh (mrps.in)',
       }), {
