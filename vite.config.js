@@ -253,7 +253,9 @@ export default defineConfig({
     telemetryDevPlugin(),
   ],
   server: {
+    host: '0.0.0.0',
     port: 3000,
+    strictPort: true,
   },
   preview: {
     port: 4173,
