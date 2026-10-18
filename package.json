@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && esbuild src/worker.js --bundle --format=esm --outfile=dist/_worker.js && cp dist/_worker.js public/_worker.js",
     "preview": "vite preview"
   },
   "dependencies": {
