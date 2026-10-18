@@ -1474,9 +1474,9 @@ function calculateBearing(c1, c2) {
   return Math.round((brng + 360) % 360);
 }
 
-function getLiveSimulationVehicles(now = Date.now()) {
+function getLiveSimulationVehicles(now = Date.now(), maxCars = 13) {
   if (!Array.isArray(FLEET_15) || FLEET_15.length === 0) return [];
-  return FLEET_15.map((car, idx) => {
+  return FLEET_15.slice(0, maxCars).map((car, idx) => {
     const waypoints = car.coords;
     const n = waypoints.length;
     if (n < 2) return null;
@@ -1780,14 +1780,16 @@ export default {
       });
 
       // Self-Healing Fleet Engine:
-      // Ensure 15 active ambulances across Basti, Sant Kabir Nagar & Siddharthnagar are always live
+      // Ensure exactly 13 active ambulances across Basti, Sant Kabir Nagar & Siddharthnagar are always live
       let list = reportedList;
       if (list.length === 0) {
-        list = getLiveSimulationVehicles(now);
-      } else if (list.length < 15) {
+        list = getLiveSimulationVehicles(now, 13);
+      } else if (list.length < 13) {
         const existingIds = new Set(list.map(v => v.id));
-        const simVehicles = getLiveSimulationVehicles(now).filter(v => !existingIds.has(v.id));
-        list = [...list, ...simVehicles].slice(0, 15);
+        const simVehicles = getLiveSimulationVehicles(now, 13).filter(v => !existingIds.has(v.id));
+        list = [...list, ...simVehicles].slice(0, 13);
+      } else if (list.length > 13) {
+        list = list.slice(0, 13);
       }
 
       return new Response(JSON.stringify({
