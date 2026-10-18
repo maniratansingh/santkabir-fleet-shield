@@ -1,6 +1,9 @@
 name = "santkabir-fleet-shield"
-pages_build_output_dir = "dist"
+main = "cloudflare-live-deploy/_worker.js"
 compatibility_date = "2026-10-01"
 
-# Pure Cloudflare Pages Serverless (Zero KV, Zero SQL database dependencies)
-# Built & Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+# Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
