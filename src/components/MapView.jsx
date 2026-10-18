@@ -6,6 +6,7 @@ import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
 import { getDeliveryRouteSplit, getAllRoadCorridors } from '../utils/roadDistance';
 import { getNearestRuralLocation } from '../utils/ruralLocator';
 import { getUniqueVehicleColor } from '../utils/colors';
+import ruralVillages from '../data/ruralVillages.json';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
@@ -15,6 +16,7 @@ const MAP_STYLES = {
     name: 'Light Gray',
     style: {
       version: 8,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         'esri-light-base': {
           type: 'raster',
@@ -54,6 +56,7 @@ const MAP_STYLES = {
     name: 'Dark Gray',
     style: {
       version: 8,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         'esri-dark-base': {
           type: 'raster',
@@ -93,6 +96,7 @@ const MAP_STYLES = {
     name: 'Satellite',
     style: {
       version: 8,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         'esri-imagery': {
           type: 'raster',
@@ -132,6 +136,7 @@ const MAP_STYLES = {
     name: 'Highways & Streets',
     style: {
       version: 8,
+      glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
       sources: {
         'esri-streets': {
           type: 'raster',
@@ -196,7 +201,7 @@ function getHighwayTrail(v) {
 // Authentic 3D Isometric Ambulance with specular lighting, dual headlights, forward road beams, Sant Kabir emblem, and beacon
 function get3DAmbulanceSvg(isDark, status, isSelected, vColor = '#007AFF', vId = '') {
   const isMoving = status === 'moving' || status === 'returning';
-  const uniqueId = Math.random().toString(36).substr(2, 6);
+  const uniqueId = (vId || 'amb').replace(/[^a-zA-Z0-9]/g, '_');
 
   return `
     <svg width="54" height="68" class="w-[52px] h-[66px] select-none filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.45)]" viewBox="0 0 54 68" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -405,7 +410,7 @@ export default function MapView({
     });
   };
 
-  // Center camera on a specific vehicle
+  // Center camera on a specific vehicle (Upright North-up orientation, smooth glide without dizzy spinning)
   const focusVehicle = (vehId) => {
     const map = mapRef.current;
     if (!map) return;
@@ -414,11 +419,11 @@ export default function MapView({
 
     map.flyTo({
       center: [Number(veh.lon || 0), Number(veh.lat || 0)],
-      zoom: 14.2,
-      pitch: 35,
-      bearing: veh.bearing || 0,
-      speed: 1.2,
-      curve: 1.4,
+      zoom: 13.5,
+      pitch: 28,
+      bearing: 0,
+      speed: 1.1,
+      curve: 1.3,
       essential: true,
     });
   };
@@ -444,6 +449,10 @@ export default function MapView({
 
     // Clean up previous custom layers before switching
     try {
+      if (map.getLayer('purvanchal-village-labels')) map.removeLayer('purvanchal-village-labels');
+      if (map.getLayer('purvanchal-village-dots')) map.removeLayer('purvanchal-village-dots');
+      if (map.getSource('purvanchal-villages')) map.removeSource('purvanchal-villages');
+
       if (map.getLayer('delivery-incoming-flow')) map.removeLayer('delivery-incoming-flow');
       if (map.getLayer('delivery-incoming-road')) map.removeLayer('delivery-incoming-road');
       if (map.getLayer('delivery-incoming-casing')) map.removeLayer('delivery-incoming-casing');
@@ -510,6 +519,84 @@ export default function MapView({
   const addCustomLayers = (map) => {
     try {
       const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
+
+      // 1. Purvanchal Rural Villages & Eye Camps (75+ Gram Panchayats & Bazars cached locally)
+      if (map.getSource('purvanchal-villages')) {
+        if (map.getLayer('purvanchal-village-labels')) map.removeLayer('purvanchal-village-labels');
+        if (map.getLayer('purvanchal-village-dots')) map.removeLayer('purvanchal-village-dots');
+        map.removeSource('purvanchal-villages');
+      }
+
+      const villageFeatures = ruralVillages.map((v) => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [v.lon, v.lat],
+        },
+        properties: {
+          name: v.name.replace(/ (Gram|Bazar|Sadar|Nagar)$/, ''),
+          fullName: v.name,
+          district: v.district,
+          block: v.block,
+          isCamp: v.type === 'rural_camp' || v.type === 'historic_camp',
+        },
+      }));
+
+      map.addSource('purvanchal-villages', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: villageFeatures,
+        },
+      });
+
+      // Layer 1A: Soft Village Point Indicator Dot
+      map.addLayer({
+        id: 'purvanchal-village-dots',
+        type: 'circle',
+        source: 'purvanchal-villages',
+        minzoom: 8,
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            8, 2.5,
+            11, 3.5,
+            14, 5
+          ],
+          'circle-color': isDark ? '#38BDF8' : '#0284C7',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-color': isDark ? '#0F172A' : '#FFFFFF',
+          'circle-opacity': 0.85,
+        },
+      });
+
+      // Layer 1B: Crisp Village Name Symbol Label (Cached locally, zero network delay)
+      map.addLayer({
+        id: 'purvanchal-village-labels',
+        type: 'symbol',
+        source: 'purvanchal-villages',
+        minzoom: 8.5,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            8.5, 10,
+            11, 11.5,
+            14, 13
+          ],
+          'text-offset': [0, 0.85],
+          'text-anchor': 'top',
+          'text-optional': true,
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': isDark ? '#E2E8F0' : '#1E293B',
+          'text-halo-color': isDark ? '#090D16' : '#FFFFFF',
+          'text-halo-width': 2,
+          'text-halo-blur': 0.5,
+        },
+      });
 
       // 2. Traveled Highway Road Trail Behind Active Vehicles
       if (map.getSource('delivery-trail-routes')) {
@@ -834,11 +921,11 @@ export default function MapView({
     };
 
     el.innerHTML = `
-      <!-- Soft Pulse Aura -->
-      <div class="absolute w-12 h-12 rounded-full ${isDark ? 'bg-rose-500/20' : 'bg-rose-500/15'} radar-ring pointer-events-none"></div>
+      <!-- Solid Steady Aura (Zero Blinking) -->
+      <div class="absolute w-10 h-10 rounded-full ${isDark ? 'bg-rose-500/25' : 'bg-rose-500/20'} pointer-events-none"></div>
 
       <!-- Apple Maps Red Medical Disc -->
-      <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-600 to-red-500 border-2 border-white shadow-[0_4px_12px_rgba(225,29,72,0.4)] flex items-center justify-center text-white hover:scale-110 transition-transform">
+      <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-rose-600 to-red-500 border-2 border-white shadow-[0_0_16px_rgba(225,29,72,0.6)] flex items-center justify-center text-white hover:scale-110 transition-transform">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <path d="M12 6v12M6 12h12"/>
         </svg>
@@ -946,7 +1033,7 @@ export default function MapView({
       `;
 
       const innerContent = `
-        <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
+        <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
           <!-- Single Capsule with Rural Village / Camp Indicator -->
           <div class="marker-capsule-text mb-1 px-2.5 py-1 rounded-full border shadow-lg flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono transition-all backdrop-blur-md pointer-events-auto"
             style="background: ${isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${vColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 14px ${vColor}35;">
@@ -955,9 +1042,7 @@ export default function MapView({
 
           <!-- 3D Isometric Ambulance with Soft Apple Halo (Zero Strobe/Blink) -->
           <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center transition-transform duration-300 pointer-events-auto" style="transform: rotate(${v.bearing || 0}deg);">
-            ${isSelected ? `
-              <div class="absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-all duration-300"></div>
-            ` : ''}
+            <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
             ${get3DAmbulanceSvg(isDark, v.status, isSelected, vColor, v.id)}
           </div>
         </div>
@@ -987,13 +1072,38 @@ export default function MapView({
           prevBearing: v.bearing 
         };
       } else {
-        // Fast targeted update: preserve DOM nodes to completely eliminate strobe/blinking
-        if (markerObj.prevSelected !== isSelected || markerObj.prevDark !== isDark) {
+        // Targeted in-place DOM updates: NEVER wipe innerHTML on vehicle selection / TV cycle
+        if (markerObj.prevDark !== isDark) {
           markerObj.element.innerHTML = innerContent;
-          markerObj.prevSelected = isSelected;
           markerObj.prevDark = isDark;
+          markerObj.prevSelected = isSelected;
           markerObj.prevBearing = v.bearing;
         } else {
+          // Toggle selection state cleanly on existing DOM elements without wiping innerHTML
+          if (markerObj.prevSelected !== isSelected) {
+            markerObj.prevSelected = isSelected;
+            const outerWrapper = markerObj.element.querySelector('.marker-outer-wrapper');
+            if (outerWrapper) {
+              if (isSelected) {
+                outerWrapper.classList.add('scale-110', 'z-40');
+                outerWrapper.classList.remove('hover:scale-105', 'z-20');
+              } else {
+                outerWrapper.classList.remove('scale-110', 'z-40');
+                outerWrapper.classList.add('hover:scale-105', 'z-20');
+              }
+            }
+            const haloEl = markerObj.element.querySelector('.selection-halo');
+            if (haloEl) {
+              if (isSelected) {
+                haloEl.classList.remove('opacity-0');
+                haloEl.classList.add('opacity-100');
+              } else {
+                haloEl.classList.remove('opacity-100');
+                haloEl.classList.add('opacity-0');
+              }
+            }
+          }
+
           const capsuleEl = markerObj.element.querySelector('.marker-capsule-text');
           if (capsuleEl) {
             capsuleEl.innerHTML = capsuleContent;

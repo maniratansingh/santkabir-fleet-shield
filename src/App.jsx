@@ -112,7 +112,7 @@ export default function App() {
         setSelectedVehicleId(null);
         setFitTrigger(prev => prev + 1);
         setDetent('peek');
-        showToast('📺 TV Auto-Tour: Basti District Overview', 'info');
+        showToast('📺 TV Auto-Tour: Purvanchal Fleet Overview', 'info');
       }
     }, 12000);
 

@@ -47,7 +47,7 @@ export default function DynamicIsland({
         >
           {/* Sonar Radar Wave Icon */}
           <div className="relative flex items-center justify-center shrink-0">
-            <span className="absolute w-7 h-7 rounded-full bg-emerald-500/30 animate-ping"></span>
+            <span className="absolute w-7 h-7 rounded-full bg-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.4)]"></span>
             <div className="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md">
               <CheckCircle2 className="w-4 h-4" />
             </div>
@@ -113,11 +113,10 @@ export default function DynamicIsland({
           {/* Divider */}
           <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
 
-          {/* Live Fleet Status Pill */}
+          {/* Live Fleet Status Pill (Steady Aura, Zero Blink) */}
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${vehicles.length > 0 ? 'bg-emerald-400' : 'bg-sky-400'}`}></span>
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${vehicles.length > 0 ? 'bg-emerald-500' : 'bg-sky-500'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 shadow-[0_0_8px_rgba(16,185,129,0.6)] ${vehicles.length > 0 ? 'bg-emerald-500' : 'bg-sky-500'}`}></span>
             </span>
             {vehicles.length === 0 ? (
               <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
