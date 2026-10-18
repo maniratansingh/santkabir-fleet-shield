@@ -323,7 +323,11 @@ export default {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'CDN-Cache-Control': 'no-store',
+          'Cloudflare-CDN-Cache-Control': 'no-store',
           'X-Powered-By': 'Sant Kabir Fleet Shield (mrps.in)',
         },
       });
@@ -420,7 +424,27 @@ export default {
       }
     }
 
-    // 5. Fallback: Serve static assets (HTML, JS, CSS, images)
-    return env.ASSETS.fetch(request);
+    // 5. Fallback: Serve static assets with strict Zero-Cache for HTML & Live App
+    const assetResponse = await env.ASSETS.fetch(request);
+    const contentType = assetResponse.headers.get('content-type') || '';
+    const isHtml = contentType.includes('text/html') || url.pathname === '/' || url.pathname.endsWith('.html');
+
+    if (isHtml) {
+      const freshHeaders = new Headers(assetResponse.headers);
+      freshHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+      freshHeaders.set('Pragma', 'no-cache');
+      freshHeaders.set('Expires', '0');
+      freshHeaders.set('Surrogate-Control', 'no-store');
+      freshHeaders.set('CDN-Cache-Control', 'no-store');
+      freshHeaders.set('Cloudflare-CDN-Cache-Control', 'no-store');
+
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers: freshHeaders,
+      });
+    }
+
+    return assetResponse;
   },
 };
