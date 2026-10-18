@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import MapView from './components/MapView';
 import DynamicIsland from './components/DynamicIsland';
 import FloatingControls from './components/FloatingControls';
@@ -165,25 +165,10 @@ export default function App() {
             return;
           }
 
-          // 3. Upsert live and blind-spot vehicles
+          // 3. Upsert live and blind-spot vehicles efficiently
           liveList.forEach(liveV => {
             const existing = store.get(liveV.id) || {};
             const colors = getUniqueVehicleColor(liveV.id);
-            const loc = getNearestRuralLocation(Number(liveV.lat || 0), Number(liveV.lon || 0));
-
-            // Only recompute road geometry if position moved significantly (>80m)
-            const hasMoved = !existing.lat || 
-              Math.abs(existing.lat - liveV.lat) > 0.0008 || 
-              Math.abs(existing.lon - liveV.lon) > 0.0008;
-
-            let roadDist = existing.roadDistFromBaseKm;
-            let corridor = existing.highwayName;
-
-            if (hasMoved || !roadDist) {
-              const split = getDeliveryRouteSplit({ ...existing, ...liveV });
-              roadDist = split.roadDistFromBaseKm;
-              corridor = split.corridorName || corridor;
-            }
 
             store.set(liveV.id, {
               ...existing,
@@ -195,13 +180,13 @@ export default function App() {
               lineColor: liveV.lineColor || existing.lineColor || colors.line,
               glowColor: liveV.glowColor || existing.glowColor || colors.glow,
               driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
-              villageName: loc.village,
-              villageBlock: loc.block,
-              villageDistrict: loc.district,
-              villageBadge: loc.badge,
-              villageLabel: loc.label,
-              highwayName: corridor || loc.badge,
-              roadDistFromBaseKm: roadDist || liveV.roadDistFromBaseKm || 0,
+              villageName: liveV.villageName || existing.villageName || 'Base Hospital Standby',
+              villageBlock: liveV.villageBlock || existing.villageBlock || 'Khalilabad',
+              villageDistrict: liveV.villageDistrict || existing.villageDistrict || 'Sant Kabir Nagar',
+              villageBadge: liveV.villageBadge || existing.villageBadge || 'Base Station',
+              villageLabel: liveV.villageLabel || existing.villageLabel || 'Sant Kabir Eye Hospital',
+              highwayName: liveV.highwayName || existing.highwayName || liveV.villageBadge || 'Highway Link',
+              roadDistFromBaseKm: liveV.roadDistFromBaseKm || existing.roadDistFromBaseKm || 0,
               lastSeen: liveV.lastSeen || Date.now(),
             });
           });
@@ -245,58 +230,74 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  // Action Triggers
-  const handleResetNorth = () => {
+  // Action Triggers with stable references
+  const handleResetNorth = useCallback(() => {
     setActionTrigger({ type: 'resetNorth', timestamp: Date.now() });
     showToast('Compass oriented to True North (0°)', 'info');
-  };
+  }, []);
 
-  const handleCenterBase = () => {
+  const handleCenterBase = useCallback(() => {
     setSelectedVehicleId(null);
     setFitTrigger(prev => prev + 1);
     showToast('Camera centered on Sant Kabir Eye Hospital Base', 'info');
-  };
+  }, []);
 
-  const handleToggleAutoTour = () => {
+  const handleToggleAutoTour = useCallback(() => {
     setIsAutoTour(prev => {
       const next = !prev;
       showToast(next ? '📺 TV Wallboard Auto-Tour Started' : 'TV Auto-Tour Stopped', 'info');
       return next;
     });
-  };
+  }, []);
 
-  const handleToggleDemoMode = () => {
+  const handleToggleDemoMode = useCallback(() => {
     setIsDemoMode(prev => {
       const next = !prev;
       setVehicles(next ? INITIAL_VEHICLES : []);
       showToast(next ? '⚡ Demo Mode: Loaded 35 Simulated Ambulances' : '🧹 Live Clean Mode: Real GPS Only (0 active)', 'info');
       return next;
     });
-  };
+  }, []);
+
+  const handleSelectVehicle = useCallback((id) => {
+    setSelectedVehicleId(id);
+  }, []);
+
+  const handleToggleDistanceLines = useCallback(() => {
+    setShowDistanceLines(prev => !prev);
+  }, []);
+
+  const handleResetView = useCallback(() => {
+    setFitTrigger(prev => prev + 1);
+  }, []);
+
+  const handleOpenProvisionModal = useCallback((id) => {
+    setProvisionModalVehicleId(id || 'AMB-01');
+  }, []);
 
   // Apple Sheet Action Handlers
-  const handleLocateVehicle = () => {
+  const handleLocateVehicle = useCallback(() => {
     if (selectedVehicleId) {
       setActionTrigger({ type: 'locateVehicle', vehicleId: selectedVehicleId, timestamp: Date.now() });
       showToast('Camera focused on Vehicle GPS position', 'info');
     }
-  };
+  }, [selectedVehicleId]);
 
-  const handleFitRoute = () => {
+  const handleFitRoute = useCallback(() => {
     if (selectedVehicleId) {
       setActionTrigger({ type: 'fitRoute', vehicleId: selectedVehicleId, timestamp: Date.now() });
       showToast('Framing Full UP Highway Corridor to Base Hospital', 'info');
     }
-  };
+  }, [selectedVehicleId]);
 
-  const handleFocusRoute = () => {
+  const handleFocusRoute = useCallback(() => {
     handleFitRoute();
-  };
+  }, [handleFitRoute]);
 
-  const handleFocusDistance = () => {
+  const handleFocusDistance = useCallback(() => {
     setShowDistanceLines(true);
     showToast('Road Highway Distances Highlighted', 'info');
-  };
+  }, []);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-900 select-none">
@@ -304,15 +305,15 @@ export default function App() {
       <MapView
         vehicles={vehicles}
         selectedVehicleId={selectedVehicleId}
-        onSelectVehicle={setSelectedVehicleId}
+        onSelectVehicle={handleSelectVehicle}
         fitTrigger={fitTrigger}
         actionTrigger={actionTrigger}
         theme={theme}
         activeStyleKey={activeStyleKey}
         onStyleChange={setActiveStyleKey}
         showDistanceLines={showDistanceLines}
-        onToggleDistanceLines={() => setShowDistanceLines(prev => !prev)}
-        onResetView={() => setFitTrigger(prev => prev + 1)}
+        onToggleDistanceLines={handleToggleDistanceLines}
+        onResetView={handleResetView}
       />
 
       {/* 2. Top-Center Dynamic Island Status Capsule */}
@@ -320,7 +321,7 @@ export default function App() {
         vehicles={vehicles}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onOpenDriverModal={() => setProvisionModalVehicleId('AMB-01')}
+        onOpenDriverModal={() => handleOpenProvisionModal('AMB-01')}
       />
 
       {/* 3. Top-Right Floating Controls Stack */}
@@ -330,7 +331,7 @@ export default function App() {
         onResetNorth={handleResetNorth}
         onCenterBase={handleCenterBase}
         showDistanceLines={showDistanceLines}
-        onToggleDistanceLines={() => setShowDistanceLines(prev => !prev)}
+        onToggleDistanceLines={handleToggleDistanceLines}
         isAutoTour={isAutoTour}
         onToggleAutoTour={handleToggleAutoTour}
         isDemoMode={isDemoMode}
@@ -341,12 +342,12 @@ export default function App() {
       <AppleSheet
         vehicles={vehicles}
         selectedVehicleId={selectedVehicleId}
-        onSelectVehicle={setSelectedVehicleId}
+        onSelectVehicle={handleSelectVehicle}
         onFocusRoute={handleFocusRoute}
         onLocateVehicle={handleLocateVehicle}
         onFitRoute={handleFitRoute}
         onFocusDistance={handleFocusDistance}
-        onOpenProvisionModal={(id) => setProvisionModalVehicleId(id || 'AMB-01')}
+        onOpenProvisionModal={handleOpenProvisionModal}
         detent={detent}
         onChangeDetent={setDetent}
       />

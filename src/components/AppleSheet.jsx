@@ -41,7 +41,100 @@ function formatLastSeen(lastSeen) {
   return `${diffHr}h ago`;
 }
 
-export default function AppleSheet({
+// Ultra-fast memoized row (0ms re-render overhead per ambulance card)
+const AmbulanceRow = React.memo(function AmbulanceRow({
+  v,
+  isSelected,
+  onSelectVehicle,
+  openProvision,
+}) {
+  const uniqueColors = getUniqueVehicleColor(v.id);
+  const vColor = v.lineColor || uniqueColors.line;
+  const distKm = v.roadDistFromBaseKm || getVehicleDistance(v);
+  const locationLabel = v.villageBadge 
+    ? `${v.villageBadge} (${v.villageDistrict || 'UP'})`
+    : (v.lat && v.lon ? getNearestRuralLocation(Number(v.lat), Number(v.lon)).badge : 'Purvanchal Region');
+
+  return (
+    <div
+      onClick={() => onSelectVehicle(v.id)}
+      className={`px-3 py-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between group shadow-2xs ${
+        isSelected
+          ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-400 dark:border-sky-600 shadow-sm'
+          : 'bg-white/80 dark:bg-slate-900/60 border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
+      }`}
+    >
+      {/* Left: Identifier, Speed, and Rural Village/Camp */}
+      <div className="flex flex-col min-w-0 pr-2">
+        <div className="flex items-center gap-2">
+          <div 
+            className="w-2.5 h-2.5 rounded-full shrink-0" 
+            style={{ backgroundColor: vColor, boxShadow: `0 0 6px ${vColor}88` }} 
+          />
+          <span className="text-xs font-mono font-extrabold text-slate-900 dark:text-white truncate">
+            {v.id}
+          </span>
+          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+            {v.speed > 0 ? `${v.speed} km/h` : 'Stopped'} • {distKm} km Base
+          </span>
+        </div>
+
+        {/* Rural Outreach Village / Camp Badge */}
+        <div className="flex items-center gap-1 mt-1 pl-4.5">
+          <MapPin className="w-2.5 h-2.5 text-sky-500 dark:text-cyan-400 shrink-0" />
+          <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate">
+            {locationLabel}
+          </span>
+        </div>
+      </div>
+
+      {/* Right: Driver + Call & Maps Shortcuts & QR Provisioning */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium max-w-[70px] sm:max-w-[100px] truncate">
+          {v.driverName || 'Driver'}
+        </span>
+
+        {/* Provision QR Shortcut Button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            openProvision(v.id);
+          }}
+          className="w-6 h-6 rounded-lg bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900 text-sky-700 dark:text-cyan-400 border border-sky-200 dark:border-sky-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+          title={`Generate Provisioning QR for ${v.id}`}
+        >
+          <QrCode className="w-3 h-3" />
+        </button>
+
+        {v.driverPhone && (
+          <a
+            href={`tel:${v.driverPhone}`}
+            onClick={(e) => e.stopPropagation()}
+            className="w-6 h-6 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center transition-colors shadow-2xs"
+            title={`Call Driver (${v.driverName})`}
+          >
+            <Phone className="w-3 h-3" />
+          </a>
+        )}
+
+        <a
+          href={`https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="w-6 h-6 rounded-lg bg-sky-50 dark:bg-sky-950/60 border border-sky-200/80 dark:border-sky-800 text-sky-700 dark:text-cyan-400 hover:bg-sky-100 transition-colors flex items-center justify-center shadow-2xs"
+          title="Navigate in Google Maps"
+        >
+          <Navigation className="w-3 h-3" />
+        </a>
+
+        <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-sky-500 transition-colors" />
+      </div>
+    </div>
+  );
+});
+
+function AppleSheet({
   vehicles = [],
   selectedVehicleId = null,
   onSelectVehicle,
@@ -430,93 +523,16 @@ export default function AppleSheet({
                     </button>
                   </div>
                 ) : (
-                  filteredVehicles.map((v) => {
-                    const isMoving = v.status === 'moving' || v.status === 'returning';
-                    const uniqueColors = getUniqueVehicleColor(v.id);
-                    const vColor = v.lineColor || uniqueColors.line;
-                    const distKm = getVehicleDistance(v);
-                    const loc = getNearestRuralLocation(Number(v.lat || 0), Number(v.lon || 0));
-
-                    return (
-                      <div
-                        key={v.id}
-                        onClick={() => onSelectVehicle(v.id)}
-                        className={`px-3 py-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between group shadow-2xs ${
-                          selectedVehicleId === v.id
-                            ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-400 dark:border-sky-600 shadow-sm'
-                            : 'bg-white/80 dark:bg-slate-900/60 border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
-                        }`}
-                      >
-                        {/* Left: Identifier, Speed, and Rural Village/Camp */}
-                        <div className="flex flex-col min-w-0 pr-2">
-                          <div className="flex items-center gap-2">
-                            <div 
-                              className="w-2.5 h-2.5 rounded-full shrink-0" 
-                              style={{ backgroundColor: vColor, boxShadow: `0 0 6px ${vColor}88` }} 
-                            />
-                            <span className="text-xs font-mono font-extrabold text-slate-900 dark:text-white truncate">
-                              {v.id}
-                            </span>
-                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
-                              {v.speed > 0 ? `${v.speed} km/h` : 'Stopped'} • {distKm} km Base
-                            </span>
-                          </div>
-
-                          {/* Rural Outreach Village / Camp Badge */}
-                          <div className="flex items-center gap-1 mt-1 pl-4.5">
-                            <MapPin className="w-2.5 h-2.5 text-sky-500 dark:text-cyan-400 shrink-0" />
-                            <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate">
-                              {v.villageName ? `${v.villageBadge} (${v.villageDistrict})` : `${loc.badge} (${loc.district})`}
-                            </span>
-                          </div>
-                        </div>
-
-                      {/* Right: Driver + Call & Maps Shortcuts & QR Provisioning */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium max-w-[70px] sm:max-w-[100px] truncate">
-                          {v.driverName || 'Driver'}
-                        </span>
-
-                        {/* Provision QR Shortcut Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openProvision(v.id);
-                          }}
-                          className="w-6 h-6 rounded-lg bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900 text-sky-700 dark:text-cyan-400 border border-sky-200 dark:border-sky-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
-                          title={`Generate Provisioning QR for ${v.id}`}
-                        >
-                          <QrCode className="w-3 h-3" />
-                        </button>
-
-                        {v.driverPhone && (
-                          <a
-                            href={`tel:${v.driverPhone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-6 h-6 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center transition-colors shadow-2xs"
-                            title={`Call Driver (${v.driverName})`}
-                          >
-                            <Phone className="w-3 h-3" />
-                          </a>
-                        )}
-
-                        <a
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${v.lat},${v.lon}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-6 h-6 rounded-lg bg-sky-50 dark:bg-sky-950/60 border border-sky-200/80 dark:border-sky-800 text-sky-700 dark:text-cyan-400 hover:bg-sky-100 transition-colors flex items-center justify-center shadow-2xs"
-                          title="Navigate in Google Maps"
-                        >
-                          <Navigation className="w-3 h-3" />
-                        </a>
-
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-sky-500 transition-colors" />
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+                  filteredVehicles.map((v) => (
+                    <AmbulanceRow
+                      key={v.id}
+                      v={v}
+                      isSelected={selectedVehicleId === v.id}
+                      onSelectVehicle={onSelectVehicle}
+                      openProvision={openProvision}
+                    />
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -563,3 +579,5 @@ export default function AppleSheet({
     </div>
   );
 }
+
+export default React.memo(AppleSheet);

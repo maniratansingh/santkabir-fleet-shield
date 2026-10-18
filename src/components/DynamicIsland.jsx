@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Sun, Moon, Radio, ChevronDown, CheckCircle2, Activity, X, Navigation, Ambulance } from 'lucide-react';
 import { BASE_HOSPITAL } from '../data/mockData';
 
-export default function DynamicIsland({
+function DynamicIsland({
   vehicles = [],
   theme = 'light',
   onToggleTheme,
@@ -251,7 +251,7 @@ export default function DynamicIsland({
                   >
                     <div className="min-w-0 pr-2">
                       <div className="flex items-center gap-1.5">
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${v.status === 'moving' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${v.status === 'moving' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
                         <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                           {v.name}
                         </span>
@@ -285,3 +285,5 @@ export default function DynamicIsland({
     </header>
   );
 }
+
+export default React.memo(DynamicIsland);

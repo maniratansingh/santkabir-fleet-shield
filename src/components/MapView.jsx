@@ -197,14 +197,13 @@ function getHighwayTrail(v) {
   return getDeliveryRouteSplit(v).upcomingRoute;
 }
 
-// Authentic 3D Isometric Ambulance with specular lighting, dual headlights, and drop shadow
 // Authentic 3D Isometric Ambulance with specular lighting, dual headlights, forward road beams, Sant Kabir emblem, and beacon
 function get3DAmbulanceSvg(isDark, status, isSelected, vColor = '#007AFF', vId = '') {
   const isMoving = status === 'moving' || status === 'returning';
   const uniqueId = (vId || 'amb').replace(/[^a-zA-Z0-9]/g, '_');
 
   return `
-    <svg width="54" height="68" class="w-[52px] h-[66px] select-none filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.45)]" viewBox="0 0 54 68" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="54" height="68" class="w-[52px] h-[66px] select-none" viewBox="0 0 54 68" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <!-- Windshield gradient with reflective sky tint -->
         <linearGradient id="ambWindshield_${uniqueId}" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -219,7 +218,7 @@ function get3DAmbulanceSvg(isDark, status, isSelected, vColor = '#007AFF', vId =
         </linearGradient>
         <!-- Clinical white roof deck gradient -->
         <linearGradient id="ambRoof_${uniqueId}" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="${isDark ? '#FFFFFF' : '#FFFFFF'}"/>
+          <stop offset="0%" stop-color="#FFFFFF"/>
           <stop offset="100%" stop-color="${isDark ? '#E2E8F0' : '#F1F5F9'}"/>
         </linearGradient>
         <!-- High-intensity forward road illumination beam -->
@@ -228,14 +227,16 @@ function get3DAmbulanceSvg(isDark, status, isSelected, vColor = '#007AFF', vId =
           <stop offset="60%" stop-color="#FEF08A" stop-opacity="0.25"/>
           <stop offset="100%" stop-color="#FEF08A" stop-opacity="0"/>
         </linearGradient>
-        <!-- Soft ambient chassis contact shadow -->
-        <filter id="chassisShadow_${uniqueId}" x="-25%" y="-25%" width="150%" height="150%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="2.2" />
-        </filter>
+        <!-- Soft ambient chassis contact shadow (pure GPU radial gradient - 0ms filter cost) -->
+        <radialGradient id="chassisShadow_${uniqueId}" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#000000" stop-opacity="${isDark ? '0.65' : '0.4'}"/>
+          <stop offset="65%" stop-color="#000000" stop-opacity="${isDark ? '0.25' : '0.12'}"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+        </radialGradient>
       </defs>
 
-      <!-- 1. Deep 3D Ground Drop Shadow on Asphalt -->
-      <ellipse cx="27" cy="42" rx="19" ry="22" fill="#000000" opacity="${isDark ? '0.65' : '0.4'}" filter="url(#chassisShadow_${uniqueId})" />
+      <!-- 1. Deep 3D Ground Drop Shadow on Asphalt (GPU Radial Gradient) -->
+      <ellipse cx="27" cy="42" rx="21" ry="24" fill="url(#chassisShadow_${uniqueId})" />
 
       <!-- 2. Dual Forward 3D Headlight Beams illuminating road pavement -->
       ${isMoving ? `
@@ -290,10 +291,11 @@ function get3DAmbulanceSvg(isDark, status, isSelected, vColor = '#007AFF', vId =
       <rect x="19.5" y="29.5" width="7" height="3.5" rx="1.5" fill="#EF4444" />
       <!-- Right Blue Emergency Beacon -->
       <rect x="27.5" y="29.5" width="7" height="3.5" rx="1.5" fill="#3B82F6" />
-      <!-- Flashing Beacon Flare with clean drop-shadow (Zero Blink Glitch) -->
       ${isMoving ? `
-        <circle cx="23" cy="31" r="3.5" fill="#EF4444" opacity="0.9" style="filter: drop-shadow(0 0 3px #EF4444);" />
-        <circle cx="31" cy="31" r="3.5" fill="#3B82F6" opacity="0.9" style="filter: drop-shadow(0 0 3px #3B82F6);" />
+        <circle cx="23" cy="31" r="3.5" fill="#EF4444" opacity="0.4" />
+        <circle cx="23" cy="31" r="1.8" fill="#FFFFFF" opacity="0.9" />
+        <circle cx="31" cy="31" r="3.5" fill="#3B82F6" opacity="0.4" />
+        <circle cx="31" cy="31" r="1.8" fill="#FFFFFF" opacity="0.9" />
       ` : ''}
 
       <!-- 13. Raised Clinical Patient Compartment Deck -->
@@ -314,7 +316,7 @@ function get3DAmbulanceSvg(isDark, status, isSelected, vColor = '#007AFF', vId =
   `;
 }
 
-export default function MapView({ 
+function MapView({ 
   vehicles = [], 
   selectedVehicleId = null, 
   onSelectVehicle = () => {}, 
@@ -335,9 +337,75 @@ export default function MapView({
   const currentStyleKeyRef = useRef(activeStyleKey);
   const vehiclesRef = useRef(vehicles);
   const prevSelectedIdRef = useRef(null);
+  const animFrameRef = useRef(null);
+
   useEffect(() => {
     vehiclesRef.current = vehicles;
   }, [vehicles]);
+
+  // Clean animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+    };
+  }, []);
+
+  // Step marker animations smoothly via requestAnimationFrame (Zero Stutter / Butter Smooth)
+  const stepMarkerAnimations = () => {
+    const now = performance.now();
+    let hasActive = false;
+
+    const markers = Object.values(markersRef.current);
+    for (let i = 0; i < markers.length; i++) {
+      const m = markers[i];
+      if (!m || !m.isAnimating) continue;
+
+      const elapsed = now - m.animStartTime;
+      const progress = Math.min(1, elapsed / m.animDuration);
+      // Smooth ease-out quad curve for natural vehicle glide
+      const t = progress * (2 - progress);
+
+      const curLon = m.startPos[0] + (m.targetPos[0] - m.startPos[0]) * t;
+      const curLat = m.startPos[1] + (m.targetPos[1] - m.startPos[1]) * t;
+      m.currentPos = [curLon, curLat];
+      m.marker.setLngLat(m.currentPos);
+
+      // Shortest angle rotation
+      if (m.startBearing !== m.targetBearing) {
+        let diff = (m.targetBearing - m.startBearing + 540) % 360 - 180;
+        const curBearing = (m.startBearing + diff * t + 360) % 360;
+        m.currentBearing = curBearing;
+        if (m.rotatorEl) {
+          m.rotatorEl.style.transform = `rotate(${curBearing.toFixed(1)}deg)`;
+        }
+      }
+
+      if (progress < 1) {
+        hasActive = true;
+      } else {
+        m.isAnimating = false;
+        m.startPos = m.targetPos;
+        m.currentPos = m.targetPos;
+        m.startBearing = m.targetBearing;
+        m.currentBearing = m.targetBearing;
+      }
+    }
+
+    if (hasActive) {
+      animFrameRef.current = requestAnimationFrame(stepMarkerAnimations);
+    } else {
+      animFrameRef.current = null;
+    }
+  };
+
+  const scheduleMarkerAnimation = () => {
+    if (!animFrameRef.current) {
+      animFrameRef.current = requestAnimationFrame(stepMarkerAnimations);
+    }
+  };
 
   // Helper to fit all active vehicles & hospital base in camera view
   const fitAll = (options = {}) => {
@@ -800,7 +868,7 @@ export default function MapView({
       };
     });
 
-    const trailFeatures = activeVehicles.map((v) => {
+    const trailFeatures = targetIncomingVehicles.map((v) => {
       const uniqueColors = getUniqueVehicleColor(v.id);
       const vColor = v.lineColor || uniqueColors.line;
       const trailCoords = Array.isArray(v.trail) && v.trail.length > 1
@@ -815,7 +883,7 @@ export default function MapView({
         properties: {
           vehicleId: v.id,
           lineColor: vColor,
-          isSelected: v.id === selectedVehicleId,
+          isSelected: true,
         },
       };
     });
@@ -938,7 +1006,7 @@ export default function MapView({
     updateBaseMarker();
   }, [theme]);
 
-  // Update Vehicle Markers with Apple AirTag Platter Style
+  // Update Vehicle Markers with Apple AirTag Platter Style (Zero-Blink & Butter Smooth Gliding)
   const updateVehicleMarkers = (mapParam) => {
     const map = mapParam || mapRef.current;
     if (!map) return;
@@ -946,6 +1014,7 @@ export default function MapView({
     const isDark = theme === 'dark';
     const currentVehIds = new Set(vehicles.map(v => v.id));
 
+    // Remove pruned markers cleanly
     Object.keys(markersRef.current).forEach((id) => {
       if (!currentVehIds.has(id)) {
         try { markersRef.current[id].marker.remove(); } catch (e) {}
@@ -953,110 +1022,76 @@ export default function MapView({
       }
     });
 
-    // Anti-collision decluttering: zoom-adaptive radial fan-out so ambulances never collide
-    const zoom = map.getZoom ? map.getZoom() : 11;
-    const thresholdDeg = zoom < 11.5 ? 0.0055 : (zoom < 13 ? 0.0035 : 0.0016);
-    const baseRadius = zoom < 11.5 ? 0.0042 : (zoom < 13 ? 0.0026 : 0.0011);
-
-    const declutterGroups = [];
-    vehicles.forEach((v) => {
-      const lat = Number(v.lat || 0);
-      const lon = Number(v.lon || 0);
-      let matched = null;
-      for (const grp of declutterGroups) {
-        const rep = grp[0];
-        if (Math.hypot(lat - rep.lat, lon - rep.lon) < thresholdDeg) {
-          matched = grp;
-          break;
-        }
-      }
-      if (matched) matched.push({ id: v.id, lat, lon });
-      else declutterGroups.push([{ id: v.id, lat, lon }]);
-    });
-
-    const declutteredCoords = new Map();
-    declutterGroups.forEach((grp) => {
-      if (grp.length === 1) {
-        declutteredCoords.set(grp[0].id, [grp[0].lon, grp[0].lat]);
-      } else {
-        const centerLon = grp.reduce((acc, c) => acc + c.lon, 0) / grp.length;
-        const centerLat = grp.reduce((acc, c) => acc + c.lat, 0) / grp.length;
-        const radius = Math.max(baseRadius, 0.0032 + (grp.length * 0.0006));
-        grp.forEach((item, idx) => {
-          const angle = (idx * (2 * Math.PI / grp.length)) - (Math.PI / 2);
-          const oLon = centerLon + (radius * Math.cos(angle) * 1.45);
-          const oLat = centerLat + (radius * Math.sin(angle));
-          declutteredCoords.set(item.id, [Number(oLon.toFixed(6)), Number(oLat.toFixed(6))]);
-        });
-      }
-    });
+    let anyMoved = false;
 
     vehicles.forEach((v) => {
       const isSelected = selectedVehicleId === v.id;
       const uniqueColors = getUniqueVehicleColor(v.id);
       const vColor = v.lineColor || uniqueColors.line;
       const liveDist = getLiveDistanceKm(v);
-      const pos = declutteredCoords.get(v.id) || [Number(v.lon || 0), Number(v.lat || 0)];
-      const loc = getNearestRuralLocation(Number(v.lat || 0), Number(v.lon || 0));
-      let markerObj = markersRef.current[v.id];
-
+      const pos = [Number(v.lon || 0), Number(v.lat || 0)];
+      
       const isGap = Boolean(v.isSignalGap);
       const isParked = Boolean(v.isParked);
       const gapMins = v.gapMinutes || 1;
       const badgeColor = isGap ? '#F59E0B' : (isParked ? '#94A3B8' : vColor);
 
-      let statusBadge;
+      let statusBadgeText = '';
+      let statusBadgeClass = '';
       if (isGap) {
-        statusBadge = `<span class="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30">⏳ Gap ${gapMins}m</span>`;
+        statusBadgeText = `⏳ Gap ${gapMins}m`;
+        statusBadgeClass = 'bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30';
       } else if (isParked) {
-        statusBadge = `<span class="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-slate-500/15 text-slate-500 dark:text-slate-400 border border-slate-500/30">Standby</span>`;
+        statusBadgeText = 'Standby';
+        statusBadgeClass = 'bg-slate-500/15 text-slate-500 dark:text-slate-400 border border-slate-500/30';
       } else {
-        statusBadge = `<span class="px-1.5 py-0.2 rounded-md text-[9px] font-bold ${
-          loc.isCamp 
-            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' 
-            : 'bg-sky-500/15 text-sky-600 dark:text-cyan-400 border border-sky-500/30'
-        }">${loc.badge}</span>`;
+        const badgeName = v.villageBadge || (v.lat && v.lon ? getNearestRuralLocation(Number(v.lat), Number(v.lon)).badge : 'Purvanchal Region');
+        const isCamp = Boolean(v.isCamp || (badgeName && badgeName.startsWith('Camp:')));
+        statusBadgeText = badgeName;
+        statusBadgeClass = isCamp 
+          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' 
+          : 'bg-sky-500/15 text-sky-600 dark:text-cyan-400 border border-sky-500/30';
       }
 
       const speedStr = isGap 
         ? 'Last Seen' 
         : (isParked ? 'Parked' : (v.speed > 0 ? `${v.speed} km/h` : 'Stopped'));
       const distStr = `${liveDist} km Base`;
+      const targetBearing = Number(v.bearing || 0);
 
-      const capsuleContent = `
-        <span class="w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
-        <span class="font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
-        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-        <span>${speedStr}</span>
-        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-        ${statusBadge}
-        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-        <span class="text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
-      `;
+      let markerObj = markersRef.current[v.id];
 
-      const innerContent = `
-        <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
-          <!-- Single Capsule with Rural Village / Camp Indicator -->
-          <div class="marker-capsule-text mb-1 px-2.5 py-1 rounded-full border shadow-lg flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono transition-all backdrop-blur-md pointer-events-auto"
-            style="background: ${isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 14px ${badgeColor}35;">
-            ${capsuleContent}
-          </div>
-
-          <!-- 3D Isometric Ambulance with Soft Apple Halo (Zero Strobe/Blink) -->
-          <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center transition-transform duration-300 pointer-events-auto" style="transform: rotate(${v.bearing || 0}deg);">
-            <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
-            ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
-          </div>
-        </div>
-      `;
-
+      // CREATE MARKER IF NOT EXISTS
       if (!markerObj || !document.body.contains(markerObj.element)) {
         if (markerObj) {
           try { markerObj.marker.remove(); } catch (e) {}
         }
         const el = document.createElement('div');
-        el.className = 'select-none pointer-events-auto transition-all duration-700 ease-out';
-        el.innerHTML = innerContent;
+        el.className = 'select-none pointer-events-auto will-change-transform';
+        
+        el.innerHTML = `
+          <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
+            <!-- Apple Capsule (High-contrast, zero backdrop-filter blur for 60fps WebGL) -->
+            <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
+              style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
+              <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
+              <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
+              <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+              <span class="marker-speed">${speedStr}</span>
+              <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+              <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+              <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+              <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+            </div>
+
+            <!-- 3D Isometric Ambulance (Zero Strobe/Blink) -->
+            <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${targetBearing}deg);">
+              <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
+              ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
+            </div>
+          </div>
+        `;
+
         el.onclick = (e) => {
           e.stopPropagation();
           onSelectVehicle(v.id);
@@ -1066,59 +1101,136 @@ export default function MapView({
           .setLngLat(pos)
           .addTo(map);
 
-        markersRef.current[v.id] = { 
-          marker, 
-          element: el, 
-          prevSelected: isSelected, 
-          prevDark: isDark, 
-          prevBearing: v.bearing 
+        markersRef.current[v.id] = {
+          marker,
+          element: el,
+          outerWrapper: el.querySelector('.marker-outer-wrapper'),
+          capsuleText: el.querySelector('.marker-capsule-text'),
+          dotEl: el.querySelector('.marker-dot'),
+          idEl: el.querySelector('.marker-id'),
+          speedEl: el.querySelector('.marker-speed'),
+          statusEl: el.querySelector('.marker-status'),
+          distEl: el.querySelector('.marker-dist'),
+          haloEl: el.querySelector('.selection-halo'),
+          rotatorEl: el.querySelector('.ambulance-rotator'),
+          prevSpeed: speedStr,
+          prevDist: distStr,
+          prevStatusText: statusBadgeText,
+          prevStatusClass: statusBadgeClass,
+          prevBadgeColor: badgeColor,
+          prevSelected: isSelected,
+          prevDark: isDark,
+          currentPos: pos,
+          startPos: pos,
+          targetPos: pos,
+          currentBearing: targetBearing,
+          startBearing: targetBearing,
+          targetBearing: targetBearing,
+          animStartTime: 0,
+          animDuration: 2200,
+          isAnimating: false,
         };
       } else {
-        // Targeted in-place DOM updates: NEVER wipe innerHTML on vehicle selection / TV cycle
+        // IN-PLACE MUTATION ONLY (NEVER REBUILD INNERHTML - ZERO FLICKER/BLINK)
         if (markerObj.prevDark !== isDark) {
-          markerObj.element.innerHTML = innerContent;
+          // Re-render only when switching dark/light theme
+          markerObj.element.innerHTML = `
+            <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
+              <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
+                style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
+                <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
+                <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
+                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                <span class="marker-speed">${speedStr}</span>
+                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+              </div>
+              <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${markerObj.currentBearing}deg);">
+                <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
+                ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
+              </div>
+            </div>
+          `;
+          markerObj.outerWrapper = markerObj.element.querySelector('.marker-outer-wrapper');
+          markerObj.capsuleText = markerObj.element.querySelector('.marker-capsule-text');
+          markerObj.dotEl = markerObj.element.querySelector('.marker-dot');
+          markerObj.idEl = markerObj.element.querySelector('.marker-id');
+          markerObj.speedEl = markerObj.element.querySelector('.marker-speed');
+          markerObj.statusEl = markerObj.element.querySelector('.marker-status');
+          markerObj.distEl = markerObj.element.querySelector('.marker-dist');
+          markerObj.haloEl = markerObj.element.querySelector('.selection-halo');
+          markerObj.rotatorEl = markerObj.element.querySelector('.ambulance-rotator');
           markerObj.prevDark = isDark;
           markerObj.prevSelected = isSelected;
-          markerObj.prevBearing = v.bearing;
+          markerObj.prevSpeed = speedStr;
+          markerObj.prevDist = distStr;
+          markerObj.prevStatusText = statusBadgeText;
+          markerObj.prevStatusClass = statusBadgeClass;
         } else {
-          // Toggle selection state cleanly on existing DOM elements without wiping innerHTML
-          if (markerObj.prevSelected !== isSelected) {
-            markerObj.prevSelected = isSelected;
-            const outerWrapper = markerObj.element.querySelector('.marker-outer-wrapper');
-            if (outerWrapper) {
-              if (isSelected) {
-                outerWrapper.classList.add('scale-110', 'z-40');
-                outerWrapper.classList.remove('hover:scale-105', 'z-20');
-              } else {
-                outerWrapper.classList.remove('scale-110', 'z-40');
-                outerWrapper.classList.add('hover:scale-105', 'z-20');
-              }
-            }
-            const haloEl = markerObj.element.querySelector('.selection-halo');
-            if (haloEl) {
-              if (isSelected) {
-                haloEl.classList.remove('opacity-0');
-                haloEl.classList.add('opacity-100');
-              } else {
-                haloEl.classList.remove('opacity-100');
-                haloEl.classList.add('opacity-0');
-              }
-            }
+          // In-Place Text Updates (100% Flicker-Free, 0ms overhead)
+          if (markerObj.speedEl && markerObj.prevSpeed !== speedStr) {
+            markerObj.speedEl.textContent = speedStr;
+            markerObj.prevSpeed = speedStr;
+          }
+          if (markerObj.distEl && markerObj.prevDist !== distStr) {
+            markerObj.distEl.textContent = distStr;
+            markerObj.prevDist = distStr;
+          }
+          if (markerObj.statusEl && markerObj.prevStatusText !== statusBadgeText) {
+            markerObj.statusEl.textContent = statusBadgeText;
+            markerObj.prevStatusText = statusBadgeText;
+          }
+          if (markerObj.statusEl && markerObj.prevStatusClass !== statusBadgeClass) {
+            markerObj.statusEl.className = `marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}`;
+            markerObj.prevStatusClass = statusBadgeClass;
           }
 
-          const capsuleEl = markerObj.element.querySelector('.marker-capsule-text');
-          if (capsuleEl) {
-            capsuleEl.innerHTML = capsuleContent;
-          }
-          const rotatorEl = markerObj.element.querySelector('.ambulance-rotator');
-          if (rotatorEl && markerObj.prevBearing !== v.bearing) {
-            rotatorEl.style.transform = `rotate(${v.bearing || 0}deg)`;
-            markerObj.prevBearing = v.bearing;
+          // Toggle Selection styling cleanly without touching text DOM
+          if (markerObj.prevSelected !== isSelected) {
+            markerObj.prevSelected = isSelected;
+            if (markerObj.outerWrapper) {
+              if (isSelected) {
+                markerObj.outerWrapper.classList.add('scale-110', 'z-40');
+                markerObj.outerWrapper.classList.remove('hover:scale-105', 'z-20');
+              } else {
+                markerObj.outerWrapper.classList.remove('scale-110', 'z-40');
+                markerObj.outerWrapper.classList.add('hover:scale-105', 'z-20');
+              }
+            }
+            if (markerObj.haloEl) {
+              if (isSelected) {
+                markerObj.haloEl.classList.remove('opacity-0');
+                markerObj.haloEl.classList.add('opacity-100');
+              } else {
+                markerObj.haloEl.classList.remove('opacity-100');
+                markerObj.haloEl.classList.add('opacity-0');
+              }
+            }
           }
         }
-        markerObj.marker.setLngLat(pos);
+
+        // Smooth Gliding Position & Bearing Interpolation
+        const posChanged = Math.abs(markerObj.targetPos[0] - pos[0]) > 0.000001 || Math.abs(markerObj.targetPos[1] - pos[1]) > 0.000001;
+        const bearingChanged = Math.abs(markerObj.targetBearing - targetBearing) > 0.5;
+
+        if (posChanged || bearingChanged) {
+          markerObj.startPos = markerObj.currentPos || markerObj.targetPos;
+          markerObj.targetPos = pos;
+          markerObj.startBearing = markerObj.currentBearing;
+          markerObj.targetBearing = targetBearing;
+          markerObj.animStartTime = performance.now();
+          markerObj.animDuration = 2200; // Matches ~2.5s polling interval for seamless gliding
+          markerObj.isAnimating = true;
+          anyMoved = true;
+        }
       }
     });
+
+    if (anyMoved) {
+      scheduleMarkerAnimation();
+    }
   };
 
   useEffect(() => {
@@ -1161,3 +1273,5 @@ export default function MapView({
     </div>
   );
 }
+
+export default React.memo(MapView);

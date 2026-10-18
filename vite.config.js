@@ -306,6 +306,9 @@ export default defineConfig({
           if (id.includes('node_modules/react') || id.includes('node_modules/lucide-react')) {
             return 'vendor';
           }
+          if (id.includes('allVillagesRoadRoutes.json')) {
+            return 'purvanchal-routes-data';
+          }
         },
       },
     },
