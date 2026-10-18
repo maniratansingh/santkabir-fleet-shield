@@ -718,21 +718,17 @@ function MapView({
         },
       });
 
-      // 3. Active Turn-by-Turn Road Navigation Corridor (Solid Clean Road Ribbon, No Dashes)
-      // Only drawn for the currently selected/inspected vehicle — never creates 20 crisscrossing starburst lines!
+      // 3. Active Turn-by-Turn Road Navigation Corridor for each working vehicle
       if (map.getSource('delivery-incoming-routes')) {
         if (map.getLayer('delivery-incoming-road')) map.removeLayer('delivery-incoming-road');
         if (map.getLayer('delivery-incoming-casing')) map.removeLayer('delivery-incoming-casing');
         map.removeSource('delivery-incoming-routes');
       }
 
-      const targetIncomingVehicles = selectedVehicleId
-        ? activeVehicles.filter((v) => v.id === selectedVehicleId)
-        : [];
-
-      const incomingFeatures = targetIncomingVehicles.map((v) => {
+      const incomingFeatures = activeVehicles.map((v) => {
         const split = getDeliveryRouteSplit(v);
         const uniqueColors = getUniqueVehicleColor(v.id);
+        const isSelected = v.id === selectedVehicleId;
         return {
           type: 'Feature',
           geometry: {
@@ -743,7 +739,7 @@ function MapView({
             vehicleId: v.id,
             lineColor: v.lineColor || uniqueColors.line,
             glowColor: v.glowColor || uniqueColors.glow,
-            isSelected: true,
+            isSelected: isSelected,
             status: v.status,
           },
         };
@@ -772,16 +768,16 @@ function MapView({
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            10,
-            6.5,
+            8.5,
+            4.0,
           ],
           'line-opacity': [
             'case',
             ['get', 'isSelected'],
-            0.5,
-            0.3,
+            0.6,
+            0.25,
           ],
-          'line-blur': 3,
+          'line-blur': 2,
         },
       });
 
@@ -801,9 +797,14 @@ function MapView({
             'case',
             ['get', 'isSelected'],
             5.5,
-            3.8,
+            3.0,
           ],
-          'line-opacity': 0.98,
+          'line-opacity': [
+            'case',
+            ['get', 'isSelected'],
+            1.0,
+            0.85,
+          ],
         },
       });
 
@@ -842,16 +843,13 @@ function MapView({
     const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
     const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
 
-    // Navigation corridor ONLY rendered for the selected/inspected vehicle (no spiderweb arrow lines)
-    const targetIncomingVehicles = selectedVehicleId
-      ? activeVehicles.filter((v) => v.id === selectedVehicleId)
-      : [];
-
-    const incomingFeatures = targetIncomingVehicles.map((v) => {
+    // Individual authentic road lines for each active working vehicle
+    const incomingFeatures = activeVehicles.map((v) => {
       const split = getDeliveryRouteSplit(v);
       const uniqueColors = getUniqueVehicleColor(v.id);
       const vColor = v.lineColor || uniqueColors.line;
       const vGlow = v.glowColor || uniqueColors.glow;
+      const isSelected = v.id === selectedVehicleId;
       return {
         type: 'Feature',
         geometry: {
@@ -862,15 +860,16 @@ function MapView({
           vehicleId: v.id,
           lineColor: vColor,
           glowColor: vGlow,
-          isSelected: true,
+          isSelected: isSelected,
           status: v.status,
         },
       };
     });
 
-    const trailFeatures = targetIncomingVehicles.map((v) => {
+    const trailFeatures = activeVehicles.map((v) => {
       const uniqueColors = getUniqueVehicleColor(v.id);
       const vColor = v.lineColor || uniqueColors.line;
+      const isSelected = v.id === selectedVehicleId;
       const trailCoords = Array.isArray(v.trail) && v.trail.length > 1
         ? v.trail
         : getDeliveryRouteSplit(v).completedTrail;
@@ -883,7 +882,7 @@ function MapView({
         properties: {
           vehicleId: v.id,
           lineColor: vColor,
-          isSelected: true,
+          isSelected: isSelected,
         },
       };
     });
