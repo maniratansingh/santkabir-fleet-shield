@@ -7,7 +7,8 @@ import {
   Tv, 
   Maximize2, 
   Minimize2,
-  Check
+  Check,
+  Sparkles
 } from 'lucide-react';
 
 export default function FloatingControls({
@@ -19,6 +20,8 @@ export default function FloatingControls({
   onToggleDistanceLines,
   isAutoTour = false,
   onToggleAutoTour,
+  isDemoMode = false,
+  onToggleDemoMode,
 }) {
   const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -124,6 +127,21 @@ export default function FloatingControls({
 
       {/* Secondary Quick Utilities Dock */}
       <div className="glass-panel p-1 rounded-2xl flex flex-col items-center gap-1 shadow-lg border border-slate-200/90 dark:border-white/10">
+        {/* Demo Mode Toggle: 35 Simulated Cars vs Real GPS Clean Mode */}
+        {onToggleDemoMode && (
+          <button
+            onClick={onToggleDemoMode}
+            title={isDemoMode ? "Switch to Live Real GPS Only (Remove 35 Demo Cars)" : "Load 35 Demo Ambulances for UI Preview"}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
+              isDemoMode 
+                ? 'bg-amber-500 text-white shadow-xs' 
+                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Sparkles className="w-4 h-4" />
+          </button>
+        )}
+
         {/* TV Wallboard Auto-Tour */}
         <button
           onClick={onToggleAutoTour}

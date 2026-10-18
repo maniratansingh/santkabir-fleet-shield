@@ -14,9 +14,11 @@ import {
   UserCheck,
   X, 
   Clock, 
-  ShieldCheck
+  ShieldCheck,
+  QrCode
 } from 'lucide-react';
 import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
+import ProvisioningQrModal from './ProvisioningQrModal';
 
 function getVehicleDistance(v) {
   if (!v) return 0;
@@ -42,11 +44,20 @@ export default function AppleSheet({
   selectedVehicleId = null,
   onSelectVehicle,
   onFocusRoute,
+  onLocateVehicle,
+  onFitRoute,
   onFocusDistance,
+  onOpenProvisionModal,
   detent = 'half', // 'peek', 'half', 'full'
   onChangeDetent,
 }) {
   const [filter, setFilter] = useState('all'); // 'all', 'moving', 'in_field', 'at_base'
+  const [qrModalVehicleId, setQrModalVehicleId] = useState(null);
+
+  const openProvision = (id) => {
+    if (onOpenProvisionModal) onOpenProvisionModal(id);
+    else setQrModalVehicleId(id);
+  };
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
 
@@ -163,6 +174,26 @@ export default function AppleSheet({
                   </div>
                 </div>
               </div>
+
+              {/* Provisioning QR Code Quick Action */}
+              <button
+                onClick={() => openProvision(selectedVehicle.id)}
+                className="w-full my-1.5 py-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white text-xs font-bold shadow-md shadow-sky-500/20 flex items-center justify-between transition-transform active:scale-98 cursor-pointer group"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center">
+                    <QrCode className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <span className="block leading-none font-bold">Provision Android App</span>
+                    <span className="text-[10px] text-sky-100 font-normal">Generate 1-Scan QR for ML Kit</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono bg-white/20 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                  <span>Scan QR</span>
+                  <span className="text-[9px]">↗</span>
+                </span>
+              </button>
 
               {/* Dedicated Driver Contact Card (Only Driver Call Option) */}
               <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between my-2">
@@ -281,27 +312,29 @@ export default function AppleSheet({
               )}
 
               {/* Apple Signature Action Platter */}
-              <div className="grid grid-cols-3 gap-2 my-2 py-2.5 px-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
+              <div className="grid grid-cols-4 gap-1.5 my-2 py-2.5 px-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
                 {/* 1. Locate Vehicle */}
                 <button
-                  onClick={onFocusRoute}
+                  onClick={onLocateVehicle || onFocusRoute}
                   className="flex flex-col items-center gap-1 text-center cursor-pointer group"
+                  title="Zoom closely to Vehicle GPS"
                 >
-                  <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-700 shadow-xs flex items-center justify-center text-sky-600 dark:text-cyan-400 group-hover:scale-105 transition-transform">
+                  <div className="w-9 h-9 rounded-full bg-white dark:bg-slate-700 shadow-xs flex items-center justify-center text-sky-600 dark:text-cyan-400 group-hover:scale-105 transition-transform">
                     <MapPin className="w-4 h-4" />
                   </div>
-                  <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">Locate</span>
+                  <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300">Locate</span>
                 </button>
 
                 {/* 2. Focus Route Corridor */}
                 <button
-                  onClick={onFocusRoute}
+                  onClick={onFitRoute || onFocusRoute}
                   className="flex flex-col items-center gap-1 text-center cursor-pointer group"
+                  title="Frame Full Highway Path across UP to Base Hospital"
                 >
-                  <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-700 shadow-xs flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
+                  <div className="w-9 h-9 rounded-full bg-white dark:bg-slate-700 shadow-xs flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform">
                     <Navigation className="w-4 h-4" />
                   </div>
-                  <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">Route Trail</span>
+                  <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300">Route Trail</span>
                 </button>
 
                 {/* 3. Call Driver Direct */}
@@ -309,11 +342,23 @@ export default function AppleSheet({
                   href={`tel:${selectedVehicle.driverPhone || '+919415140719'}`}
                   className="flex flex-col items-center gap-1 text-center cursor-pointer group"
                 >
-                  <div className="w-10 h-10 rounded-full bg-emerald-600 text-white shadow-xs flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <div className="w-9 h-9 rounded-full bg-emerald-600 text-white shadow-xs flex items-center justify-center group-hover:scale-105 transition-transform">
                     <Phone className="w-4 h-4" />
                   </div>
-                  <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">Call Driver</span>
+                  <span className="text-[9.5px] font-semibold text-slate-700 dark:text-slate-300">Call Driver</span>
                 </a>
+
+                {/* 4. Provision Android App QR */}
+                <button
+                  onClick={() => openProvision(selectedVehicle.id)}
+                  className="flex flex-col items-center gap-1 text-center cursor-pointer group"
+                  title="Generate Android App Provisioning QR Code"
+                >
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-sky-600 to-cyan-500 text-white shadow-xs flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                  <span className="text-[9.5px] font-semibold text-sky-600 dark:text-cyan-400">Scan QR</span>
+                </button>
               </div>
 
               {/* Micro-Telemetry Grid */}
@@ -370,6 +415,15 @@ export default function AppleSheet({
                     <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-[250px] leading-relaxed">
                       Zero active ambulances reporting. Live telemetry will appear automatically as GPS telemetry packets arrive.
                     </span>
+
+                    {/* Quick 1-Click Provisioning Button */}
+                    <button
+                      onClick={() => openProvision('AMB-01')}
+                      className="mt-3 py-2 px-3.5 rounded-xl bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-sky-500/20 transition-transform active:scale-95 cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>Provision Ambulance (QR Code)</span>
+                    </button>
                   </div>
                 ) : (
                   filteredVehicles.map((v) => {
@@ -401,11 +455,23 @@ export default function AppleSheet({
                         </span>
                       </div>
 
-                      {/* Right: Driver + Call & Maps Shortcuts */}
+                      {/* Right: Driver + Call & Maps Shortcuts & QR Provisioning */}
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium max-w-[80px] sm:max-w-[110px] truncate">
+                        <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium max-w-[70px] sm:max-w-[100px] truncate">
                           {v.driverName || 'Driver'}
                         </span>
+
+                        {/* Provision QR Shortcut Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openProvision(v.id);
+                          }}
+                          className="w-6 h-6 rounded-lg bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900 text-sky-700 dark:text-cyan-400 border border-sky-200 dark:border-sky-800 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+                          title={`Generate Provisioning QR for ${v.id}`}
+                        >
+                          <QrCode className="w-3 h-3" />
+                        </button>
 
                         {v.driverPhone && (
                           <a
@@ -466,6 +532,16 @@ export default function AppleSheet({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Fallback Android Device Provisioning QR Code Modal (if not handled by root App) */}
+      {!onOpenProvisionModal && (
+        <ProvisioningQrModal
+          isOpen={Boolean(qrModalVehicleId)}
+          onClose={() => setQrModalVehicleId(null)}
+          initialVehicleId={qrModalVehicleId}
+          availableVehicles={vehicles}
+        />
       )}
     </div>
   );

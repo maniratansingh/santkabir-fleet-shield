@@ -4,13 +4,18 @@ import DynamicIsland from './components/DynamicIsland';
 import FloatingControls from './components/FloatingControls';
 import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
+import ProvisioningQrModal from './components/ProvisioningQrModal';
 import { BASE_HOSPITAL, INITIAL_VEHICLES } from './data/mockData';
+import { getDeliveryRouteSplit, subscribeToRouteUpdates } from './utils/roadDistance';
 import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
 
-  const [vehicles, setVehicles] = useState(INITIAL_VEHICLES);
+  // Live Clean Mode by default: 0 mock cars. Only real reporting GPS ambulances.
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [vehicles, setVehicles] = useState([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
+  const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
   const [detent, setDetent] = useState('half'); // 'peek', 'half', 'full'
   const [isAutoTour, setIsAutoTour] = useState(false);
@@ -144,11 +149,14 @@ function getDynamicColor(id = '') {
                 if (liveMap.has(v.id)) {
                   const liveV = liveMap.get(v.id);
                   liveMap.delete(v.id);
+                  const split = getDeliveryRouteSplit({ ...v, ...liveV });
                   return {
                     ...v,
                     ...liveV,
                     isLive: true,
                     routeWaypoints: v.routeWaypoints || liveV.routeWaypoints,
+                    highwayName: liveV.highwayName || split.corridorName || v.highwayName,
+                    roadDistFromBaseKm: split.roadDistFromBaseKm,
                   };
                 }
                 return v;
@@ -157,12 +165,14 @@ function getDynamicColor(id = '') {
               // 2. Prepend any new identifiers (e.g. arbitrary identifiers sent from Traccar)
               const newlyAdded = Array.from(liveMap.values()).map(v => {
                 const colors = getDynamicColor(v.id);
+                const split = getDeliveryRouteSplit(v);
                 return {
                   ...v,
                   isLive: true,
                   lineColor: v.lineColor || colors.line,
                   glowColor: v.glowColor || colors.glow,
-                  highwayName: v.highwayName || 'Live Outreach Sector',
+                  highwayName: v.highwayName || split.corridorName || 'Uttar Pradesh Regional Corridor',
+                  roadDistFromBaseKm: split.roadDistFromBaseKm,
                   driverName: v.driverName || 'Assigned Driver',
                 };
               });
@@ -179,6 +189,28 @@ function getDynamicColor(id = '') {
     fetchRealData();
     const interval = setInterval(fetchRealData, 2500);
     return () => clearInterval(interval);
+  }, []);
+
+  // Subscribe to background-resolved rural turn-by-turn routes (OSM)
+  useEffect(() => {
+    const unsubscribe = subscribeToRouteUpdates((key, coords) => {
+      setVehicles(prevVehicles =>
+        prevVehicles.map(v => {
+          const vKey = `${Number(v.lon || 0).toFixed(3)},${Number(v.lat || 0).toFixed(3)}`;
+          if (vKey === key) {
+            const split = getDeliveryRouteSplit({ ...v, routeWaypoints: coords });
+            return {
+              ...v,
+              routeWaypoints: coords,
+              highwayName: 'Turn-by-Turn Rural Road Network (OSM)',
+              roadDistFromBaseKm: split.roadDistFromBaseKm,
+            };
+          }
+          return v;
+        })
+      );
+    });
+    return unsubscribe;
   }, []);
 
   // Action Triggers
@@ -201,12 +233,32 @@ function getDynamicColor(id = '') {
     });
   };
 
+  const handleToggleDemoMode = () => {
+    setIsDemoMode(prev => {
+      const next = !prev;
+      setVehicles(next ? INITIAL_VEHICLES : []);
+      showToast(next ? '⚡ Demo Mode: Loaded 35 Simulated Ambulances' : '🧹 Live Clean Mode: Real GPS Only (0 active)', 'info');
+      return next;
+    });
+  };
+
   // Apple Sheet Action Handlers
-  const handleFocusRoute = () => {
+  const handleLocateVehicle = () => {
     if (selectedVehicleId) {
-      setFitTrigger(prev => prev + 1);
-      showToast('Highway Route Trail Focused', 'info');
+      setActionTrigger({ type: 'locateVehicle', vehicleId: selectedVehicleId, timestamp: Date.now() });
+      showToast('Camera focused on Vehicle GPS position', 'info');
     }
+  };
+
+  const handleFitRoute = () => {
+    if (selectedVehicleId) {
+      setActionTrigger({ type: 'fitRoute', vehicleId: selectedVehicleId, timestamp: Date.now() });
+      showToast('Framing Full UP Highway Corridor to Base Hospital', 'info');
+    }
+  };
+
+  const handleFocusRoute = () => {
+    handleFitRoute();
   };
 
   const handleFocusDistance = () => {
@@ -236,7 +288,7 @@ function getDynamicColor(id = '') {
         vehicles={vehicles}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onOpenDriverModal={() => setIsDriverModalOpen(true)}
+        onOpenDriverModal={() => setProvisionModalVehicleId('AMB-01')}
       />
 
       {/* 3. Top-Right Floating Controls Stack */}
@@ -249,6 +301,8 @@ function getDynamicColor(id = '') {
         onToggleDistanceLines={() => setShowDistanceLines(prev => !prev)}
         isAutoTour={isAutoTour}
         onToggleAutoTour={handleToggleAutoTour}
+        isDemoMode={isDemoMode}
+        onToggleDemoMode={handleToggleDemoMode}
       />
 
       {/* 4. Bottom-Left Floating Apple Sheet */}
@@ -257,7 +311,10 @@ function getDynamicColor(id = '') {
         selectedVehicleId={selectedVehicleId}
         onSelectVehicle={setSelectedVehicleId}
         onFocusRoute={handleFocusRoute}
+        onLocateVehicle={handleLocateVehicle}
+        onFitRoute={handleFitRoute}
         onFocusDistance={handleFocusDistance}
+        onOpenProvisionModal={(id) => setProvisionModalVehicleId(id || 'AMB-01')}
         detent={detent}
         onChangeDetent={setDetent}
       />
@@ -280,7 +337,15 @@ function getDynamicColor(id = '') {
         </div>
       )}
 
-      {/* 6. Live Telemetry & Tracker Stream Modal (by Mani Ratan Singh) */}
+      {/* 6. Android Provisioning Center Modal (Master Integration Spec) */}
+      <ProvisioningQrModal
+        isOpen={Boolean(provisionModalVehicleId)}
+        onClose={() => setProvisionModalVehicleId(null)}
+        initialVehicleId={provisionModalVehicleId}
+        availableVehicles={vehicles}
+      />
+
+      {/* 7. Live Telemetry & Tracker Stream Modal */}
       <DriverSetupModal 
         isOpen={isDriverModalOpen}
         onClose={() => setIsDriverModalOpen(false)}

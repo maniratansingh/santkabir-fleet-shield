@@ -1,6 +1,54 @@
 import roadRoutesData from '../data/roadRoutes.json';
 import { BASE_HOSPITAL } from '../data/mockData';
 
+// Dynamic turn-by-turn route cache for off-highway rural/village routes
+const dynamicRouteCache = new Map();
+const pendingRouteRequests = new Set();
+const routeListeners = new Set();
+
+export function subscribeToRouteUpdates(listener) {
+  routeListeners.add(listener);
+  return () => routeListeners.delete(listener);
+}
+
+function notifyRouteListeners(cacheKey, routeData) {
+  routeListeners.forEach((cb) => {
+    try { cb(cacheKey, routeData); } catch (e) {}
+  });
+}
+
+// Asynchronously fetch exact turn-by-turn OSM driving route for rural pickups
+export async function requestRuralRoute(coord, toCoord = [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]) {
+  if (!coord || coord.length < 2) return null;
+  const [lon, lat] = coord;
+  const cacheKey = `${Number(lon).toFixed(3)},${Number(lat).toFixed(3)}`;
+
+  if (dynamicRouteCache.has(cacheKey)) {
+    return dynamicRouteCache.get(cacheKey);
+  }
+  if (pendingRouteRequests.has(cacheKey)) {
+    return null;
+  }
+
+  pendingRouteRequests.add(cacheKey);
+  try {
+    const res = await fetch(`/api/route?from=${lon},${lat}&to=${toCoord[0]},${toCoord[1]}`).catch(() => null);
+    if (res && res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.coordinates) && data.coordinates.length > 1) {
+        dynamicRouteCache.set(cacheKey, data.coordinates);
+        notifyRouteListeners(cacheKey, data.coordinates);
+        return data.coordinates;
+      }
+    }
+  } catch (err) {
+    console.warn('Rural OSRM routing query failed, falling back to highway mesh:', err);
+  } finally {
+    pendingRouteRequests.delete(cacheKey);
+  }
+  return null;
+}
+
 // Haversine distance in Kilometers
 export function haversineKm(coord1, coord2) {
   if (!coord1 || !coord2) return 0;
@@ -124,7 +172,13 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     roadCoords = vehicle.routeWaypoints;
   }
 
-  // Case B: vehicle assigned to a camp/sector
+  // Case B: dynamic route cached for this vehicle coordinate grid
+  const cacheKey = `${vehRawCoord[0].toFixed(3)},${vehRawCoord[1].toFixed(3)}`;
+  if (!roadCoords && dynamicRouteCache.has(cacheKey)) {
+    roadCoords = dynamicRouteCache.get(cacheKey);
+  }
+
+  // Case C: vehicle assigned to a camp/sector
   if (!roadCoords && vehicle.assignedCampId) {
     const camp = camps.find(c => c.id === vehicle.assignedCampId);
     if (camp && camp.routeWaypoints && camp.routeWaypoints.length > 1) {
@@ -134,9 +188,10 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     }
   }
 
-  // Case C: Live vehicle with arbitrary GPS coordinates -> snap to nearest regional road corridor
+  // Case D: Live vehicle with arbitrary GPS coordinates -> snap to nearest regional road corridor
   let bestIdx = 0;
   let bestProj = vehRawCoord;
+  let matchedCorridorName = 'Uttar Pradesh Regional Highway';
 
   if (!roadCoords) {
     const match = matchNearestCorridor(vehRawCoord);
@@ -145,6 +200,12 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
       roadCoords = corridor.coordinates;
       bestIdx = match.idx;
       bestProj = match.snapped;
+      matchedCorridorName = corridor.name || match.corridor;
+    }
+
+    // Hybrid Production Strategy: Trigger background OSRM resolution if ambulance is in rural interior (> 4.5 km from highway)
+    if (match.distKm > 4.5 && typeof window !== 'undefined') {
+      requestRuralRoute(vehRawCoord, baseCoord);
     }
   }
 
@@ -215,6 +276,7 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     snappedCoord: bestProj,
     bearing,
     midPoint,
+    corridorName: matchedCorridorName,
   };
 }
 

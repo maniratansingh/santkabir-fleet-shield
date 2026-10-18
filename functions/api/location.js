@@ -28,6 +28,9 @@ export async function onRequest(context) {
   let batt = 100;
   let timestamp = Date.now();
 
+  let accuracy = 0;
+  let charge = false;
+
   if (request.method === 'GET') {
     id = url.searchParams.get('id') || 
          url.searchParams.get('uniqueId') || 
@@ -40,7 +43,10 @@ export async function onRequest(context) {
     rawSpeed = parseFloat(url.searchParams.get('speed') || '0');
     bearing = parseFloat(url.searchParams.get('bearing') || url.searchParams.get('heading') || '0');
     altitude = parseFloat(url.searchParams.get('altitude') || '0');
+    accuracy = parseFloat(url.searchParams.get('accuracy') || '0');
     batt = parseFloat(url.searchParams.get('batt') || url.searchParams.get('battery') || '100');
+    const chargeParam = url.searchParams.get('charge');
+    charge = chargeParam === 'true' || chargeParam === '1';
 
     const tsParam = url.searchParams.get('timestamp') || url.searchParams.get('time');
     if (tsParam) {
@@ -50,40 +56,65 @@ export async function onRequest(context) {
       }
     }
   } else if (request.method === 'POST') {
-    try {
-      const contentType = request.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const body = await request.json();
-        id = body.id || body.uniqueId || body.deviceId || body.deviceid;
-        driver = body.driver || body.driverName || '';
-        lat = parseFloat(body.lat || body.latitude);
-        lon = parseFloat(body.lon || body.lng || body.longitude);
-        rawSpeed = parseFloat(body.speed || 0);
-        bearing = parseFloat(body.bearing || body.heading || 0);
-        altitude = parseFloat(body.altitude || 0);
-        batt = parseFloat(body.batt || body.battery || 100);
-        if (body.timestamp) {
-          timestamp = new Date(body.timestamp).getTime() || Date.now();
-        }
-      } else {
-        const formData = await request.formData();
-        id = formData.get('id') || formData.get('uniqueId') || formData.get('deviceid');
-        driver = formData.get('driver') || formData.get('driverName') || '';
-        lat = parseFloat(formData.get('lat') || formData.get('latitude'));
-        lon = parseFloat(formData.get('lon') || formData.get('lng') || formData.get('longitude'));
-        rawSpeed = parseFloat(formData.get('speed') || '0');
-        bearing = parseFloat(formData.get('bearing') || formData.get('heading') || '0');
-        batt = parseFloat(formData.get('batt') || formData.get('battery') || '100');
+    // Traccar OsmAnd passes data as URL query parameters in POST
+    id = url.searchParams.get('id') || 
+         url.searchParams.get('uniqueId') || 
+         url.searchParams.get('deviceid') || 
+         url.searchParams.get('deviceId');
+    driver = url.searchParams.get('driver') || url.searchParams.get('driverName') || '';
+    lat = parseFloat(url.searchParams.get('lat') || url.searchParams.get('latitude') || '');
+    lon = parseFloat(url.searchParams.get('lon') || url.searchParams.get('lng') || url.searchParams.get('longitude') || '');
+    rawSpeed = parseFloat(url.searchParams.get('speed') || '0');
+    bearing = parseFloat(url.searchParams.get('bearing') || url.searchParams.get('heading') || '0');
+    altitude = parseFloat(url.searchParams.get('altitude') || '0');
+    accuracy = parseFloat(url.searchParams.get('accuracy') || '0');
+    batt = parseFloat(url.searchParams.get('batt') || url.searchParams.get('battery') || '100');
+    const chargeParam = url.searchParams.get('charge');
+    charge = chargeParam === 'true' || chargeParam === '1';
+
+    const tsParam = url.searchParams.get('timestamp') || url.searchParams.get('time');
+    if (tsParam) {
+      const parsed = parseInt(tsParam, 10);
+      if (!isNaN(parsed)) {
+        timestamp = parsed > 10000000000 ? parsed : parsed * 1000;
       }
-    } catch (e) {
-      return new Response(JSON.stringify({ error: 'Invalid payload: ' + e.message }), {
-        status: 400,
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Access-Control-Allow-Origin': '*',
-          'X-Powered-By': 'Sant Kabir Fleet Shield (mrps.in)',
-        },
-      });
+    }
+
+    // Fallback: If body contains payload
+    if (isNaN(lat) || isNaN(lon) || !id) {
+      try {
+        const contentType = request.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const body = await request.json();
+          if (!id) id = body.id || body.uniqueId || body.deviceId || body.deviceid;
+          if (!driver) driver = body.driver || body.driverName || '';
+          if (isNaN(lat)) lat = parseFloat(body.lat || body.latitude);
+          if (isNaN(lon)) lon = parseFloat(body.lon || body.lng || body.longitude);
+          if (body.speed !== undefined) rawSpeed = parseFloat(body.speed || 0);
+          if (body.bearing !== undefined) bearing = parseFloat(body.bearing || body.heading || 0);
+          if (body.altitude !== undefined) altitude = parseFloat(body.altitude || 0);
+          if (body.accuracy !== undefined) accuracy = parseFloat(body.accuracy || 0);
+          if (body.batt !== undefined || body.battery !== undefined) batt = parseFloat(body.batt || body.battery || 100);
+          if (body.charge !== undefined) charge = Boolean(body.charge);
+          if (body.timestamp) {
+            timestamp = new Date(body.timestamp).getTime() || Date.now();
+          }
+        } else {
+          const formData = await request.formData();
+          if (!id) id = formData.get('id') || formData.get('uniqueId') || formData.get('deviceid');
+          if (!driver) driver = formData.get('driver') || formData.get('driverName') || '';
+          if (isNaN(lat)) lat = parseFloat(formData.get('lat') || formData.get('latitude'));
+          if (isNaN(lon)) lon = parseFloat(formData.get('lon') || formData.get('lng') || formData.get('longitude'));
+          if (formData.has('speed')) rawSpeed = parseFloat(formData.get('speed') || '0');
+          if (formData.has('bearing')) bearing = parseFloat(formData.get('bearing') || formData.get('heading') || '0');
+          if (formData.has('altitude')) altitude = parseFloat(formData.get('altitude') || '0');
+          if (formData.has('accuracy')) accuracy = parseFloat(formData.get('accuracy') || '0');
+          if (formData.has('batt')) batt = parseFloat(formData.get('batt') || formData.get('battery') || '100');
+          if (formData.has('charge')) charge = formData.get('charge') === 'true' || formData.get('charge') === '1';
+        }
+      } catch (e) {
+        // Empty body is standard for OsmAnd POST
+      }
     }
   }
 
@@ -101,15 +132,10 @@ export async function onRequest(context) {
     });
   }
 
-  // Smart Speed Normalization:
-  // Convert m/s to km/h if <= 60, clamp sanity at 130 km/h
+  // OsmAnd protocol: knots to km/h (1 knot = 1.852 km/h)
   let speedKmH = 0;
   if (rawSpeed > 0) {
-    if (rawSpeed > 60) {
-      speedKmH = Math.min(130, Math.round(rawSpeed));
-    } else {
-      speedKmH = Math.min(130, Math.round(rawSpeed * 3.6));
-    }
+    speedKmH = Math.min(130, Math.round(rawSpeed * 1.852));
   }
 
   const record = {
@@ -118,11 +144,16 @@ export async function onRequest(context) {
     lat: Number(lat.toFixed(6)),
     lon: Number(lon.toFixed(6)),
     speed: speedKmH,
+    speedKnots: Number(rawSpeed.toFixed(2)),
     bearing: Math.round(((bearing % 360) + 360) % 360),
     altitude: Math.round(altitude),
+    accuracy: isNaN(accuracy) ? 0 : Number(accuracy.toFixed(1)),
     batt: Math.min(100, Math.max(0, Math.round(batt))),
+    battery: Math.min(100, Math.max(0, Math.round(batt))),
+    charge: Boolean(charge),
     lastSeen: timestamp,
     updatedAt: Date.now(),
+    isLive: true,
   };
 
   return new Response(JSON.stringify({ 

@@ -168,13 +168,54 @@ npm run preview
 
 ---
 
-## 📱 Driver Provisioning Protocol
+## 📱 Master Integration Specification (Android App ↔ Web Backend)
 
-1. **Install Client**: Open the dashboard's **Driver Provisioning** modal (`Tab 2`) and download `santkabir-fleet-shield-v1.0.apk`.
-2. **Transfer to Device**: Send the APK to the driver's Android device via WhatsApp or USB and install.
-3. **Auto-Provision via QR**: Point the driver phone's camera at the dashboard's Provisioning QR code (`Tab 1`) — Android prompts to open Sant Kabir Fleet Shield and automatically configures the Ambulance Asset ID and server endpoint! (Or manually enter your secret admin PIN in the app to type it).
-4. **Grant Permissions**: Allow background location permissions (*"Allow all the time"*).
-5. **Locked & Streaming**: The app starts background tracking. Settings remain locked to prevent tampering. Enter your secret admin PIN anytime you need to tune intervals or device parameters.
+The system is fully integrated with the customized **Sant Kabir Fleet Shield Android App** utilizing the **Traccar OsmAnd Protocol**.
+
+### 1. The Provisioning Contract (QR Code)
+The Android app has been stripped of manual configuration screens for drivers. Devices are provisioned by the Fleet Administrator scanning a QR Code generated directly on the web dashboard (via the **View Vehicle** panel or **Telemetry Modal**).
+
+**Strict QR Code Schema:**
+```json
+{
+  "id": "UNIQUE_VEHICLE_ID",
+  "server": "https://fleet.mrps.in/api/track"
+}
+```
+* **`id`**: Exact identifier stored in the web database (e.g. `AMB-01`, `VEHICLE-102`).
+* **`server`**: Exact, full URL of the ingestion endpoint (**no trailing slash**).
+* Uses Google ML Kit on Android to lock credentials and instantly start the background tracking daemon.
+
+### 2. The Data Ingestion Contract (OsmAnd Protocol)
+* **Method**: HTTP `POST`
+* **Content-Type**: `application/x-www-form-urlencoded`
+* **URL Structure**: All data is passed as URL-encoded query parameters.
+```http
+POST /api/track?id=VEHICLE-102&timestamp=1697632824&lat=26.8467&lon=80.9462&speed=12.5&bearing=180.0&altitude=120.0&accuracy=10.0&batt=85.0&charge=true HTTP/1.1
+Host: fleet.mrps.in
+```
+
+**Parameter Dictionary:**
+* `id` = (String) Device identifier.
+* `timestamp` = (Long) Epoch time in seconds (UTC).
+* `lat` = (Double) Latitude (-90 to 90).
+* `lon` = (Double) Longitude (-180 to 180).
+* `speed` = (Double) Speed in knots (multiplied by 1.852 to get km/h).
+* `bearing` = (Double) Heading in degrees (0–360°).
+* `altitude` = (Double) Altitude in meters.
+* `accuracy` = (Double) GPS accuracy margin in meters.
+* `batt` = (Double) Device battery level (0.0 to 100.0).
+* `charge` = (Boolean) `true` if charging, `false` if discharging.
+
+**Server Response:**
+* Returns an immediate `HTTP 200 OK` response (`{"success": true, ...}`).
+
+### 3. Cloudflare & Infrastructure Setup
+1. **Port 443 Standard HTTPS**: Traffic is terminated on port 443 via Cloudflare Pages.
+2. **Cloudflare WAF Custom Rule**:
+   * Navigate to **Cloudflare Dashboard** $\rightarrow$ **Security** $\rightarrow$ **WAF** $\rightarrow$ **Custom Rules**.
+   * Action: **Bypass / Skip** Bot Fight Mode and Browser Integrity Check.
+   * Expression: `(http.request.uri.path contains "/api/track")`
 
 ---
 

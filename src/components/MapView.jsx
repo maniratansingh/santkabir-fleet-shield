@@ -372,6 +372,37 @@ export default function MapView({
     });
   };
 
+  // Frame entire road route between Base Hospital and Vehicle across Uttar Pradesh
+  const fitVehicleRoute = (vehId, options = {}) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const veh = vehicles.find((v) => v.id === vehId);
+    if (!veh) return;
+
+    const bounds = new maplibregl.LngLatBounds();
+    bounds.extend([BASE_HOSPITAL.lon, BASE_HOSPITAL.lat]);
+    bounds.extend([Number(veh.lon || 0), Number(veh.lat || 0)]);
+
+    const split = getDeliveryRouteSplit(veh);
+    if (split.upcomingRoute && split.upcomingRoute.length > 0) {
+      split.upcomingRoute.forEach((pt) => bounds.extend(pt));
+    }
+
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+    const padding = isDesktop
+      ? { top: 120, bottom: 90, left: 440, right: 100 }
+      : { top: 100, bottom: 380, left: 50, right: 50 };
+
+    map.fitBounds(bounds, {
+      padding,
+      maxZoom: 12.5,
+      pitch: 22,
+      bearing: 0,
+      duration: options.duration !== undefined ? options.duration : 1000,
+      essential: true,
+    });
+  };
+
   // Center camera on a specific vehicle
   const focusVehicle = (vehId) => {
     const map = mapRef.current;
@@ -380,8 +411,8 @@ export default function MapView({
     if (!veh) return;
 
     map.flyTo({
-      center: [veh.lon, veh.lat],
-      zoom: 13.5,
+      center: [Number(veh.lon || 0), Number(veh.lat || 0)],
+      zoom: 14.2,
       pitch: 35,
       bearing: veh.bearing || 0,
       speed: 1.2,
@@ -461,10 +492,15 @@ export default function MapView({
     }
   }, [fitTrigger, selectedVehicleId]);
 
-  // Handle action triggers (e.g. Reset North)
+  // Handle action triggers (e.g. Reset North, Locate, Fit Route Corridor)
   useEffect(() => {
-    if (actionTrigger?.type === 'resetNorth' && mapRef.current) {
+    if (!mapRef.current) return;
+    if (actionTrigger?.type === 'resetNorth') {
       mapRef.current.easeTo({ bearing: 0, pitch: 20, duration: 800 });
+    } else if (actionTrigger?.type === 'locateVehicle') {
+      focusVehicle(actionTrigger.vehicleId);
+    } else if (actionTrigger?.type === 'fitRoute') {
+      fitVehicleRoute(actionTrigger.vehicleId);
     }
   }, [actionTrigger]);
 
@@ -941,13 +977,17 @@ export default function MapView({
         prevSelectedIdRef.current = selectedVehicleId;
         const selected = vehicles.find((v) => v.id === selectedVehicleId);
         if (selected) {
-          mapRef.current.flyTo({
-            center: [Number(selected.lon || 0), Number(selected.lat || 0)],
-            zoom: 13.5,
-            speed: 1.2,
-            curve: 1.4,
-            essential: true,
-          });
+          const d = calculateDistanceKm(
+            BASE_HOSPITAL.lat,
+            BASE_HOSPITAL.lon,
+            Number(selected.lat || 0),
+            Number(selected.lon || 0)
+          );
+          if (d > 25) {
+            fitVehicleRoute(selectedVehicleId);
+          } else {
+            focusVehicle(selectedVehicleId);
+          }
         }
       }
     } else {

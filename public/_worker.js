@@ -50,29 +50,32 @@ export default {
       return new Response('Not Found', { status: 404 });
     }
 
-    // 1. Endpoint: Universal Telemetry Receiver (Supports Traccar Client, OsmAnd, GPSLogger)
+    // 1. Endpoint: Universal Telemetry Receiver (Supports Traccar Client, OsmAnd, GPSLogger, Sant Kabir Fleet Shield Android App)
     // Works with:
+    // - Traccar OsmAnd endpoint: /api/track (as defined in Android Master Integration Spec)
     // - Direct Root URL: https://fleet.mrps.in/?id=12345&lat=26.79&lon=82.71... (Standard Traccar default)
-    // - Standard paths: /api/location, /location, /track, /telemetry, /api/v1/telemetry
+    // - Standard paths: /api/track, /api/location, /location, /track, /telemetry, /api/v1/telemetry
     const hasTraccarParams = (url.searchParams.has('id') || url.searchParams.has('uniqueId') || url.searchParams.has('deviceId') || url.searchParams.has('deviceid')) && 
                              (url.searchParams.has('lat') || url.searchParams.has('latitude'));
-    const isTelemetryPath = url.pathname === '/api/location' || url.pathname === '/api/location/' ||
+    const isTelemetryPath = url.pathname === '/api/track' || url.pathname === '/api/track/' ||
+                           url.pathname === '/api/location' || url.pathname === '/api/location/' ||
                            url.pathname === '/api/v1/telemetry' || url.pathname === '/api/v1/telemetry/' ||
                            url.pathname === '/location' || url.pathname === '/track' || url.pathname === '/telemetry';
 
     if (isTelemetryPath || hasTraccarParams || (request.method === 'POST' && url.pathname === '/')) {
       if (request.method === 'OPTIONS') {
         return new Response(null, {
+          status: 204,
           headers: {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
             'X-Powered-By': 'Sant Kabir Fleet Shield (mrps.in)',
           },
         });
       }
 
-      // Check query params first (supported in both GET and POST)
+      // Check query params first (Traccar OsmAnd passes all data as URL-encoded query parameters)
       let id = url.searchParams.get('id') || url.searchParams.get('uniqueId') || url.searchParams.get('deviceid') || url.searchParams.get('deviceId');
       let driver = url.searchParams.get('driver') || url.searchParams.get('driverName') || '';
       let lat = parseFloat(url.searchParams.get('lat') || url.searchParams.get('latitude') || '');
@@ -80,7 +83,11 @@ export default {
       let rawSpeed = parseFloat(url.searchParams.get('speed') || '0');
       let bearing = parseFloat(url.searchParams.get('bearing') || url.searchParams.get('heading') || '0');
       let altitude = parseFloat(url.searchParams.get('altitude') || '0');
+      let accuracy = parseFloat(url.searchParams.get('accuracy') || '0');
       let batt = parseFloat(url.searchParams.get('batt') || url.searchParams.get('battery') || '100');
+      let chargeParam = url.searchParams.get('charge');
+      let charge = chargeParam === 'true' || chargeParam === '1';
+
       let timestamp = Date.now();
       const tsParam = url.searchParams.get('timestamp') || url.searchParams.get('time');
       if (tsParam) {
@@ -101,7 +108,9 @@ export default {
             if (body.speed !== undefined) rawSpeed = parseFloat(body.speed);
             if (body.bearing !== undefined) bearing = parseFloat(body.bearing || body.heading);
             if (body.altitude !== undefined) altitude = parseFloat(body.altitude);
+            if (body.accuracy !== undefined) accuracy = parseFloat(body.accuracy);
             if (body.batt !== undefined || body.battery !== undefined) batt = parseFloat(body.batt || body.battery);
+            if (body.charge !== undefined) charge = Boolean(body.charge);
             if (body.timestamp) timestamp = new Date(body.timestamp).getTime() || Date.now();
           } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
@@ -111,10 +120,13 @@ export default {
             if (isNaN(lon)) lon = parseFloat(formData.get('lon') || formData.get('lng') || formData.get('longitude'));
             if (formData.has('speed')) rawSpeed = parseFloat(formData.get('speed'));
             if (formData.has('bearing')) bearing = parseFloat(formData.get('bearing') || formData.get('heading'));
+            if (formData.has('altitude')) altitude = parseFloat(formData.get('altitude'));
+            if (formData.has('accuracy')) accuracy = parseFloat(formData.get('accuracy'));
             if (formData.has('batt')) batt = parseFloat(formData.get('batt') || formData.get('battery'));
+            if (formData.has('charge')) charge = formData.get('charge') === 'true' || formData.get('charge') === '1';
           }
         } catch (e) {
-          // Empty body is valid for Traccar query-param POST
+          // Empty body is standard for Traccar OsmAnd query-param POST
         }
       }
 
@@ -132,7 +144,7 @@ export default {
 
       let speedKmH = 0;
       if (rawSpeed > 0) {
-        // Traccar sends speed in knots (nautical miles per hr); 1 knot = 1.852 km/h
+        // Traccar OsmAnd sends speed in knots (nautical miles per hr); 1 knot = 1.852 km/h
         speedKmH = Math.min(130, Math.round(rawSpeed * 1.852));
       }
 
@@ -159,10 +171,13 @@ export default {
         lat: cleanLat,
         lon: cleanLon,
         speed: speedKmH,
+        speedKnots: Number(rawSpeed.toFixed(2)),
         bearing: Math.round(((bearing % 360) + 360) % 360),
         altitude: Math.round(altitude),
+        accuracy: isNaN(accuracy) ? 0 : Number(accuracy.toFixed(1)),
         batt: Math.min(100, Math.max(0, Math.round(batt))),
         battery: Math.min(100, Math.max(0, Math.round(batt))),
+        charge: Boolean(charge),
         distFromBaseKm: distKm,
         roadDistFromBaseKm: roadDistKm,
         lineColor: existing.lineColor || colors.line,
@@ -176,6 +191,7 @@ export default {
       // Store in edge memory cache
       liveVehicles.set(vehId, record);
 
+      // Immediate HTTP 200 OK required by Android app
       return new Response(JSON.stringify({ 
         success: true, 
         app: 'Sant Kabir Fleet Shield',
@@ -191,7 +207,23 @@ export default {
       });
     }
 
-    // 2. Endpoint: /api/vehicles (Returns dynamically registered live fleet)
+    // 2. Endpoint: /api/clear (Clears in-memory live telemetry cache)
+    if (url.pathname === '/api/clear' || url.pathname === '/api/clear/') {
+      liveVehicles.clear();
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Live telemetry cache cleared',
+        count: 0
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    // 3. Endpoint: /api/vehicles (Returns dynamically registered live fleet)
     if (url.pathname === '/api/vehicles' || url.pathname === '/api/vehicles/') {
       // Purge entries inactive for more than 12 hours
       const now = Date.now();
@@ -220,7 +252,98 @@ export default {
       });
     }
 
-    // 3. Fallback: Serve static assets (HTML, JS, CSS, images)
+    // 4. Endpoint: /api/route (Dynamic Turn-by-Turn Routing Engine for Full UP Coverage)
+    if (url.pathname === '/api/route' || url.pathname === '/api/route/') {
+      if (request.method === 'OPTIONS') {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          },
+        });
+      }
+
+      let fromLon = parseFloat(url.searchParams.get('fromLon') || '');
+      let fromLat = parseFloat(url.searchParams.get('fromLat') || '');
+      const fromParam = url.searchParams.get('from');
+      if (fromParam && (isNaN(fromLon) || isNaN(fromLat))) {
+        const parts = fromParam.split(',');
+        if (parts.length === 2) {
+          fromLon = parseFloat(parts[0]);
+          fromLat = parseFloat(parts[1]);
+        }
+      }
+
+      let toLon = parseFloat(url.searchParams.get('toLon') || '');
+      let toLat = parseFloat(url.searchParams.get('toLat') || '');
+      const toParam = url.searchParams.get('to');
+      if (toParam && (isNaN(toLon) || isNaN(toLat))) {
+        const parts = toParam.split(',');
+        if (parts.length === 2) {
+          toLon = parseFloat(parts[0]);
+          toLat = parseFloat(parts[1]);
+        }
+      }
+
+      if (isNaN(toLon) || isNaN(toLat)) {
+        toLon = BASE_LON;
+        toLat = BASE_LAT;
+      }
+
+      if (isNaN(fromLon) || isNaN(fromLat)) {
+        return new Response(JSON.stringify({ error: 'Missing coordinates' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromLon},${fromLat};${toLon},${toLat}?overview=full&geometries=geojson`;
+        const res = await fetch(osrmUrl, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'SantKabirFleetShield/1.0 (https://fleet.mrps.in)' },
+        });
+        clearTimeout(timeoutId);
+
+        if (!res.ok) throw new Error(`OSRM status ${res.status}`);
+        const data = await res.json();
+        if (data.code === 'Ok' && Array.isArray(data.routes) && data.routes.length > 0) {
+          const primaryRoute = data.routes[0];
+          return new Response(JSON.stringify({
+            success: true,
+            source: 'osrm-driving',
+            roadDistanceKm: Math.round((primaryRoute.distance / 1000) * 10) / 10,
+            roadDistanceMeters: Math.round(primaryRoute.distance),
+            durationMin: Math.round(primaryRoute.duration / 60),
+            coordinates: primaryRoute.geometry.coordinates,
+            pointsCount: primaryRoute.geometry.coordinates.length,
+          }), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=3600',
+            },
+          });
+        }
+        throw new Error('No route returned by OSRM');
+      } catch (err) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: err.name === 'AbortError' ? 'Route query timed out' : err.message,
+          fallbackRequired: true,
+        }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+    }
+
+    // 5. Fallback: Serve static assets (HTML, JS, CSS, images)
     return env.ASSETS.fetch(request);
   },
 };
