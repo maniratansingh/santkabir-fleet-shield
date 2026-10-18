@@ -1,5 +1,5 @@
 name = "santkabir-fleet-shield"
-main = "cloudflare-live-deploy/_worker.js"
+main = "src/worker.js"
 compatibility_date = "2026-10-01"
 
 [assets]
