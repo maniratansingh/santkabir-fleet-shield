@@ -152,16 +152,19 @@ export default function App() {
           const store = fleetStoreRef.current;
           const liveIds = new Set(liveList.map(v => v.id));
 
-          // 1. Two-Way Sync: Remove vehicles pruned by server (older than 35m or cleared)
-          for (const storedId of Array.from(store.keys())) {
-            if (!liveIds.has(storedId)) {
-              store.delete(storedId);
+          // 1. Two-Way Sync: Sync with server fleet
+          if (liveList.length > 0) {
+            for (const storedId of Array.from(store.keys())) {
+              if (!liveIds.has(storedId)) {
+                store.delete(storedId);
+              }
             }
-          }
-
-          // 2. If no vehicles reporting, clear screen cleanly without manual refresh
-          if (liveList.length === 0) {
-            setVehicles([]);
+          } else {
+            // Server explicitly cleared or network glitch: only wipe if explicitly cleared
+            if (vehData && vehData.cleared) {
+              store.clear();
+              setVehicles([]);
+            }
             return;
           }
 
