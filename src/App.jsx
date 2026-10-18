@@ -6,6 +6,7 @@ import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
 import ProvisioningQrModal from './components/ProvisioningQrModal';
 import { BASE_HOSPITAL, INITIAL_VEHICLES } from './data/mockData';
+import { INITIAL_11_FLEET } from './data/initial11Fleet';
 import { getDeliveryRouteSplit, subscribeToRouteUpdates } from './utils/roadDistance';
 import { getNearestRuralLocation } from './utils/ruralLocator';
 import { getUniqueVehicleColor } from './utils/colors';
@@ -13,9 +14,9 @@ import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
 
-  // Live Clean Mode by default: 0 mock cars. Only real reporting GPS ambulances.
+  // Exact 11 active Purvanchal ambulances
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [vehicles, setVehicles] = useState([]);
+  const [vehicles, setVehicles] = useState(INITIAL_11_FLEET);
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
@@ -25,7 +26,7 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
-  const fleetStoreRef = useRef(new Map());
+  const fleetStoreRef = useRef(new Map(INITIAL_11_FLEET.map(v => [v.id, v])));
 
   // Theme Management (Light mode default for clinical Apple aesthetic)
   const [theme, setTheme] = useState(() => {
