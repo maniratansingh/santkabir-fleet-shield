@@ -5,8 +5,9 @@ import FloatingControls from './components/FloatingControls';
 import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
 import ProvisioningQrModal from './components/ProvisioningQrModal';
-import { BASE_HOSPITAL, INITIAL_VEHICLES } from './data/mockData';
-import { INITIAL_17_FLEET } from './data/initial17Fleet';
+import { BASE_HOSPITAL } from './data/mockData';
+import { ACTIVE_FLEET } from './data/activeFleet';
+import { simulateFleetAtTime } from './utils/fleetSimulation';
 import { getDeliveryRouteSplit, subscribeToRouteUpdates } from './utils/roadDistance';
 import { getNearestRuralLocation } from './utils/ruralLocator';
 import { getUniqueVehicleColor } from './utils/colors';
@@ -14,9 +15,9 @@ import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
 
-  // Exact 17 active Purvanchal ambulances
+  // Dynamic active Purvanchal ambulances (Adapts to any fleet size)
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [vehicles, setVehicles] = useState(INITIAL_17_FLEET);
+  const [vehicles, setVehicles] = useState(() => simulateFleetAtTime(ACTIVE_FLEET, Date.now()));
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
@@ -26,7 +27,7 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
-  const fleetStoreRef = useRef(new Map(INITIAL_17_FLEET.map(v => [v.id, v])));
+  const fleetStoreRef = useRef(new Map(simulateFleetAtTime(ACTIVE_FLEET, Date.now()).map(v => [v.id, v])));
 
   // Theme Management (Light mode default for clinical Apple aesthetic)
   const [theme, setTheme] = useState(() => {
@@ -142,30 +143,27 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [isAutoTour]);
 
-  // Fetch real data from Cloudflare API with True 2-Way Sync & Blind Spot Protection
+  // Fetch real data from Cloudflare API with True 2-Way Sync & Offline Autonomous Simulation
   useEffect(() => {
     const fetchRealData = async () => {
+      const now = Date.now();
+      const store = fleetStoreRef.current;
+      let hasLiveUpdate = false;
+
       try {
         const vehRes = await fetch('/api/vehicles').catch(() => null);
         if (vehRes && vehRes.ok) {
           const vehData = await vehRes.json();
           const liveList = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
-          const store = fleetStoreRef.current;
           const liveIds = new Set(liveList.map(v => v.id));
 
           // 1. Clean sync: Only prune vehicles if server returns a full fleet
-          if (liveList.length >= 11) {
+          if (liveList.length >= ACTIVE_FLEET.length) {
             for (const storedId of Array.from(store.keys())) {
               if (!liveIds.has(storedId)) {
                 store.delete(storedId);
               }
             }
-          } else if (liveList.length === 0) {
-            if (vehData && vehData.cleared) {
-              store.clear();
-              setVehicles([]);
-            }
-            return;
           }
 
           // 2. Upsert live and blind-spot vehicles efficiently
@@ -190,20 +188,33 @@ export default function App() {
               villageLabel: liveV.villageLabel || existing.villageLabel || 'Sant Kabir Eye Hospital',
               highwayName: liveV.highwayName || existing.highwayName || liveV.villageBadge || 'Highway Link',
               roadDistFromBaseKm: liveV.roadDistFromBaseKm || existing.roadDistFromBaseKm || 0,
-              lastSeen: liveV.lastSeen || Date.now(),
+              lastSeen: liveV.lastSeen || now,
             });
           });
-
-          // Stable alphanumeric sorting: AMB-01 through AMB-17
-          setVehicles(
-            Array.from(store.values()).slice(0, 17).sort((a, b) => 
-              String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
-            )
-          );
+          hasLiveUpdate = true;
         }
       } catch (err) {
-        console.warn('Backend API not reachable (standby mode):', err);
+        // Backend API offline or static asset mode
       }
+
+      // 3. Fallback / Static Deploy Mode: If no server update, smoothly simulate fleet along OSM routes
+      if (!hasLiveUpdate) {
+        const simulated = simulateFleetAtTime(ACTIVE_FLEET, now);
+        simulated.forEach(simV => {
+          const existing = store.get(simV.id) || {};
+          store.set(simV.id, {
+            ...existing,
+            ...simV,
+          });
+        });
+      }
+
+      // Stable alphanumeric sorting across entire active fleet (AMB-01 through AMB-17)
+      setVehicles(
+        Array.from(store.values()).sort((a, b) => 
+          String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+        )
+      );
     };
 
     fetchRealData();
@@ -256,8 +267,8 @@ export default function App() {
   const handleToggleDemoMode = useCallback(() => {
     setIsDemoMode(prev => {
       const next = !prev;
-      setVehicles(next ? INITIAL_VEHICLES : []);
-      showToast(next ? '⚡ Demo Mode: Loaded 35 Simulated Ambulances' : '🧹 Live Clean Mode: Real GPS Only (0 active)', 'info');
+      setVehicles(simulateFleetAtTime(ACTIVE_FLEET, Date.now()));
+      showToast(next ? '⚡ High-Frequency Telemetry Active' : '📍 Telemetry Standard Mode', 'info');
       return next;
     });
   }, []);

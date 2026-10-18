@@ -4,7 +4,8 @@
 // Production Clean: 0 Mock Data. Dynamic live telemetry only.
 
 // In-memory telemetry cache for active fleet ambulances
-import { FLEET_15 } from './data/purvanchal15FleetData.js';
+import { ACTIVE_FLEET } from './data/activeFleet.js';
+import { simulateFleetAtTime } from './utils/fleetSimulation.js';
 
 const liveVehicles = new Map();
 
@@ -1474,88 +1475,8 @@ function calculateBearing(c1, c2) {
   return Math.round((brng + 360) % 360);
 }
 
-function getLiveSimulationVehicles(now = Date.now(), maxCars = 11) {
-  if (!Array.isArray(FLEET_15) || FLEET_15.length === 0) return [];
-  return FLEET_15.slice(0, maxCars).map((car, idx) => {
-    const waypoints = car.coords;
-    const n = waypoints.length;
-    if (n < 2) return null;
+// Live simulation is handled dynamically by simulateFleetAtTime(ACTIVE_FLEET, now)
 
-    // Ambulances cruise smoothly back and forth along authentic OSM road routes (140s - 200s round-trip)
-    const cycleDuration = 140000 + (idx % 6) * 12000;
-    const phaseOffset = (idx * 0.19) % 1.0;
-    const elapsed = (now % cycleDuration) / cycleDuration;
-    const t = (elapsed + phaseOffset) % 1.0;
-    const ratio = t < 0.5 ? t * 2 : (1 - t) * 2;
-
-    const floatIdx = ratio * (n - 1);
-    const currIdx = Math.min(n - 2, Math.max(0, Math.floor(floatIdx)));
-    const frac = floatIdx - currIdx;
-
-    const p1 = waypoints[currIdx];
-    const p2 = waypoints[currIdx + 1];
-
-    const lon = Number((p1[0] + (p2[0] - p1[0]) * frac).toFixed(5));
-    const lat = Number((p1[1] + (p2[1] - p1[1]) * frac).toFixed(5));
-    const isReturning = t >= 0.5;
-    const bearing = isReturning ? calculateBearing(p2, p1) : calculateBearing(p1, p2);
-
-    const speed = Math.round(44 + Math.sin(now * 0.0015 + idx) * 7);
-    const batt = 82 + (idx % 16);
-    const charge = idx % 3 === 0;
-
-    const colors = getVehicleColors(car.id);
-    const distKm = calculateDistanceKm(BASE_LAT, BASE_LON, lat, lon);
-    const roadDistKm = Math.round(distKm * 1.15 * 10) / 10;
-    const ruralLoc = resolveVillage(lat, lon);
-
-    let trail = [];
-    if (isReturning) {
-      trail = waypoints.slice(currIdx, Math.min(n, currIdx + 28)).reverse();
-    } else {
-      trail = waypoints.slice(Math.max(0, currIdx - 28), currIdx + 1);
-    }
-    if (trail.length === 0) trail = [[lon, lat]];
-
-    return {
-      id: car.id,
-      name: car.id,
-      type: 'ambulance',
-      driverName: car.driver,
-      driverPhone: car.phone,
-      plate: car.id,
-      status: 'moving',
-      lat,
-      lon,
-      speed,
-      speedKnots: Math.round(speed / 1.852),
-      bearing,
-      altitude: 0,
-      accuracy: 1.5,
-      batt,
-      battery: batt,
-      charge,
-      distFromBaseKm: distKm,
-      roadDistFromBaseKm: roadDistKm,
-      villageName: car.village,
-      villageBlock: ruralLoc.villageBlock || car.district,
-      villageDistrict: car.district,
-      villageBadge: `Camp: ${car.village}`,
-      villageLabel: `📍 Outreach Camp: ${car.village} (${car.district}) • ${roadDistKm} km`,
-      lineColor: colors.line,
-      glowColor: colors.glow,
-      trail,
-      lastSeen: now,
-      updatedAt: now,
-      isLive: true,
-      ageSec: 0,
-      gapMinutes: 0,
-      isSignalGap: false,
-      isParked: false,
-      networkState: 'live',
-    };
-  }).filter(Boolean);
-}
 
 export default {
   async fetch(request, env) {
@@ -1780,16 +1701,15 @@ export default {
       });
 
       // Self-Healing Fleet Engine:
-      // Ensure exactly 11 active ambulances across Basti & Sant Kabir Nagar are always live
+      // Dynamically ensures all active fleet ambulances are live (e.g. all 17 ambulances)
+      const targetCount = ACTIVE_FLEET.length;
       let list = reportedList;
       if (list.length === 0) {
-        list = getLiveSimulationVehicles(now, 11);
-      } else if (list.length < 11) {
+        list = simulateFleetAtTime(ACTIVE_FLEET, now);
+      } else if (list.length < targetCount) {
         const existingIds = new Set(list.map(v => v.id));
-        const simVehicles = getLiveSimulationVehicles(now, 11).filter(v => !existingIds.has(v.id));
-        list = [...list, ...simVehicles].slice(0, 11);
-      } else if (list.length > 11) {
-        list = list.slice(0, 11);
+        const simVehicles = simulateFleetAtTime(ACTIVE_FLEET, now).filter(v => !existingIds.has(v.id));
+        list = [...list, ...simVehicles];
       }
 
       return new Response(JSON.stringify({

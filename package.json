@@ -7,9 +7,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run bundle:worker && vite build",
     "bundle:worker": "esbuild src/worker.js --bundle --format=esm --outfile=public/_worker.js",
     "preview": "vite preview"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "esbuild": "^0.28.2",
