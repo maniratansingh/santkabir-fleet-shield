@@ -651,14 +651,20 @@ export default function MapView({
       });
 
       // 3. Active Turn-by-Turn Road Navigation Corridor (Solid Clean Road Ribbon, No Dashes)
+      // Only drawn for the currently selected/inspected vehicle — never creates 20 crisscrossing starburst lines!
       if (map.getSource('delivery-incoming-routes')) {
         if (map.getLayer('delivery-incoming-road')) map.removeLayer('delivery-incoming-road');
         if (map.getLayer('delivery-incoming-casing')) map.removeLayer('delivery-incoming-casing');
         map.removeSource('delivery-incoming-routes');
       }
 
-      const incomingFeatures = activeVehicles.map((v) => {
+      const targetIncomingVehicles = selectedVehicleId
+        ? activeVehicles.filter((v) => v.id === selectedVehicleId)
+        : [];
+
+      const incomingFeatures = targetIncomingVehicles.map((v) => {
         const split = getDeliveryRouteSplit(v);
+        const uniqueColors = getUniqueVehicleColor(v.id);
         return {
           type: 'Feature',
           geometry: {
@@ -667,9 +673,9 @@ export default function MapView({
           },
           properties: {
             vehicleId: v.id,
-            lineColor: v.lineColor || '#007AFF',
-            glowColor: v.glowColor || '#38BDF8',
-            isSelected: v.id === selectedVehicleId,
+            lineColor: v.lineColor || uniqueColors.line,
+            glowColor: v.glowColor || uniqueColors.glow,
+            isSelected: true,
             status: v.status,
           },
         };
@@ -761,33 +767,6 @@ export default function MapView({
     });
   }, [showDistanceLines]);
 
-  // Live Navigation Line Animation (Breathing halo glow)
-  useEffect(() => {
-    let animId;
-
-    const animate = (timestamp) => {
-      const map = mapRef.current;
-      if (map && map.isStyleLoaded()) {
-        try {
-          // Smooth Breathing Glow on Navigation Corridor Halo
-          if (map.getLayer('delivery-incoming-casing')) {
-            const pulse = (Math.sin(timestamp * 0.005) + 1) / 2;
-            const opacity = 0.25 + 0.3 * pulse;
-            const width = 7 + 3.5 * pulse;
-            map.setPaintProperty('delivery-incoming-casing', 'line-opacity', opacity);
-            map.setPaintProperty('delivery-incoming-casing', 'line-width', width);
-          }
-        } catch (e) {}
-      }
-      animId = requestAnimationFrame(animate);
-    };
-
-    animId = requestAnimationFrame(animate);
-    return () => {
-      if (animId) cancelAnimationFrame(animId);
-    };
-  }, []);
-
   // Update Road Navigation Trails, Incoming Corridors, and On-Road Midpoint Distance Badges
   const updateDistanceVectors = (map) => {
     if (!map || !map.isStyleLoaded()) return;
@@ -795,7 +774,12 @@ export default function MapView({
     const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
     const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
 
-    const incomingFeatures = activeVehicles.map((v) => {
+    // Navigation corridor ONLY rendered for the selected/inspected vehicle (no spiderweb arrow lines)
+    const targetIncomingVehicles = selectedVehicleId
+      ? activeVehicles.filter((v) => v.id === selectedVehicleId)
+      : [];
+
+    const incomingFeatures = targetIncomingVehicles.map((v) => {
       const split = getDeliveryRouteSplit(v);
       const uniqueColors = getUniqueVehicleColor(v.id);
       const vColor = v.lineColor || uniqueColors.line;
@@ -810,21 +794,23 @@ export default function MapView({
           vehicleId: v.id,
           lineColor: vColor,
           glowColor: vGlow,
-          isSelected: v.id === selectedVehicleId,
+          isSelected: true,
           status: v.status,
         },
       };
     });
 
     const trailFeatures = activeVehicles.map((v) => {
-      const split = getDeliveryRouteSplit(v);
       const uniqueColors = getUniqueVehicleColor(v.id);
       const vColor = v.lineColor || uniqueColors.line;
+      const trailCoords = Array.isArray(v.trail) && v.trail.length > 1
+        ? v.trail
+        : getDeliveryRouteSplit(v).completedTrail;
       return {
         type: 'Feature',
         geometry: {
           type: 'LineString',
-          coordinates: split.completedTrail,
+          coordinates: trailCoords,
         },
         properties: {
           vehicleId: v.id,

@@ -1,5 +1,7 @@
 import roadRoutesData from '../data/roadRoutes.json';
+import allVillagesRoadRoutes from '../data/allVillagesRoadRoutes.json';
 import { BASE_HOSPITAL } from '../data/mockData';
+import { getNearestRuralLocation } from './ruralLocator';
 
 // Dynamic turn-by-turn route cache for off-highway rural/village routes
 const dynamicRouteCache = new Map();
@@ -100,6 +102,9 @@ export function projectPointOnSegment(p, a, b) {
 
 // Get the high-fidelity road polyline coordinates for a given corridor ID
 export function getRoadCoordinates(corridorId) {
+  if (allVillagesRoadRoutes[corridorId] && allVillagesRoadRoutes[corridorId].coordinates) {
+    return allVillagesRoadRoutes[corridorId].coordinates;
+  }
   if (roadRoutesData[corridorId] && roadRoutesData[corridorId].coordinates) {
     return roadRoutesData[corridorId].coordinates;
   }
@@ -164,21 +169,38 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     };
   }
 
-  // 1. Determine road waypoints
+  // 1. Determine road waypoints from authentic 74 Purvanchal road routes
   let roadCoords = null;
+  let matchedCorridorName = 'Purvanchal Road Corridor';
 
   // Case A: explicit routeWaypoints attached to vehicle
   if (Array.isArray(vehicle.routeWaypoints) && vehicle.routeWaypoints.length > 1) {
     roadCoords = vehicle.routeWaypoints;
   }
 
-  // Case B: dynamic route cached for this vehicle coordinate grid
+  // Case B: Direct match via vehicle.villageName or vehicle.village in allVillagesRoadRoutes
+  const vName = vehicle.villageName || vehicle.village || '';
+  if (!roadCoords && vName && allVillagesRoadRoutes[vName]) {
+    roadCoords = allVillagesRoadRoutes[vName].coordinates;
+    matchedCorridorName = allVillagesRoadRoutes[vName].name;
+  }
+
+  // Case C: Match via nearest 74 Purvanchal village
+  if (!roadCoords && (vehRawCoord[0] !== 0 || vehRawCoord[1] !== 0)) {
+    const loc = getNearestRuralLocation(vehRawCoord[1], vehRawCoord[0]);
+    if (loc && loc.village && allVillagesRoadRoutes[loc.village]) {
+      roadCoords = allVillagesRoadRoutes[loc.village].coordinates;
+      matchedCorridorName = allVillagesRoadRoutes[loc.village].name;
+    }
+  }
+
+  // Case D: dynamic route cached for this vehicle coordinate grid
   const cacheKey = `${vehRawCoord[0].toFixed(3)},${vehRawCoord[1].toFixed(3)}`;
   if (!roadCoords && dynamicRouteCache.has(cacheKey)) {
     roadCoords = dynamicRouteCache.get(cacheKey);
   }
 
-  // Case C: vehicle assigned to a camp/sector
+  // Case E: vehicle assigned to a camp/sector
   if (!roadCoords && vehicle.assignedCampId) {
     const camp = camps.find(c => c.id === vehicle.assignedCampId);
     if (camp && camp.routeWaypoints && camp.routeWaypoints.length > 1) {
@@ -188,10 +210,9 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     }
   }
 
-  // Case D: Live vehicle with arbitrary GPS coordinates -> snap to nearest regional road corridor
+  // Case F: Fallback to nearest regional highway corridor
   let bestIdx = 0;
   let bestProj = vehRawCoord;
-  let matchedCorridorName = 'Uttar Pradesh Regional Highway';
 
   if (!roadCoords) {
     const match = matchNearestCorridor(vehRawCoord);
@@ -202,20 +223,15 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
       bestProj = match.snapped;
       matchedCorridorName = corridor.name || match.corridor;
     }
-
-    // Hybrid Production Strategy: Trigger background OSRM resolution if ambulance is in rural interior (> 4.5 km from highway)
-    if (match.distKm > 4.5 && typeof window !== 'undefined') {
-      requestRuralRoute(vehRawCoord, baseCoord);
-    }
   }
 
   // Fallback to primary corridor if somehow still null
   if (!roadCoords || roadCoords.length < 2) {
-    roadCoords = roadRoutesData['CAMP-HARRAIYA']?.coordinates || [baseCoord, vehRawCoord];
+    roadCoords = allVillagesRoadRoutes['Harraiya Gram']?.coordinates || roadRoutesData['CAMP-HARRAIYA']?.coordinates || [baseCoord, vehRawCoord];
   }
 
-  // If bestIdx wasn't calculated above, project onto selected roadCoords
-  if (bestProj === vehRawCoord && roadCoords.length > 1) {
+  // Project vehicle location accurately onto selected roadCoords
+  if (roadCoords.length > 1) {
     let minD = Infinity;
     for (let i = 0; i < roadCoords.length - 1; i++) {
       const { point: proj } = projectPointOnSegment(vehRawCoord, roadCoords[i], roadCoords[i + 1]);

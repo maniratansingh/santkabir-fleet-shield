@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import ruralVillages from './src/data/ruralVillages.json' with { type: 'json' };
 
 const DEVELOPER_BANNER = `/* Built & Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
  * Sant Kabir Eye Hospital Real-time Fleet Command System */`;
@@ -22,6 +23,32 @@ function telemetryDevPlugin() {
         Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return Math.round(R * c * 10) / 10;
+  }
+
+  function resolveVillage(lat, lon) {
+    if (isNaN(lat) || isNaN(lon) || lat === 0 || lon === 0) {
+      return {
+        villageName: 'Base Hospital Standby',
+        villageBlock: 'Khalilabad',
+        villageDistrict: 'Sant Kabir Nagar',
+        villageBadge: 'Base Station',
+        villageLabel: 'Sant Kabir Eye Hospital (Khalilabad Base)',
+      };
+    }
+    let nearest = ruralVillages[0];
+    let minD = calculateDistanceKm(lat, lon, nearest.lat, nearest.lon);
+    for (let i = 1; i < ruralVillages.length; i++) {
+      const d = calculateDistanceKm(lat, lon, ruralVillages[i].lat, ruralVillages[i].lon);
+      if (d < minD) { minD = d; nearest = ruralVillages[i]; }
+    }
+    const isCamp = minD <= 4.0;
+    return {
+      villageName: nearest.name,
+      villageBlock: nearest.block,
+      villageDistrict: nearest.district,
+      villageBadge: isCamp ? `Camp: ${nearest.name}` : `Near ${nearest.name}`,
+      villageLabel: isCamp ? `📍 Outreach Camp: ${nearest.name} (${nearest.district}) • ${minD} km` : `📍 Near ${nearest.name} • ${minD} km away`,
+    };
   }
 
   const attachMiddleware = (server) => {
@@ -91,6 +118,8 @@ function telemetryDevPlugin() {
           const prevTrail = Array.isArray(existing.trail) ? existing.trail : [];
           const updatedTrail = [...prevTrail.slice(-29), [lon, lat]];
 
+          const ruralLoc = resolveVillage(lat, lon);
+
           const record = {
             id: vehId,
             name: vehId,
@@ -109,6 +138,11 @@ function telemetryDevPlugin() {
             charge: Boolean(charge),
             distFromBaseKm: distKm,
             roadDistFromBaseKm: Math.round(distKm * 1.15 * 10) / 10,
+            villageName: ruralLoc.villageName,
+            villageBlock: ruralLoc.villageBlock,
+            villageDistrict: ruralLoc.villageDistrict,
+            villageBadge: ruralLoc.villageBadge,
+            villageLabel: ruralLoc.villageLabel,
             trail: updatedTrail,
             updatedAt: Date.now(),
             isLive: true,
