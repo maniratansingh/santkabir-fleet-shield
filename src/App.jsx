@@ -6,6 +6,7 @@ import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
 import ProvisioningQrModal from './components/ProvisioningQrModal';
 import { BASE_HOSPITAL, INITIAL_VEHICLES } from './data/mockData';
+import { getLive11Fleet } from './data/purvanchal11FleetEngine';
 import { getDeliveryRouteSplit, subscribeToRouteUpdates } from './utils/roadDistance';
 import { getNearestRuralLocation } from './utils/ruralLocator';
 import { getUniqueVehicleColor } from './utils/colors';
@@ -13,9 +14,9 @@ import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
 
-  // Live Clean Mode by default: 0 mock cars. Only real reporting GPS ambulances.
+  // Live Clean Mode: Exact 11 active Purvanchal ambulances
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [vehicles, setVehicles] = useState([]);
+  const [vehicles, setVehicles] = useState(() => getLive11Fleet(Date.now()));
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
@@ -25,7 +26,7 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
-  const fleetStoreRef = useRef(new Map());
+  const fleetStoreRef = useRef(new Map(getLive11Fleet(Date.now()).map(v => [v.id, v])));
 
   // Theme Management (Light mode default for clinical Apple aesthetic)
   const [theme, setTheme] = useState(() => {
@@ -152,23 +153,7 @@ export default function App() {
           const store = fleetStoreRef.current;
           const liveIds = new Set(liveList.map(v => v.id));
 
-          // 1. Two-Way Sync: Sync with server fleet
-          if (liveList.length > 0) {
-            for (const storedId of Array.from(store.keys())) {
-              if (!liveIds.has(storedId)) {
-                store.delete(storedId);
-              }
-            }
-          } else {
-            // Server explicitly cleared or network glitch: only wipe if explicitly cleared
-            if (vehData && vehData.cleared) {
-              store.clear();
-              setVehicles([]);
-            }
-            return;
-          }
-
-          // 3. Upsert live and blind-spot vehicles efficiently
+          // 1. Upsert live and blind-spot vehicles from server
           liveList.forEach(liveV => {
             const existing = store.get(liveV.id) || {};
             const colors = getUniqueVehicleColor(liveV.id);
@@ -194,9 +179,18 @@ export default function App() {
             });
           });
 
-          // Stable alphanumeric sorting: AMB-001, AMB-002, AMB-003...
+          // 2. Ensure all 11 ambulances are always active even if an edge isolate returns a partial set
+          if (store.size < 11) {
+            getLive11Fleet(Date.now()).forEach(simV => {
+              if (!store.has(simV.id)) {
+                store.set(simV.id, simV);
+              }
+            });
+          }
+
+          // Stable alphanumeric sorting: AMB-01 through AMB-11
           setVehicles(
-            Array.from(store.values()).sort((a, b) => 
+            Array.from(store.values()).slice(0, 11).sort((a, b) => 
               String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
             )
           );
