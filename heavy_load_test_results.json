@@ -1,0 +1,83 @@
+{
+  "target": "https://fleet.mrps.in",
+  "fleetSize": 60,
+  "wallboardClients": 25,
+  "durationSeconds": 302,
+  "totalRequests": 52744,
+  "successfulRequests": 52744,
+  "failedRequests": 0,
+  "successRatePct": 100,
+  "avgRps": 174.63,
+  "statusCodes": {
+    "200": 52744
+  },
+  "latencyMs": {
+    "min": 80,
+    "p50": 97,
+    "p90": 120,
+    "p95": 132,
+    "p99": 282,
+    "max": 1453,
+    "avg": 106.3
+  },
+  "breakdown": {
+    "telemetry_track": {
+      "total": 39510,
+      "success": 39510,
+      "failed": 0,
+      "latency": {
+        "min": 80,
+        "p50": 96,
+        "p90": 121,
+        "p95": 134,
+        "p99": 303,
+        "max": 1453,
+        "avg": 107.1
+      }
+    },
+    "vehicles_poll": {
+      "total": 7475,
+      "success": 7475,
+      "failed": 0,
+      "latency": {
+        "min": 84,
+        "p50": 95,
+        "p90": 111,
+        "p95": 118,
+        "p99": 152,
+        "max": 359,
+        "avg": 98.3
+      }
+    },
+    "static_assets": {
+      "total": 5610,
+      "success": 5610,
+      "failed": 0,
+      "latency": {
+        "min": 85,
+        "p50": 100,
+        "p90": 116,
+        "p95": 130,
+        "p99": 207,
+        "max": 1317,
+        "avg": 106.7
+      }
+    },
+    "route_calc": {
+      "total": 149,
+      "success": 149,
+      "failed": 0,
+      "latency": {
+        "min": 235,
+        "p50": 248,
+        "p90": 446,
+        "p95": 695,
+        "p99": 868,
+        "max": 974,
+        "avg": 291.4
+      }
+    }
+  },
+  "sampleErrors": [],
+  "completedAt": "2026-10-18T19:10:27.710Z"
+}
