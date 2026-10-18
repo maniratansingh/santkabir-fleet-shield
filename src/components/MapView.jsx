@@ -4,6 +4,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
 import { getDeliveryRouteSplit, getAllRoadCorridors } from '../utils/roadDistance';
+import { getNearestRuralLocation } from '../utils/ruralLocator';
+import { getUniqueVehicleColor } from '../utils/colors';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
@@ -283,10 +285,10 @@ function get3DAmbulanceSvg(isDark, status, isSelected, vColor = '#007AFF', vId =
       <rect x="19.5" y="29.5" width="7" height="3.5" rx="1.5" fill="#EF4444" />
       <!-- Right Blue Emergency Beacon -->
       <rect x="27.5" y="29.5" width="7" height="3.5" rx="1.5" fill="#3B82F6" />
-      <!-- Flashing Beacon Flare -->
+      <!-- Flashing Beacon Flare with clean drop-shadow (Zero Blink Glitch) -->
       ${isMoving ? `
-        <circle cx="23" cy="31" r="5" fill="#EF4444" opacity="0.75" class="animate-ping" />
-        <circle cx="31" cy="31" r="5" fill="#3B82F6" opacity="0.75" class="animate-ping" />
+        <circle cx="23" cy="31" r="3.5" fill="#EF4444" opacity="0.9" style="filter: drop-shadow(0 0 3px #EF4444);" />
+        <circle cx="31" cy="31" r="3.5" fill="#3B82F6" opacity="0.9" style="filter: drop-shadow(0 0 3px #3B82F6);" />
       ` : ''}
 
       <!-- 13. Raised Clinical Patient Compartment Deck -->
@@ -708,6 +710,9 @@ export default function MapView({
 
     const incomingFeatures = activeVehicles.map((v) => {
       const split = getDeliveryRouteSplit(v);
+      const uniqueColors = getUniqueVehicleColor(v.id);
+      const vColor = v.lineColor || uniqueColors.line;
+      const vGlow = v.glowColor || uniqueColors.glow;
       return {
         type: 'Feature',
         geometry: {
@@ -716,8 +721,8 @@ export default function MapView({
         },
         properties: {
           vehicleId: v.id,
-          lineColor: v.lineColor || '#007AFF',
-          glowColor: v.glowColor || '#38BDF8',
+          lineColor: vColor,
+          glowColor: vGlow,
           isSelected: v.id === selectedVehicleId,
           status: v.status,
         },
@@ -726,6 +731,8 @@ export default function MapView({
 
     const trailFeatures = activeVehicles.map((v) => {
       const split = getDeliveryRouteSplit(v);
+      const uniqueColors = getUniqueVehicleColor(v.id);
+      const vColor = v.lineColor || uniqueColors.line;
       return {
         type: 'Feature',
         geometry: {
@@ -734,7 +741,7 @@ export default function MapView({
         },
         properties: {
           vehicleId: v.id,
-          lineColor: v.lineColor || '#007AFF',
+          lineColor: vColor,
           isSelected: v.id === selectedVehicleId,
         },
       };
@@ -913,32 +920,43 @@ export default function MapView({
 
     vehicles.forEach((v) => {
       const isSelected = selectedVehicleId === v.id;
-      const vColor = v.lineColor || '#007AFF';
+      const uniqueColors = getUniqueVehicleColor(v.id);
+      const vColor = v.lineColor || uniqueColors.line;
       const liveDist = getLiveDistanceKm(v);
       const pos = declutteredCoords.get(v.id) || [Number(v.lon || 0), Number(v.lat || 0)];
+      const loc = getNearestRuralLocation(Number(v.lat || 0), Number(v.lon || 0));
       let markerObj = markersRef.current[v.id];
 
-      // Concise label: only Identifier • Speed • Distance to Hospital
       const speedStr = v.speed > 0 ? `${v.speed} km/h` : 'Stopped';
-      const distStr = `${liveDist} km to Base`;
+      const distStr = `${liveDist} km Base`;
+
+      const capsuleContent = `
+        <span class="w-2 h-2 rounded-full shrink-0" style="background-color: ${vColor}; box-shadow: 0 0 6px ${vColor};"></span>
+        <span class="font-extrabold text-[10.5px]" style="color: ${vColor};">${v.id}</span>
+        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+        <span>${speedStr}</span>
+        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+        <span class="px-1.5 py-0.2 rounded-md text-[9px] font-bold ${
+          loc.isCamp 
+            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' 
+            : 'bg-sky-500/15 text-sky-600 dark:text-cyan-400 border border-sky-500/30'
+        }">${loc.badge}</span>
+        <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+        <span class="text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+      `;
 
       const innerContent = `
         <div class="relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
-          <!-- Concise Single Capsule: Identifier • Speed • Distance -->
-          <div class="mb-1 px-2.5 py-1 rounded-full border shadow-lg flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono transition-all backdrop-blur-md pointer-events-auto"
+          <!-- Single Capsule with Rural Village / Camp Indicator -->
+          <div class="marker-capsule-text mb-1 px-2.5 py-1 rounded-full border shadow-lg flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono transition-all backdrop-blur-md pointer-events-auto"
             style="background: ${isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.96)'}; border-color: ${vColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 14px ${vColor}35;">
-            <span class="w-2 h-2 rounded-full shrink-0" style="background-color: ${vColor}; box-shadow: 0 0 6px ${vColor};"></span>
-            <span class="font-extrabold text-[10.5px]" style="color: ${vColor};">${v.id}</span>
-            <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-            <span>${speedStr}</span>
-            <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-            <span class="text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+            ${capsuleContent}
           </div>
 
-          <!-- Big 3D Isometric Ambulance with Logo, Beacons, Headlights, and Drop Shadow -->
-          <div class="mt-0.5 relative flex items-center justify-center transition-transform duration-300 pointer-events-auto" style="transform: rotate(${v.bearing || 0}deg);">
+          <!-- 3D Isometric Ambulance with Soft Apple Halo (Zero Strobe/Blink) -->
+          <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center transition-transform duration-300 pointer-events-auto" style="transform: rotate(${v.bearing || 0}deg);">
             ${isSelected ? `
-              <div class="absolute w-16 h-18 rounded-full ${isDark ? 'bg-sky-400/30 ring-2 ring-sky-400/50' : 'bg-sky-500/25 ring-2 ring-sky-500/40'} animate-ping pointer-events-none"></div>
+              <div class="absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-all duration-300"></div>
             ` : ''}
             ${get3DAmbulanceSvg(isDark, v.status, isSelected, vColor, v.id)}
           </div>
@@ -950,7 +968,7 @@ export default function MapView({
           try { markerObj.marker.remove(); } catch (e) {}
         }
         const el = document.createElement('div');
-        el.className = 'select-none pointer-events-auto';
+        el.className = 'select-none pointer-events-auto transition-transform duration-500 ease-out';
         el.innerHTML = innerContent;
         el.onclick = (e) => {
           e.stopPropagation();
@@ -961,9 +979,31 @@ export default function MapView({
           .setLngLat(pos)
           .addTo(map);
 
-        markersRef.current[v.id] = { marker, element: el };
+        markersRef.current[v.id] = { 
+          marker, 
+          element: el, 
+          prevSelected: isSelected, 
+          prevDark: isDark, 
+          prevBearing: v.bearing 
+        };
       } else {
-        markerObj.element.innerHTML = innerContent;
+        // Fast targeted update: preserve DOM nodes to completely eliminate strobe/blinking
+        if (markerObj.prevSelected !== isSelected || markerObj.prevDark !== isDark) {
+          markerObj.element.innerHTML = innerContent;
+          markerObj.prevSelected = isSelected;
+          markerObj.prevDark = isDark;
+          markerObj.prevBearing = v.bearing;
+        } else {
+          const capsuleEl = markerObj.element.querySelector('.marker-capsule-text');
+          if (capsuleEl) {
+            capsuleEl.innerHTML = capsuleContent;
+          }
+          const rotatorEl = markerObj.element.querySelector('.ambulance-rotator');
+          if (rotatorEl && markerObj.prevBearing !== v.bearing) {
+            rotatorEl.style.transform = `rotate(${v.bearing || 0}deg)`;
+            markerObj.prevBearing = v.bearing;
+          }
+        }
         markerObj.marker.setLngLat(pos);
       }
     });

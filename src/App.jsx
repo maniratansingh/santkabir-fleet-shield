@@ -7,6 +7,8 @@ import DriverSetupModal from './components/DriverSetupModal';
 import ProvisioningQrModal from './components/ProvisioningQrModal';
 import { BASE_HOSPITAL, INITIAL_VEHICLES } from './data/mockData';
 import { getDeliveryRouteSplit, subscribeToRouteUpdates } from './utils/roadDistance';
+import { getNearestRuralLocation } from './utils/ruralLocator';
+import { getUniqueVehicleColor } from './utils/colors';
 import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
@@ -23,6 +25,7 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
+  const fleetStoreRef = useRef(new Map());
 
   // Theme Management (Light mode default for clinical Apple aesthetic)
   const [theme, setTheme] = useState(() => {
@@ -116,23 +119,7 @@ export default function App() {
     return () => clearInterval(tourInterval);
   }, [isAutoTour]);
 
-const FLEET_COLORS = [
-  { line: '#007AFF', glow: '#38BDF8' },
-  { line: '#10B981', glow: '#34D399' },
-  { line: '#F59E0B', glow: '#FBBF24' },
-  { line: '#8B5CF6', glow: '#A78BFA' },
-  { line: '#EC4899', glow: '#F472B6' },
-  { line: '#06B6D4', glow: '#22D3EE' },
-  { line: '#14B8A6', glow: '#2DD4BF' },
-];
-
-function getDynamicColor(id = '') {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffffffff;
-  return FLEET_COLORS[Math.abs(hash) % FLEET_COLORS.length];
-}
-
-  // Fetch real data from Cloudflare Pages API
+  // Fetch real data from Cloudflare API with Sticky Fleet Store & Memoization
   useEffect(() => {
     const fetchRealData = async () => {
       try {
@@ -141,43 +128,50 @@ function getDynamicColor(id = '') {
           const vehData = await vehRes.json();
           const liveList = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
           if (liveList.length > 0) {
-            setVehicles(prevVehicles => {
-              const liveMap = new Map(liveList.map(v => [v.id, v]));
+            setVehicles(() => {
+              const store = fleetStoreRef.current;
               
-              // 1. Update existing vehicles that have live updates
-              const updated = prevVehicles.map(v => {
-                if (liveMap.has(v.id)) {
-                  const liveV = liveMap.get(v.id);
-                  liveMap.delete(v.id);
-                  const split = getDeliveryRouteSplit({ ...v, ...liveV });
-                  return {
-                    ...v,
-                    ...liveV,
-                    isLive: true,
-                    routeWaypoints: v.routeWaypoints || liveV.routeWaypoints,
-                    highwayName: liveV.highwayName || split.corridorName || v.highwayName,
-                    roadDistFromBaseKm: split.roadDistFromBaseKm,
-                  };
+              liveList.forEach(liveV => {
+                const existing = store.get(liveV.id) || {};
+                const colors = getUniqueVehicleColor(liveV.id);
+                const loc = getNearestRuralLocation(Number(liveV.lat || 0), Number(liveV.lon || 0));
+
+                // Only recompute road geometry if position moved significantly (>80m)
+                const hasMoved = !existing.lat || 
+                  Math.abs(existing.lat - liveV.lat) > 0.0008 || 
+                  Math.abs(existing.lon - liveV.lon) > 0.0008;
+
+                let roadDist = existing.roadDistFromBaseKm;
+                let corridor = existing.highwayName;
+
+                if (hasMoved || !roadDist) {
+                  const split = getDeliveryRouteSplit({ ...existing, ...liveV });
+                  roadDist = split.roadDistFromBaseKm;
+                  corridor = split.corridorName || corridor;
                 }
-                return v;
-              });
 
-              // 2. Prepend any new identifiers (e.g. arbitrary identifiers sent from Traccar)
-              const newlyAdded = Array.from(liveMap.values()).map(v => {
-                const colors = getDynamicColor(v.id);
-                const split = getDeliveryRouteSplit(v);
-                return {
-                  ...v,
+                store.set(liveV.id, {
+                  ...existing,
+                  ...liveV,
                   isLive: true,
-                  lineColor: v.lineColor || colors.line,
-                  glowColor: v.glowColor || colors.glow,
-                  highwayName: v.highwayName || split.corridorName || 'Uttar Pradesh Regional Corridor',
-                  roadDistFromBaseKm: split.roadDistFromBaseKm,
-                  driverName: v.driverName || 'Assigned Driver',
-                };
+                  lineColor: liveV.lineColor || existing.lineColor || colors.line,
+                  glowColor: liveV.glowColor || existing.glowColor || colors.glow,
+                  driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
+                  villageName: loc.village,
+                  villageBlock: loc.block,
+                  villageDistrict: loc.district,
+                  villageBadge: loc.badge,
+                  villageLabel: loc.label,
+                  highwayName: corridor || loc.badge,
+                  roadDistFromBaseKm: roadDist || liveV.roadDistFromBaseKm || 0,
+                  lastSeen: liveV.lastSeen || Date.now(),
+                });
               });
 
-              return [...newlyAdded, ...updated];
+              // Stable alphanumeric sorting: AMB-001, AMB-002, AMB-003... (Never jumps during scroll)
+              return Array.from(store.values()).sort((a, b) => 
+                String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+              );
             });
           }
         }
@@ -187,7 +181,7 @@ function getDynamicColor(id = '') {
     };
 
     fetchRealData();
-    const interval = setInterval(fetchRealData, 2500);
+    const interval = setInterval(fetchRealData, 2000);
     return () => clearInterval(interval);
   }, []);
 

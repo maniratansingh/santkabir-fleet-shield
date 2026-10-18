@@ -24,21 +24,91 @@ function calculateDistanceKm(lat1, lon1, lat2, lon2) {
   return Math.round(R * c * 10) / 10;
 }
 
-// Distinct vibrant Apple palette per ambulance
-const COLOR_PALETTE = [
-  { line: '#007AFF', glow: '#38BDF8' }, // Apple Blue / Sky
-  { line: '#10B981', glow: '#34D399' }, // Emerald
-  { line: '#F59E0B', glow: '#FBBF24' }, // Amber
-  { line: '#8B5CF6', glow: '#A78BFA' }, // Purple
+// Golden Ratio HSL Unique Color Engine for 100+ ambulances
+const PRIMARY_PALETTE = [
+  { line: '#007AFF', glow: '#38BDF8' }, // Apple Blue
+  { line: '#10B981', glow: '#34D399' }, // Emerald Green
+  { line: '#F59E0B', glow: '#FBBF24' }, // Vivid Amber
+  { line: '#8B5CF6', glow: '#A78BFA' }, // Royal Violet
   { line: '#EC4899', glow: '#F472B6' }, // Rose Pink
-  { line: '#06B6D4', glow: '#22D3EE' }, // Cyan
+  { line: '#06B6D4', glow: '#22D3EE' }, // Electric Cyan
+  { line: '#84CC16', glow: '#A3E635' }, // Lime Green
+  { line: '#F97316', glow: '#FB923C' }, // Tangerine
+  { line: '#6366F1', glow: '#818CF8' }, // Indigo
+  { line: '#14B8A6', glow: '#2DD4BF' }, // Teal
+  { line: '#E11D48', glow: '#FB7185' }, // Crimson Coral
+  { line: '#D946EF', glow: '#E879F9' }, // Magenta
 ];
 
-function getVehicleColors(id) {
+const GOLDEN_RATIO_CONJUGATE = 0.618033988749895;
+
+function hslToHex(h, s, l) {
+  l /= 100;
+  const a = (s * Math.min(l, 1 - l)) / 100;
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`.toUpperCase();
+}
+
+function getVehicleColors(id = '') {
+  const cleanId = String(id).trim().toUpperCase();
+  const match = cleanId.match(/AMB-(\d+)/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num) && num >= 1 && num <= PRIMARY_PALETTE.length) {
+      return PRIMARY_PALETTE[num - 1];
+    }
+  }
+
   let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffffffff;
-  const idx = Math.abs(hash) % COLOR_PALETTE.length;
-  return COLOR_PALETTE[idx];
+  for (let i = 0; i < cleanId.length; i++) hash = (hash * 31 + cleanId.charCodeAt(i)) & 0xffffffff;
+  const seed = Math.abs(hash);
+  let hue = Math.floor(((seed * GOLDEN_RATIO_CONJUGATE) % 1) * 360);
+  return {
+    line: hslToHex(hue, 88, 50),
+    glow: hslToHex(hue, 92, 68),
+  };
+}
+
+const KEY_VILLAGES = [
+  { name: 'Maghar Gram', block: 'Khalilabad', district: 'Sant Kabir Nagar', lat: 26.7583, lon: 83.1311 },
+  { name: 'Semariyawan Gram', block: 'Semariyawan', district: 'Sant Kabir Nagar', lat: 26.8856, lon: 82.9847 },
+  { name: 'Belhar Kala Gram', block: 'Belhar Kala', district: 'Sant Kabir Nagar', lat: 26.9650, lon: 83.0520 },
+  { name: 'Baghnagar Gram', block: 'Semariyawan', district: 'Sant Kabir Nagar', lat: 26.8620, lon: 82.9340 },
+  { name: 'Mehdawal Bazar', block: 'Mehdawal', district: 'Sant Kabir Nagar', lat: 26.9800, lon: 83.1200 },
+  { name: 'Dhanghata Bazar', block: 'Dhanghata', district: 'Sant Kabir Nagar', lat: 26.5800, lon: 83.0200 },
+  { name: 'Hainsar Bazar', block: 'Hainsar', district: 'Sant Kabir Nagar', lat: 26.5400, lon: 83.0700 },
+  { name: 'Nathnagar Gram', block: 'Nathnagar', district: 'Sant Kabir Nagar', lat: 26.6500, lon: 83.0500 },
+  { name: 'Harraiya Gram', block: 'Harraiya', district: 'Basti', lat: 26.7972, lon: 82.4636 },
+  { name: 'Rudhauli Bazar', block: 'Rudhauli', district: 'Basti', lat: 27.0000, lon: 82.7800 },
+  { name: 'Walterganj Gram', block: 'Saltaua', district: 'Basti', lat: 26.9000, lon: 82.7200 },
+  { name: 'Captainganj Gram', block: 'Captainganj', district: 'Basti', lat: 26.7800, lon: 82.6000 },
+  { name: 'Bansi Nagar', block: 'Bansi', district: 'Siddharthnagar', lat: 27.1700, lon: 82.9300 },
+  { name: 'Domariyaganj Bazar', block: 'Domariyaganj', district: 'Siddharthnagar', lat: 27.2000, lon: 82.6800 },
+  { name: 'Itwa Gram', block: 'Itwa', district: 'Siddharthnagar', lat: 27.3200, lon: 82.7500 },
+  { name: 'Tanda Nagar', block: 'Tanda', district: 'Ambedkar Nagar', lat: 26.5500, lon: 82.6600 },
+  { name: 'Akbarpur Sadar', block: 'Akbarpur', district: 'Ambedkar Nagar', lat: 26.4300, lon: 82.5400 },
+  { name: 'Sahjanwa Bazar', block: 'Sahjanwa', district: 'Gorakhpur', lat: 26.7700, lon: 83.1900 },
+];
+
+function resolveVillage(lat, lon) {
+  let nearest = KEY_VILLAGES[0];
+  let minD = calculateDistanceKm(lat, lon, nearest.lat, nearest.lon);
+  for (let i = 1; i < KEY_VILLAGES.length; i++) {
+    const d = calculateDistanceKm(lat, lon, KEY_VILLAGES[i].lat, KEY_VILLAGES[i].lon);
+    if (d < minD) { minD = d; nearest = KEY_VILLAGES[i]; }
+  }
+  const isCamp = minD <= 4.0;
+  return {
+    villageName: nearest.name,
+    villageBlock: nearest.block,
+    villageDistrict: nearest.district,
+    villageBadge: isCamp ? `Camp: ${nearest.name}` : `Near ${nearest.name}`,
+    villageLabel: isCamp ? `📍 Outreach Camp: ${nearest.name} (${nearest.district}) • ${minD} km` : `📍 Near ${nearest.name} • ${minD} km away`,
+  };
 }
 
 export default {
@@ -160,6 +230,8 @@ export default {
       const prevTrail = Array.isArray(existing.trail) ? existing.trail : [];
       const updatedTrail = [...prevTrail.slice(-29), [cleanLon, cleanLat]];
 
+      const ruralLoc = resolveVillage(cleanLat, cleanLon);
+
       const record = {
         id: vehId,
         name: vehId,
@@ -180,6 +252,11 @@ export default {
         charge: Boolean(charge),
         distFromBaseKm: distKm,
         roadDistFromBaseKm: roadDistKm,
+        villageName: ruralLoc.villageName,
+        villageBlock: ruralLoc.villageBlock,
+        villageDistrict: ruralLoc.villageDistrict,
+        villageBadge: ruralLoc.villageBadge,
+        villageLabel: ruralLoc.villageLabel,
         lineColor: existing.lineColor || colors.line,
         glowColor: existing.glowColor || colors.glow,
         trail: updatedTrail,

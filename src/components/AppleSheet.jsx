@@ -18,6 +18,8 @@ import {
   QrCode
 } from 'lucide-react';
 import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
+import { getNearestRuralLocation } from '../utils/ruralLocator';
+import { getUniqueVehicleColor } from '../utils/colors';
 import ProvisioningQrModal from './ProvisioningQrModal';
 
 function getVehicleDistance(v) {
@@ -277,9 +279,9 @@ export default function AppleSheet({
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: selectedVehicle.lineColor || '#007AFF' }}></span>
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: selectedVehicle.lineColor || '#007AFF', boxShadow: `0 0 8px ${selectedVehicle.lineColor || '#007AFF'}` }}></span>
                       <span className="text-[10px] font-bold uppercase tracking-wider font-mono" style={{ color: selectedVehicle.lineColor || '#007AFF' }}>
-                        {selectedVehicle.status === 'returning' ? 'Returning to Base Hospital' : 'En Route in Sector'}
+                        {selectedVehicle.villageBadge || (selectedVehicle.status === 'returning' ? 'Returning to Base' : 'En Route to Outreach Camp')}
                       </span>
                     </div>
                     <div className="text-right">
@@ -290,11 +292,13 @@ export default function AppleSheet({
                   </div>
 
                   <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                    <span>Sant Kabir Eye Hospital (0 km)</span>
+                    <span>Sant Kabir Hospital (Base)</span>
                     <span className="font-mono font-bold" style={{ color: selectedVehicle.lineColor || '#007AFF' }}>
                       {selectedVehicle.speed > 0 ? `${selectedVehicle.speed} km/h` : 'Active'}
                     </span>
-                    <span>{selectedVehicle.highwayName || 'Highway'}</span>
+                    <span className="truncate max-w-[140px] font-semibold text-slate-700 dark:text-slate-200">
+                      {selectedVehicle.villageName ? `${selectedVehicle.villageName} (${selectedVehicle.villageDistrict})` : (selectedVehicle.highwayName || 'Highway Sector')}
+                    </span>
                   </div>
 
                   <div className="relative mt-1 w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
@@ -427,33 +431,45 @@ export default function AppleSheet({
                   </div>
                 ) : (
                   filteredVehicles.map((v) => {
-                  const isMoving = v.status === 'moving' || v.status === 'returning';
-                  const vColor = v.lineColor || '#007AFF';
-                  const distKm = getVehicleDistance(v);
+                    const isMoving = v.status === 'moving' || v.status === 'returning';
+                    const uniqueColors = getUniqueVehicleColor(v.id);
+                    const vColor = v.lineColor || uniqueColors.line;
+                    const distKm = getVehicleDistance(v);
+                    const loc = getNearestRuralLocation(Number(v.lat || 0), Number(v.lon || 0));
 
-                  return (
-                    <div
-                      key={v.id}
-                      onClick={() => onSelectVehicle(v.id)}
-                      className={`px-3 py-2 rounded-xl border transition-all cursor-pointer flex items-center justify-between group shadow-2xs ${
-                        selectedVehicleId === v.id
-                          ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-400 dark:border-sky-600 shadow-sm'
-                          : 'bg-white/80 dark:bg-slate-900/60 border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
-                      }`}
-                    >
-                      {/* Left: Identifier & Live Distance */}
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div 
-                          className="w-2.5 h-2.5 rounded-full shrink-0" 
-                          style={{ backgroundColor: vColor, boxShadow: `0 0 6px ${vColor}88` }} 
-                        />
-                        <span className="text-xs font-mono font-extrabold text-slate-900 dark:text-white truncate">
-                          {v.id}
-                        </span>
-                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
-                          {v.speed > 0 ? `${v.speed} km/h` : 'Stopped'} • {distKm} km to Base
-                        </span>
-                      </div>
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => onSelectVehicle(v.id)}
+                        className={`px-3 py-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between group shadow-2xs ${
+                          selectedVehicleId === v.id
+                            ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-400 dark:border-sky-600 shadow-sm'
+                            : 'bg-white/80 dark:bg-slate-900/60 border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
+                        }`}
+                      >
+                        {/* Left: Identifier, Speed, and Rural Village/Camp */}
+                        <div className="flex flex-col min-w-0 pr-2">
+                          <div className="flex items-center gap-2">
+                            <div 
+                              className="w-2.5 h-2.5 rounded-full shrink-0" 
+                              style={{ backgroundColor: vColor, boxShadow: `0 0 6px ${vColor}88` }} 
+                            />
+                            <span className="text-xs font-mono font-extrabold text-slate-900 dark:text-white truncate">
+                              {v.id}
+                            </span>
+                            <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                              {v.speed > 0 ? `${v.speed} km/h` : 'Stopped'} • {distKm} km Base
+                            </span>
+                          </div>
+
+                          {/* Rural Outreach Village / Camp Badge */}
+                          <div className="flex items-center gap-1 mt-1 pl-4.5">
+                            <MapPin className="w-2.5 h-2.5 text-sky-500 dark:text-cyan-400 shrink-0" />
+                            <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 truncate">
+                              {v.villageName ? `${v.villageBadge} (${v.villageDistrict})` : `${loc.badge} (${loc.district})`}
+                            </span>
+                          </div>
+                        </div>
 
                       {/* Right: Driver + Call & Maps Shortcuts & QR Provisioning */}
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -499,7 +515,8 @@ export default function AppleSheet({
                       </div>
                     </div>
                   );
-                }))}
+                })
+              )}
               </div>
             </div>
           )}
