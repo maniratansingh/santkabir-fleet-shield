@@ -4,3 +4,5 @@ dist/
 *.local
 .system_generated/
 .wrangler/
+cloudflare-live-deploy/
+*.zip
