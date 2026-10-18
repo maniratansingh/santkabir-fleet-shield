@@ -790,7 +790,7 @@ export default function MapView({
 
   // Update Road Navigation Trails, Incoming Corridors, and On-Road Midpoint Distance Badges
   const updateDistanceVectors = (map) => {
-    if (!map) return;
+    if (!map || !map.isStyleLoaded()) return;
 
     const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
     const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
@@ -846,7 +846,7 @@ export default function MapView({
         type: 'FeatureCollection',
         features: trailFeatures,
       });
-    } else {
+    } else if (map.isStyleLoaded()) {
       addCustomLayers(map);
     }
 
