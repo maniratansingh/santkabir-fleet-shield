@@ -6,7 +6,7 @@ import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
 import ProvisioningQrModal from './components/ProvisioningQrModal';
 import { BASE_HOSPITAL, INITIAL_VEHICLES } from './data/mockData';
-import { INITIAL_11_FLEET } from './data/initial11Fleet';
+import { INITIAL_17_FLEET } from './data/initial17Fleet';
 import { getDeliveryRouteSplit, subscribeToRouteUpdates } from './utils/roadDistance';
 import { getNearestRuralLocation } from './utils/ruralLocator';
 import { getUniqueVehicleColor } from './utils/colors';
@@ -14,9 +14,9 @@ import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
 
-  // Exact 11 active Purvanchal ambulances
+  // Exact 17 active Purvanchal ambulances
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [vehicles, setVehicles] = useState(INITIAL_11_FLEET);
+  const [vehicles, setVehicles] = useState(INITIAL_17_FLEET);
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
@@ -26,7 +26,7 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
-  const fleetStoreRef = useRef(new Map(INITIAL_11_FLEET.map(v => [v.id, v])));
+  const fleetStoreRef = useRef(new Map(INITIAL_17_FLEET.map(v => [v.id, v])));
 
   // Theme Management (Light mode default for clinical Apple aesthetic)
   const [theme, setTheme] = useState(() => {
@@ -194,9 +194,9 @@ export default function App() {
             });
           });
 
-          // Stable alphanumeric sorting: AMB-01 through AMB-11
+          // Stable alphanumeric sorting: AMB-01 through AMB-17
           setVehicles(
-            Array.from(store.values()).slice(0, 11).sort((a, b) => 
+            Array.from(store.values()).slice(0, 17).sort((a, b) => 
               String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
             )
           );
