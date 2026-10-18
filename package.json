@@ -7,12 +7,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "bundle:worker": "esbuild src/worker.js --bundle --format=esm --outfile=public/_worker.js",
+    "build": "vite build && esbuild src/worker.js --bundle --format=esm --outfile=dist/_worker.js && cp dist/_worker.js public/_worker.js",
     "preview": "vite preview"
   },
   "dependencies": {
-    "esbuild": "^0.28.2",
     "lucide-react": "^1.57.0",
     "maplibre-gl": "^6.14.0",
     "qrcode": "^1.5.4",
@@ -22,6 +20,7 @@
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.2",
+    "esbuild": "^0.28.2",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.4",
     "wrangler": "^4.151.1"

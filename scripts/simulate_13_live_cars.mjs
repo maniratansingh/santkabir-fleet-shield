@@ -19,7 +19,7 @@ const PING_INTERVAL_MS = 2500; // 2.5 seconds per wave
 const routesPath = path.resolve(__dirname, '../src/data/allVillagesRoadRoutes.json');
 const allRoutes = JSON.parse(fs.readFileSync(routesPath, 'utf8'));
 
-// 11 Key Ambulances Deployed Across Basti & Sant Kabir Nagar
+// 13 Key Ambulances Deployed Across 3 Operational Hub Districts
 const PURVANCHAL_13_LOCATIONS = [
   // Basti District (6)
   { id: 'AMB-01', village: 'Harraiya Gram', district: 'Basti', driver: 'Ramesh Yadav', phone: '9876543210' },
@@ -29,12 +29,16 @@ const PURVANCHAL_13_LOCATIONS = [
   { id: 'AMB-05', village: 'Kalwari Bazar', district: 'Basti', driver: 'Vinod Pandey', phone: '9876543214' },
   { id: 'AMB-06', village: 'Gaur Bazar', district: 'Basti', driver: 'Deepak Verma', phone: '9876543215' },
 
-  // Sant Kabir Nagar District (5)
+  // Sant Kabir Nagar District (6)
   { id: 'AMB-07', village: 'Khalilabad Sadar', district: 'Sant Kabir Nagar', driver: 'Mohd. Tariq', phone: '9876543216' },
   { id: 'AMB-08', village: 'Maghar Gram', district: 'Sant Kabir Nagar', driver: 'Sunil Yadav', phone: '9876543217' },
   { id: 'AMB-09', village: 'Semariyawan Gram', district: 'Sant Kabir Nagar', driver: 'Pankaj Dubey', phone: '9876543218' },
   { id: 'AMB-10', village: 'Belhar Kala Gram', district: 'Sant Kabir Nagar', driver: 'Brijesh Maurya', phone: '9876543219' },
   { id: 'AMB-11', village: 'Mehdawal Bazar', district: 'Sant Kabir Nagar', driver: 'Rakesh Chaudhary', phone: '9876543220' },
+  { id: 'AMB-12', village: 'Dhanghata Bazar', district: 'Sant Kabir Nagar', driver: 'Santosh Kumar', phone: '9876543221' },
+
+  // Siddharthnagar District (3)
+  { id: 'AMB-13', village: 'Naugarh Sadar', district: 'Siddharthnagar', driver: 'Sanjay Gupta', phone: '9876543222' },
 ];
 
 // Helper: Calculate true road heading bearing
@@ -144,13 +148,11 @@ async function sendCarPing(car) {
 
   try {
     const res = await fetch(pingUrl, {
-      method: 'POST',
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'Accept': 'application/json',
         'User-Agent': 'SantKabirFleetShield/1.0 (Ambulance Telemetry Engine)',
       },
-      body: JSON.stringify(payload),
     });
 
     if (res.ok) {
@@ -159,11 +161,7 @@ async function sendCarPing(car) {
 
     // Mirror to localhost:3000 if target is live server
     if (TARGET_HOST !== 'http://localhost:3000') {
-      fetch(`http://localhost:3000/api/location?${queryParams}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).catch(() => null);
+      fetch(`http://localhost:3000/api/location?${queryParams}`, { method: 'GET' }).catch(() => null);
     }
   } catch (err) {
     // Network retry quietly
