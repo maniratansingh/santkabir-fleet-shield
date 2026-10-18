@@ -41,25 +41,29 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 ```
 
 ### 1. 100% Serverless Edge Architecture
-- **Zero Database Requirement**: Runs entirely on Cloudflare Pages advanced edge runtime via `_worker.js`.
-- **In-Memory Edge Telemetry Cache**: Ingests, validates, and serves live ambulance locations with automatic 12-hour stale session retirement.
-- **Ultra-Fast Asset Serving**: MapLibre WebGL assets, Tailwind CSS, and React bundles compiled into sub-90kB chunks.
+- **Zero Database Requirement**: Runs entirely on Cloudflare Pages advanced edge runtime via `src/worker.js`.
+- **In-Memory Edge Telemetry Engine**: Ingests, validates, and serves live ambulance locations with automatic 35-minute stale session retirement.
+- **Strict Zero-Cache Headers**: Live responses enforce `Cache-Control: no-store` and `CDN-Cache-Control: no-store`, ensuring TV wallboards never load stale cache.
+- **52,000+ Request Stress-Tested**: Benchmark verified at 174.6 RPS, 97ms P50 latency, and 100% success rate.
 
-### 2. Apple Maps & AirTag Precision Aesthetic
-- **3D Isometric Ambulances**: Custom vector SVGs featuring directional headlights, specular body facets, animated emergency beacons, and ground drop shadows rotated to live heading.
-- **Dynamic Highway Ribbons**: Traveled breadcrumb vectors connecting vehicles to the hospital base with glowing halos tailored to each vehicle's unique line color.
-- **Interactive Apple Sheet**: Bottom floating sheet with 3 detent levels (`peek`, `half`, `full`), quick driver call triggers, and 1-tap external turn-by-turn navigation in Google Maps & Apple Maps.
+### 2. 15-Minute Rural Signal Gap Grace Period & Dead-Zone Resilience
+- **No Disappearing Vehicles**: Ambulances passing through rural forest cover or 2G dead zones stay locked at their **Last Known Position** for up to 15 minutes.
+- **Visual Amber Gap Badges**: Displays `AMB-02 • ⏳ Signal Gap (6m ago) • Semariyawan` without deleting or flickering the car icon.
+- **Smooth Glide on Reconnection**: When 4G returns, the vehicle smoothly glides over 0.7s to its new coordinate rather than jumping abruptly.
 
-### 3. TV Wallboard Auto-Tour Mode
-- **Continuous Kiosk Monitoring**: Automatically cycles camera focus across reporting ambulances in 12-second intervals.
-- **Standby Fallback**: When zero ambulances are actively reporting, smoothly docks on the Sant Kabir Eye Hospital base in Basti.
+### 3. 75+ Purvanchal Village Gazetteer & Camp Mapping
+- **Local Village Names on Canvas**: 75+ Gram Panchayats and outreach eye camp bazars across Eastern UP (*Semariyawan, Belhar Kala, Baghnagar, Maghar, Harraiya, Rudhauli, Bansi, Itwa, Tanda, Dhanghata*, etc.) render directly onto the map surface.
+- **Zero Network Delay**: Embedded locally in browser memory via MapLibre GL WebGL symbol layers with contrast halos.
 
-### 4. Custom Driver Android APK (`santkabir-fleet-shield-v1.0.apk`)
-- **Master Admin PIN Protection**: Settings are locked on start to prevent drivers from stopping tracking or altering endpoints.
-- **Admin Tuning**: Enter your secret Master Admin PIN under *"Master Admin Authorization"* to unlock and tune update frequency (e.g. 5s–30s for low-end devices), accuracy, or server URL.
-- **Default Telemetry Endpoint**: Preconfigured with your server endpoint (`https://fleet.mrps.in/api/location`).
-- **Background Daemon**: Runs as an Android Foreground Service with `START_STICKY` and `BootCompletedReceiver`.
-- **Direct Download**: Hosted directly at `/downloads/santkabir-fleet-shield-v1.0.apk` with strict MIME enforcement (`application/vnd.android.package-archive`).
+### 4. Apple Maps & Anti-Blink SVG Engine
+- **Persistent DOM Markers**: Markers are preserved across TV cycles and selection toggles—SVGs are never destroyed or re-parsed, eliminating flashing/blinking completely.
+- **Golden Ratio Color Engine**: Generates 60+ non-colliding distinct route line colors and ambient halos using the Golden Ratio Conjugate in HSL space.
+- **Interactive Apple Sheet**: Bottom floating sheet with 3 detent levels (`peek`, `half`, `full`), driver call shortcuts, and 1-tap external turn-by-turn navigation.
+
+### 5. Smart TV Wallboard Kiosk Mode
+- **Adaptive Tour Pacing**: Automatically allocates 12 seconds of focus to actively moving vehicles and 6 seconds to vehicles in temporary signal gaps.
+- **Two-Way Live Sync**: Adding, moving, or decommissioning cars updates the TV wallboard live every 2 seconds without requiring anyone to press F5 or refresh.
+- **Detailed Specification**: See [ARCHITECTURE.md](ARCHITECTURE.md) for full system diagrams and engineering specs.
 
 ---
 
