@@ -4,7 +4,7 @@
 // Production Clean: 0 Mock Data. Dynamic live telemetry only.
 
 // In-memory telemetry cache for active fleet ambulances
-import FLEET_15 from './data/purvanchal15FleetData.json' with { type: 'json' };
+import { FLEET_15 } from './data/purvanchal15FleetData.js';
 
 const liveVehicles = new Map();
 
