@@ -152,15 +152,14 @@ export default function App() {
           const store = fleetStoreRef.current;
           const liveIds = new Set(liveList.map(v => v.id));
 
-          // 1. Two-Way Sync: Sync with server fleet
-          if (liveList.length > 0) {
+          // 1. Clean sync: Only prune vehicles if server returns a full fleet
+          if (liveList.length >= 11) {
             for (const storedId of Array.from(store.keys())) {
               if (!liveIds.has(storedId)) {
                 store.delete(storedId);
               }
             }
-          } else {
-            // Server explicitly cleared or network glitch: only wipe if explicitly cleared
+          } else if (liveList.length === 0) {
             if (vehData && vehData.cleared) {
               store.clear();
               setVehicles([]);
@@ -168,7 +167,7 @@ export default function App() {
             return;
           }
 
-          // 3. Upsert live and blind-spot vehicles efficiently
+          // 2. Upsert live and blind-spot vehicles efficiently
           liveList.forEach(liveV => {
             const existing = store.get(liveV.id) || {};
             const colors = getUniqueVehicleColor(liveV.id);
@@ -194,9 +193,9 @@ export default function App() {
             });
           });
 
-          // Stable alphanumeric sorting: AMB-001, AMB-002, AMB-003...
+          // Stable alphanumeric sorting: AMB-01 through AMB-11
           setVehicles(
-            Array.from(store.values()).sort((a, b) => 
+            Array.from(store.values()).slice(0, 11).sort((a, b) => 
               String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
             )
           );

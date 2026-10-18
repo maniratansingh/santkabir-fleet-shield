@@ -1463,7 +1463,7 @@ function calculateBearing(c1, c2) {
   const brng = Math.atan2(y, x) * 180 / Math.PI;
   return Math.round((brng + 360) % 360);
 }
-function getLiveSimulationVehicles(now = Date.now(), maxCars = 13) {
+function getLiveSimulationVehicles(now = Date.now(), maxCars = 11) {
   if (!Array.isArray(FLEET_15) || FLEET_15.length === 0) return [];
   return FLEET_15.slice(0, maxCars).map((car, idx) => {
     const waypoints = car.coords;
@@ -1719,13 +1719,13 @@ var worker_default = {
       });
       let list = reportedList;
       if (list.length === 0) {
-        list = getLiveSimulationVehicles(now, 13);
-      } else if (list.length < 13) {
+        list = getLiveSimulationVehicles(now, 11);
+      } else if (list.length < 11) {
         const existingIds = new Set(list.map((v) => v.id));
-        const simVehicles = getLiveSimulationVehicles(now, 13).filter((v) => !existingIds.has(v.id));
-        list = [...list, ...simVehicles].slice(0, 13);
-      } else if (list.length > 13) {
-        list = list.slice(0, 13);
+        const simVehicles = getLiveSimulationVehicles(now, 11).filter((v) => !existingIds.has(v.id));
+        list = [...list, ...simVehicles].slice(0, 11);
+      } else if (list.length > 11) {
+        list = list.slice(0, 11);
       }
       return new Response(JSON.stringify({
         success: true,
