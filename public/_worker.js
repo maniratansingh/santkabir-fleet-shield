@@ -1,7 +1,7 @@
 // src/worker.js
 var liveVehicles = /* @__PURE__ */ new Map();
-var BASE_LAT = 26.797313;
-var BASE_LON = 82.718401;
+var BASE_LAT = 26.779703;
+var BASE_LON = 83.072184;
 function calculateDistanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;

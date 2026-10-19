@@ -8,7 +8,10 @@ import {
   Maximize2, 
   Minimize2,
   Check,
-  Sparkles
+  Sparkles,
+  Plus,
+  Minus,
+  Scan
 } from 'lucide-react';
 
 export default function FloatingControls({
@@ -16,6 +19,9 @@ export default function FloatingControls({
   onSelectStyle,
   onResetNorth,
   onCenterBase,
+  onZoomIn,
+  onZoomOut,
+  onFitAll,
   showDistanceLines = true,
   onToggleDistanceLines,
   isAutoTour = false,
@@ -47,11 +53,41 @@ export default function FloatingControls({
     <div className="fixed top-3 right-3 z-30 pointer-events-auto flex flex-col items-end gap-2">
       {/* Primary Floating Apple Dock */}
       <div className="glass-panel p-1 rounded-2xl flex flex-col items-center gap-1 shadow-xl border border-slate-200/90 dark:border-white/10">
+        {/* Zoom In */}
+        <button
+          onClick={onZoomIn}
+          title="Zoom In (+)"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
+        >
+          <Plus className="w-4 h-4 text-slate-800 dark:text-white" />
+        </button>
+
+        {/* Zoom Out */}
+        <button
+          onClick={onZoomOut}
+          title="Zoom Out (-)"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
+        >
+          <Minus className="w-4 h-4 text-slate-800 dark:text-white" />
+        </button>
+
+        {/* Fit Entire Fleet Overview */}
+        <button
+          onClick={onFitAll}
+          title="Fit All Ambulances (Fleet Overview)"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
+        >
+          <Scan className="w-4 h-4 text-sky-600 dark:text-cyan-400" />
+        </button>
+
+        {/* Subtle Separator */}
+        <div className="w-5 h-px bg-slate-200 dark:bg-slate-700/80 my-0.5" />
+
         {/* Compass (Reset North) */}
         <button
           onClick={onResetNorth}
           title="Reset Map to True North"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer group"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer group active:scale-95"
         >
           <Compass className="w-5 h-5 text-sky-600 dark:text-cyan-400 group-hover:rotate-45 transition-transform" />
         </button>
@@ -59,10 +95,10 @@ export default function FloatingControls({
         {/* Center Base Hospital */}
         <button
           onClick={onCenterBase}
-          title="Focus Base Hospital (Basti)"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+          title="Focus Sant Kabir Hospital Base (Khalilabad)"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
         >
-          <Hospital className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <Hospital className="w-4 h-4 text-rose-600 dark:text-rose-400" />
         </button>
 
         {/* Distance Range & Vector Lines Toggle */}

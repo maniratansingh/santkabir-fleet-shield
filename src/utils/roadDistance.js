@@ -157,8 +157,8 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
   const baseCoord = [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat];
   const vehRawCoord = [Number(vehicle.lon || 0), Number(vehicle.lat || 0)];
 
-  // At base or missing coordinates
-  if (vehicle.status === 'at_base' || (vehRawCoord[0] === 0 && vehRawCoord[1] === 0) || haversineKm(vehRawCoord, baseCoord) < 0.2) {
+  // Missing coordinates entirely
+  if (vehRawCoord[0] === 0 && vehRawCoord[1] === 0) {
     return {
       upcomingRoute: [],
       completedTrail: [],
@@ -169,7 +169,7 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     };
   }
 
-  // 1. Determine road waypoints from authentic 74 Purvanchal road routes
+  // 1. Determine road waypoints from authentic Purvanchal road routes
   let roadCoords = null;
   let matchedCorridorName = 'Purvanchal Road Corridor';
 

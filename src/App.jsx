@@ -305,6 +305,20 @@ export default function App() {
   }, []);
 
   // Action Triggers with stable references
+  const handleZoomIn = useCallback(() => {
+    setActionTrigger({ type: 'zoomIn', timestamp: Date.now() });
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setActionTrigger({ type: 'zoomOut', timestamp: Date.now() });
+  }, []);
+
+  const handleFitAll = useCallback(() => {
+    setSelectedVehicleId(null);
+    setActionTrigger({ type: 'fitAll', timestamp: Date.now() });
+    showToast('Overview: 17 Ambulances & Base Station', 'info');
+  }, []);
+
   const handleResetNorth = useCallback(() => {
     setActionTrigger({ type: 'resetNorth', timestamp: Date.now() });
     showToast('Compass oriented to True North (0°)', 'info');
@@ -312,8 +326,8 @@ export default function App() {
 
   const handleCenterBase = useCallback(() => {
     setSelectedVehicleId(null);
-    setFitTrigger(prev => prev + 1);
-    showToast('Camera centered on Sant Kabir Eye Hospital Base', 'info');
+    setActionTrigger({ type: 'centerBase', timestamp: Date.now() });
+    showToast('Camera centered on Sant Kabir Hospital Base (Khalilabad)', 'info');
   }, []);
 
   const handleToggleAutoTour = useCallback(() => {
@@ -415,6 +429,9 @@ export default function App() {
         onSelectStyle={setActiveStyleKey}
         onResetNorth={handleResetNorth}
         onCenterBase={handleCenterBase}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onFitAll={handleFitAll}
         showDistanceLines={showDistanceLines}
         onToggleDistanceLines={handleToggleDistanceLines}
         isAutoTour={isAutoTour}

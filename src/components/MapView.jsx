@@ -430,18 +430,17 @@ function MapView({
       bounds.extend([v.lon, v.lat]);
     });
 
-    const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+    const isWideScreen = typeof window !== 'undefined' && window.innerWidth >= 640;
     const canvas = map.getCanvas();
     const cWidth = canvas ? (canvas.clientWidth || canvas.width) : (typeof window !== 'undefined' ? window.innerWidth : 1200);
     const cHeight = canvas ? (canvas.clientHeight || canvas.height) : (typeof window !== 'undefined' ? window.innerHeight : 800);
-    const maxLeft = Math.max(20, Math.min(380, Math.floor(cWidth * 0.30)));
-    const maxTop = Math.max(20, Math.min(90, Math.floor(cHeight * 0.12)));
-    const maxBottom = Math.max(20, Math.min(75, Math.floor(cHeight * 0.12)));
-    const maxRight = Math.max(20, Math.min(70, Math.floor(cWidth * 0.08)));
+    // On wide screens (>= 640px), AppleSheet takes 380px width on left + 16px margin = 396px
+    const maxLeft = isWideScreen ? Math.min(Math.max(405, Math.floor(cWidth * 0.36)), Math.max(30, cWidth - 300)) : 24;
+    const maxTop = Math.max(30, Math.min(90, Math.floor(cHeight * 0.12)));
+    const maxBottom = isWideScreen ? Math.max(30, Math.min(80, Math.floor(cHeight * 0.12))) : Math.min(220, Math.floor(cHeight * 0.32));
+    const maxRight = Math.max(30, Math.min(80, Math.floor(cWidth * 0.08)));
 
-    const padding = isDesktop
-      ? { top: maxTop, bottom: maxBottom, left: maxLeft, right: maxRight }
-      : { top: maxTop, bottom: Math.min(200, Math.floor(cHeight * 0.30)), left: 24, right: 24 };
+    const padding = { top: maxTop, bottom: maxBottom, left: maxLeft, right: maxRight };
 
     map.fitBounds(bounds, {
       padding,
@@ -469,18 +468,16 @@ function MapView({
       split.upcomingRoute.forEach((pt) => bounds.extend(pt));
     }
 
-    const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+    const isWideScreen = typeof window !== 'undefined' && window.innerWidth >= 640;
     const canvas = map.getCanvas();
     const cWidth = canvas ? (canvas.clientWidth || canvas.width) : (typeof window !== 'undefined' ? window.innerWidth : 1200);
     const cHeight = canvas ? (canvas.clientHeight || canvas.height) : (typeof window !== 'undefined' ? window.innerHeight : 800);
-    const maxLeft = Math.max(30, Math.min(420, Math.floor(cWidth * 0.35)));
-    const maxTop = Math.max(30, Math.min(100, Math.floor(cHeight * 0.14)));
-    const maxBottom = Math.max(30, Math.min(80, Math.floor(cHeight * 0.14)));
+    const maxLeft = isWideScreen ? Math.min(Math.max(405, Math.floor(cWidth * 0.36)), Math.max(30, cWidth - 300)) : 24;
+    const maxTop = Math.max(35, Math.min(100, Math.floor(cHeight * 0.14)));
+    const maxBottom = isWideScreen ? Math.max(30, Math.min(80, Math.floor(cHeight * 0.14))) : Math.min(220, Math.floor(cHeight * 0.32));
     const maxRight = Math.max(30, Math.min(80, Math.floor(cWidth * 0.08)));
 
-    const padding = isDesktop
-      ? { top: maxTop, bottom: maxBottom, left: maxLeft, right: maxRight }
-      : { top: maxTop, bottom: Math.min(200, Math.floor(cHeight * 0.30)), left: 24, right: 24 };
+    const padding = { top: maxTop, bottom: maxBottom, left: maxLeft, right: maxRight };
 
     map.fitBounds(bounds, {
       padding,
@@ -587,11 +584,29 @@ function MapView({
     }
   }, [fitTrigger, selectedVehicleId]);
 
-  // Handle action triggers (e.g. Reset North, Locate, Fit Route Corridor)
+  // Handle action triggers (e.g. Zoom In, Zoom Out, Fit All, Center Base, Reset North, Locate, Fit Route Corridor)
   useEffect(() => {
     if (!mapRef.current) return;
-    if (actionTrigger?.type === 'resetNorth') {
-      mapRef.current.easeTo({ bearing: 0, pitch: 20, duration: 800 });
+    const map = mapRef.current;
+    if (actionTrigger?.type === 'zoomIn') {
+      map.zoomIn({ duration: 300 });
+    } else if (actionTrigger?.type === 'zoomOut') {
+      map.zoomOut({ duration: 300 });
+    } else if (actionTrigger?.type === 'fitAll') {
+      fitAll({ duration: 800 });
+    } else if (actionTrigger?.type === 'centerBase') {
+      const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+      map.flyTo({
+        center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat],
+        offset: isDesktop ? [140, 0] : [0, -60],
+        zoom: 13.5,
+        pitch: 24,
+        bearing: 0,
+        duration: 900,
+        essential: true,
+      });
+    } else if (actionTrigger?.type === 'resetNorth') {
+      map.easeTo({ bearing: 0, pitch: 20, duration: 800 });
     } else if (actionTrigger?.type === 'locateVehicle') {
       focusVehicle(actionTrigger.vehicleId);
     } else if (actionTrigger?.type === 'fitRoute') {
@@ -689,21 +704,23 @@ function MapView({
       }
 
       const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
-      const trailFeatures = activeVehicles.map((v) => {
-        const split = getDeliveryRouteSplit(v);
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: split.completedTrail,
-          },
-          properties: {
-            vehicleId: v.id,
-            lineColor: v.lineColor || '#007AFF',
-            isSelected: v.id === selectedVehicleId,
-          },
-        };
-      });
+      const trailFeatures = activeVehicles
+        .filter(v => v.id === selectedVehicleId)
+        .map((v) => {
+          const split = getDeliveryRouteSplit(v);
+          return {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: split.completedTrail,
+            },
+            properties: {
+              vehicleId: v.id,
+              lineColor: v.lineColor || '#007AFF',
+              isSelected: true,
+            },
+          };
+        });
 
       map.addSource('delivery-trail-routes', {
         type: 'geojson',
@@ -725,12 +742,17 @@ function MapView({
         paint: {
           'line-color': ['get', 'lineColor'],
           'line-width': [
-            'case',
-            ['get', 'isSelected'],
-            4.5,
-            3,
+            'interpolate', ['linear'], ['zoom'],
+            8, 4.0,
+            11, 5.5,
+            14, 8.0,
+            16, 10.0,
           ],
-          'line-opacity': 0.85,
+          'line-opacity': [
+            'case',
+            ['get', 'isSelected'], 1.0,
+            0.0,
+          ],
         },
       });
 
@@ -741,6 +763,7 @@ function MapView({
         map.removeSource('delivery-incoming-routes');
       }
 
+      const hasSelection = Boolean(selectedVehicleId);
       const incomingFeatures = activeVehicles.map((v) => {
         const split = getDeliveryRouteSplit(v);
         const uniqueColors = getUniqueVehicleColor(v.id);
@@ -756,6 +779,7 @@ function MapView({
             lineColor: v.lineColor || uniqueColors.line,
             glowColor: v.glowColor || uniqueColors.glow,
             isSelected: isSelected,
+            hasSelection: hasSelection,
             status: v.status,
           },
         };
@@ -782,22 +806,23 @@ function MapView({
         paint: {
           'line-color': ['get', 'glowColor'],
           'line-width': [
-            'case',
-            ['get', 'isSelected'],
-            9.5,
-            ['get', 'hasSelection'],
-            2.0,
-            3.5,
+            'interpolate', ['linear'], ['zoom'],
+            8, ['case', ['get', 'isSelected'], 7.0, ['get', 'hasSelection'], 2.0, 4.0],
+            11, ['case', ['get', 'isSelected'], 9.5, ['get', 'hasSelection'], 2.5, 5.5],
+            14, ['case', ['get', 'isSelected'], 13.0, ['get', 'hasSelection'], 3.5, 8.0],
+            16, ['case', ['get', 'isSelected'], 16.0, ['get', 'hasSelection'], 4.5, 11.0],
           ],
           'line-opacity': [
             'case',
-            ['get', 'isSelected'],
-            0.75,
-            ['get', 'hasSelection'],
-            0.05,
-            0.20,
+            ['get', 'isSelected'], 0.85,
+            ['get', 'hasSelection'], 0.08,
+            0.35,
           ],
-          'line-blur': 2.5,
+          'line-blur': [
+            'case',
+            ['get', 'isSelected'], 2.5,
+            1.0,
+          ],
         },
       });
 
@@ -814,20 +839,17 @@ function MapView({
         paint: {
           'line-color': ['get', 'lineColor'],
           'line-width': [
-            'case',
-            ['get', 'isSelected'],
-            5.5,
-            ['get', 'hasSelection'],
-            1.8,
-            2.6,
+            'interpolate', ['linear'], ['zoom'],
+            8, ['case', ['get', 'isSelected'], 4.5, ['get', 'hasSelection'], 1.4, 2.8],
+            11, ['case', ['get', 'isSelected'], 6.0, ['get', 'hasSelection'], 1.8, 3.8],
+            14, ['case', ['get', 'isSelected'], 8.5, ['get', 'hasSelection'], 2.4, 5.5],
+            16, ['case', ['get', 'isSelected'], 11.0, ['get', 'hasSelection'], 3.2, 7.5],
           ],
           'line-opacity': [
             'case',
-            ['get', 'isSelected'],
-            1.0,
-            ['get', 'hasSelection'],
-            0.15,
-            0.45,
+            ['get', 'isSelected'], 1.0,
+            ['get', 'hasSelection'], 0.18,
+            0.75,
           ],
         },
       });
@@ -892,27 +914,29 @@ function MapView({
       };
     });
 
-    const trailFeatures = activeVehicles.map((v) => {
-      const uniqueColors = getUniqueVehicleColor(v.id);
-      const vColor = v.lineColor || uniqueColors.line;
-      const isSelected = v.id === selectedVehicleId;
-      const trailCoords = Array.isArray(v.trail) && v.trail.length > 1
-        ? v.trail
-        : getDeliveryRouteSplit(v).completedTrail;
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: trailCoords,
-        },
-        properties: {
-          vehicleId: v.id,
-          lineColor: vColor,
-          isSelected: isSelected,
-          hasSelection: hasSelection,
-        },
-      };
-    });
+    const trailFeatures = activeVehicles
+      .filter(v => v.id === selectedVehicleId)
+      .map((v) => {
+        const uniqueColors = getUniqueVehicleColor(v.id);
+        const vColor = v.lineColor || uniqueColors.line;
+        const isSelected = true;
+        const trailCoords = Array.isArray(v.trail) && v.trail.length > 1
+          ? v.trail
+          : getDeliveryRouteSplit(v).completedTrail;
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: trailCoords,
+          },
+          properties: {
+            vehicleId: v.id,
+            lineColor: vColor,
+            isSelected: isSelected,
+            hasSelection: hasSelection,
+          },
+        };
+      });
 
     // Elevate selected vehicle route to the end so it renders on top in WebGL
     incomingFeatures.sort((a, b) => (a.properties.isSelected ? 1 : 0) - (b.properties.isSelected ? 1 : 0));
@@ -962,17 +986,26 @@ function MapView({
     mapRef.current = map;
     if (typeof window !== 'undefined') window.__map = map;
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-left');
+    const updateZoomLOD = () => {
+      if (!mapContainer.current) return;
+      const z = map.getZoom();
+      if (z < 11.2) {
+        mapContainer.current.classList.add('map-zoom-overview');
+        mapContainer.current.classList.remove('map-zoom-detailed');
+      } else {
+        mapContainer.current.classList.add('map-zoom-detailed');
+        mapContainer.current.classList.remove('map-zoom-overview');
+      }
+    };
 
     map.on('load', () => {
       map.resize();
+      updateZoomLOD();
+      map.on('zoom', updateZoomLOD);
       addCustomLayers(map);
       updateBaseMarker(map);
       updateDistanceVectors(map);
       updateVehicleMarkers(map);
-      map.on('zoomend', () => {
-        updateVehicleMarkers(map);
-      });
 
       setTimeout(() => {
         map.resize();
@@ -1114,7 +1147,14 @@ function MapView({
         el.className = 'select-none pointer-events-auto will-change-transform';
         
         el.innerHTML = `
-          <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
+          <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
+            <!-- Compact AirTag Beacon Disc for zoomed out overview (Zero Collision / Apple AirTag precision) -->
+            <div class="marker-compact-beacon mb-0.5 px-2 py-0.5 rounded-full border shadow-md flex items-center gap-1 font-mono font-extrabold text-[10px] pointer-events-auto"
+              style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.98)'}; border-color: ${badgeColor}; color: ${badgeColor}; box-shadow: 0 2px 8px ${badgeColor}40;">
+              <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor};"></span>
+              <span>${v.id}</span>
+            </div>
+
             <!-- Apple Capsule (Compact by default, smoothly expands on hover or selection) -->
             <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
               style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
@@ -1183,7 +1223,14 @@ function MapView({
         if (markerObj.prevDark !== isDark) {
           // Re-render only when switching dark/light theme
           markerObj.element.innerHTML = `
-            <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
+            <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
+              <!-- Compact AirTag Beacon Disc for zoomed out overview -->
+              <div class="marker-compact-beacon mb-0.5 px-2 py-0.5 rounded-full border shadow-md flex items-center gap-1 font-mono font-extrabold text-[10px] pointer-events-auto"
+                style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.98)'}; border-color: ${badgeColor}; color: ${badgeColor}; box-shadow: 0 2px 8px ${badgeColor}40;">
+                <span class="w-1.5 h-1.5 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor};"></span>
+                <span>${v.id}</span>
+              </div>
+
               <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
                 style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
                 <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
@@ -1243,10 +1290,10 @@ function MapView({
             markerObj.prevSelected = isSelected;
             if (markerObj.outerWrapper) {
               if (isSelected) {
-                markerObj.outerWrapper.classList.add('scale-110', 'z-50');
+                markerObj.outerWrapper.classList.add('scale-110', 'z-50', 'is-selected');
                 markerObj.outerWrapper.classList.remove('hover:scale-105', 'z-20');
               } else {
-                markerObj.outerWrapper.classList.remove('scale-110', 'z-50');
+                markerObj.outerWrapper.classList.remove('scale-110', 'z-50', 'is-selected');
                 markerObj.outerWrapper.classList.add('hover:scale-105', 'z-20');
               }
             }
