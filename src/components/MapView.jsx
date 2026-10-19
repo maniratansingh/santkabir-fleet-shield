@@ -364,22 +364,21 @@ function MapView({
       if (!m || !m.isAnimating) continue;
 
       const elapsed = now - m.animStartTime;
-      const progress = Math.min(1, elapsed / m.animDuration);
-      // Smooth ease-out quad curve for natural vehicle glide
-      const t = progress * (2 - progress);
+      const progress = Math.min(1, Math.max(0, elapsed / m.animDuration));
+      // Constant linear velocity for authentic, steady road gliding
+      const t = progress;
 
       const curLon = m.startPos[0] + (m.targetPos[0] - m.startPos[0]) * t;
       const curLat = m.startPos[1] + (m.targetPos[1] - m.startPos[1]) * t;
       m.currentPos = [curLon, curLat];
       m.marker.setLngLat(m.currentPos);
 
-      // Shortest angle rotation
-      if (m.startBearing !== m.targetBearing) {
-        let diff = (m.targetBearing - m.startBearing + 540) % 360 - 180;
-        const curBearing = (m.startBearing + diff * t + 360) % 360;
-        m.currentBearing = curBearing;
+      // Continuous unwrapped angle rotation (Zero 360° flip or spin jump)
+      if (m.startAngle !== undefined && m.targetAngle !== undefined && m.startAngle !== m.targetAngle) {
+        const curAngle = m.startAngle + (m.targetAngle - m.startAngle) * t;
+        m.displayAngle = curAngle;
         if (m.rotatorEl) {
-          m.rotatorEl.style.transform = `rotate(${curBearing.toFixed(1)}deg)`;
+          m.rotatorEl.style.transform = `rotate(${curAngle.toFixed(2)}deg)`;
         }
       }
 
@@ -389,8 +388,7 @@ function MapView({
         m.isAnimating = false;
         m.startPos = m.targetPos;
         m.currentPos = m.targetPos;
-        m.startBearing = m.targetBearing;
-        m.currentBearing = m.targetBearing;
+        m.startAngle = m.targetAngle;
       }
     }
 
@@ -1060,16 +1058,13 @@ function MapView({
 
       let markerObj = markersRef.current[v.id];
 
-      // CREATE MARKER IF NOT EXISTS
-      if (!markerObj || !document.body.contains(markerObj.element)) {
-        if (markerObj) {
-          try { markerObj.marker.remove(); } catch (e) {}
-        }
+      // CREATE MARKER IF NOT EXISTS (Strictly once, never destroy while active)
+      if (!markerObj) {
         const el = document.createElement('div');
         el.className = 'select-none pointer-events-auto will-change-transform';
         
         el.innerHTML = `
-          <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
+          <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
             <!-- Apple Capsule (High-contrast, zero backdrop-filter blur for 60fps WebGL) -->
             <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
               style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
@@ -1083,8 +1078,8 @@ function MapView({
               <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
             </div>
 
-            <!-- 3D Isometric Ambulance (Zero Strobe/Blink) -->
-            <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${targetBearing}deg);">
+            <!-- 3D Isometric Ambulance (Zero Strobe/Blink, Hardware accelerated) -->
+            <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${targetBearing}deg); will-change: transform; transition: none;">
               <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
               ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
             </div>
@@ -1122,11 +1117,12 @@ function MapView({
           currentPos: pos,
           startPos: pos,
           targetPos: pos,
-          currentBearing: targetBearing,
-          startBearing: targetBearing,
-          targetBearing: targetBearing,
+          displayAngle: targetBearing,
+          startAngle: targetBearing,
+          targetAngle: targetBearing,
+          lastUpdateTime: performance.now(),
           animStartTime: 0,
-          animDuration: 2200,
+          animDuration: 2000,
           isAnimating: false,
         };
       } else {
@@ -1134,7 +1130,7 @@ function MapView({
         if (markerObj.prevDark !== isDark) {
           // Re-render only when switching dark/light theme
           markerObj.element.innerHTML = `
-            <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer transition-transform duration-150 ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}">
+            <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
               <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
                 style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
                 <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
@@ -1146,7 +1142,7 @@ function MapView({
                 <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
                 <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
               </div>
-              <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${markerObj.currentBearing}deg);">
+              <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${markerObj.displayAngle || targetBearing}deg); will-change: transform; transition: none;">
                 <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
                 ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
               </div>
@@ -1210,19 +1206,50 @@ function MapView({
           }
         }
 
-        // Smooth Gliding Position & Bearing Interpolation
+        // Smooth Gliding Position & Continuous Unwrapped Bearing Interpolation
         const posChanged = Math.abs(markerObj.targetPos[0] - pos[0]) > 0.000001 || Math.abs(markerObj.targetPos[1] - pos[1]) > 0.000001;
-        const bearingChanged = Math.abs(markerObj.targetBearing - targetBearing) > 0.5;
+        const currentDisp = markerObj.displayAngle !== undefined ? markerObj.displayAngle : targetBearing;
+        const curNormAngle = ((currentDisp % 360) + 360) % 360;
+        let angleDiff = targetBearing - curNormAngle;
+        if (angleDiff > 180) angleDiff -= 360;
+        if (angleDiff < -180) angleDiff += 360;
 
-        if (posChanged || bearingChanged) {
-          markerObj.startPos = markerObj.currentPos || markerObj.targetPos;
-          markerObj.targetPos = pos;
-          markerObj.startBearing = markerObj.currentBearing;
-          markerObj.targetBearing = targetBearing;
-          markerObj.animStartTime = performance.now();
-          markerObj.animDuration = 2200; // Matches ~2.5s polling interval for seamless gliding
-          markerObj.isAnimating = true;
-          anyMoved = true;
+        if (posChanged || Math.abs(angleDiff) > 0.5) {
+          const nowTime = performance.now();
+          const timeSinceLast = markerObj.lastUpdateTime ? (nowTime - markerObj.lastUpdateTime) : 2000;
+          markerObj.lastUpdateTime = nowTime;
+          // Match animation duration dynamically to telemetry arrival interval
+          markerObj.animDuration = Math.max(400, Math.min(2600, timeSinceLast * 1.05));
+
+          const curPos = markerObj.currentPos || markerObj.targetPos;
+
+          // Teleport Protection: If jump > 3.0 km, snap directly without flying across map
+          const dLat = (pos[1] - curPos[1]) * 111.32;
+          const dLon = (pos[0] - curPos[0]) * 111.32 * Math.cos(pos[1] * Math.PI / 180);
+          const jumpDistKm = Math.sqrt(dLat * dLat + dLon * dLon);
+
+          if (jumpDistKm > 3.0) {
+            markerObj.startPos = pos;
+            markerObj.currentPos = pos;
+            markerObj.targetPos = pos;
+            markerObj.marker.setLngLat(pos);
+            markerObj.isAnimating = false;
+          } else {
+            markerObj.startPos = curPos;
+            markerObj.targetPos = pos;
+            markerObj.animStartTime = nowTime;
+            markerObj.isAnimating = true;
+            anyMoved = true;
+          }
+
+          // Unwrapped angle assignment (prevents 360° flip spins)
+          markerObj.startAngle = currentDisp;
+          markerObj.targetAngle = currentDisp + angleDiff;
+          if (Math.abs(angleDiff) > 0.5) {
+            markerObj.animStartTime = nowTime;
+            markerObj.isAnimating = true;
+            anyMoved = true;
+          }
         }
       }
     });

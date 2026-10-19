@@ -120,6 +120,17 @@ function telemetryDevPlugin() {
 
           const ruralLoc = resolveVillage(lat, lon);
 
+          let computedBearing = Math.round(((bearing % 360) + 360) % 360);
+          if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== lat || existing.lon !== lon)) {
+            const y = Math.sin(((lon - existing.lon) * Math.PI) / 180) * Math.cos((lat * Math.PI) / 180);
+            const x =
+              Math.cos((existing.lat * Math.PI) / 180) * Math.sin((lat * Math.PI) / 180) -
+              Math.sin((existing.lat * Math.PI) / 180) * Math.cos((lat * Math.PI) / 180) * Math.cos(((lon - existing.lon) * Math.PI) / 180);
+            computedBearing = Math.round(((Math.atan2(y, x) * 180) / Math.PI + 360) % 360);
+          } else if (computedBearing === 0 && existing.bearing) {
+            computedBearing = existing.bearing;
+          }
+
           const record = {
             id: vehId,
             name: vehId,
@@ -130,7 +141,7 @@ function telemetryDevPlugin() {
             lon,
             speed: speedKmH,
             speedKnots: Number(rawSpeed.toFixed(2)),
-            bearing: Math.round(((bearing % 360) + 360) % 360),
+            bearing: computedBearing,
             altitude: Math.round(altitude),
             accuracy: isNaN(accuracy) ? 0 : Number(accuracy.toFixed(1)),
             batt: Math.min(100, Math.max(0, Math.round(batt))),

@@ -1451,6 +1451,15 @@ function resolveVillage(lat, lon) {
     villageLabel: isCamp ? `\u{1F4CD} Outreach Camp: ${nearest.name} (${nearest.district}) \u2022 ${minD} km` : `\u{1F4CD} Near ${nearest.name} \u2022 ${minD} km away`
   };
 }
+function calculateBearing(c1, c2) {
+  if (!c1 || !c2) return 0;
+  const [lon1, lat1] = c1;
+  const [lon2, lat2] = c2;
+  const y = Math.sin((lon2 - lon1) * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180);
+  const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) - Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos((lon2 - lon1) * Math.PI / 180);
+  const brng = Math.atan2(y, x) * 180 / Math.PI;
+  return Math.round((brng + 360) % 360);
+}
 var worker_default = {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1545,6 +1554,12 @@ var worker_default = {
       const prevTrail = Array.isArray(existing.trail) ? existing.trail : [];
       const updatedTrail = [...prevTrail.slice(-29), [cleanLon, cleanLat]];
       const ruralLoc = resolveVillage(cleanLat, cleanLon);
+      let computedBearing = Math.round((bearing % 360 + 360) % 360);
+      if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== cleanLat || existing.lon !== cleanLon)) {
+        computedBearing = calculateBearing([existing.lon, existing.lat], [cleanLon, cleanLat]);
+      } else if (computedBearing === 0 && existing.bearing) {
+        computedBearing = existing.bearing;
+      }
       const record = {
         id: vehId,
         name: vehId,
@@ -1557,7 +1572,7 @@ var worker_default = {
         lon: cleanLon,
         speed: speedKmH,
         speedKnots: Number(rawSpeed.toFixed(2)),
-        bearing: Math.round((bearing % 360 + 360) % 360),
+        bearing: computedBearing,
         altitude: Math.round(altitude),
         accuracy: isNaN(accuracy) ? 0 : Number(accuracy.toFixed(1)),
         batt: Math.min(100, Math.max(0, Math.round(batt))),

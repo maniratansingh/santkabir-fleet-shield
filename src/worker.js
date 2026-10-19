@@ -1599,6 +1599,13 @@ export default {
 
       const ruralLoc = resolveVillage(cleanLat, cleanLon);
 
+      let computedBearing = Math.round(((bearing % 360) + 360) % 360);
+      if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== cleanLat || existing.lon !== cleanLon)) {
+        computedBearing = calculateBearing([existing.lon, existing.lat], [cleanLon, cleanLat]);
+      } else if (computedBearing === 0 && existing.bearing) {
+        computedBearing = existing.bearing;
+      }
+
       const record = {
         id: vehId,
         name: vehId,
@@ -1611,7 +1618,7 @@ export default {
         lon: cleanLon,
         speed: speedKmH,
         speedKnots: Number(rawSpeed.toFixed(2)),
-        bearing: Math.round(((bearing % 360) + 360) % 360),
+        bearing: computedBearing,
         altitude: Math.round(altitude),
         accuracy: isNaN(accuracy) ? 0 : Number(accuracy.toFixed(1)),
         batt: Math.min(100, Math.max(0, Math.round(batt))),
