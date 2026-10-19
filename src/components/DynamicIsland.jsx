@@ -138,14 +138,6 @@ function DynamicIsland({
                     </span>
                   </>
                 )}
-                {inFieldCount > 0 && signalGapCount === 0 && (
-                  <>
-                    <span className="text-slate-300 dark:text-slate-600">•</span>
-                    <span className="text-xs font-medium text-sky-600 dark:text-cyan-400">
-                      {inFieldCount} In Field
-                    </span>
-                  </>
-                )}
                 <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">•</span>
                 <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hidden sm:inline">
                   {vehicles.length} Active Fleet
@@ -214,14 +206,10 @@ function DynamicIsland({
             </a>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 my-3">
+          <div className="grid grid-cols-3 gap-2.5 my-3">
             <div className="p-2.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800/40">
               <span className="text-[10px] text-emerald-700 dark:text-emerald-300 uppercase font-semibold block">En Route</span>
               <span className="text-lg font-extrabold text-emerald-900 dark:text-emerald-200 font-mono">{movingCount} Active</span>
-            </div>
-            <div className="p-2.5 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-100 dark:border-sky-800/40">
-              <span className="text-[10px] text-sky-700 dark:text-sky-300 uppercase font-semibold block">In Field</span>
-              <span className="text-lg font-extrabold text-sky-900 dark:text-sky-200 font-mono">{inFieldCount} On Site</span>
             </div>
             <div className="p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40">
               <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-semibold block">Active Fleet</span>

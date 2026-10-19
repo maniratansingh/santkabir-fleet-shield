@@ -41,7 +41,7 @@ export default function App() {
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
-  const [detent, setDetent] = useState('half'); // 'peek', 'half', 'full'
+  const [detent, setDetent] = useState('peek'); // Default minimized to peek capsule
   const [isAutoTour, setIsAutoTour] = useState(false);
   const [fitTrigger, setFitTrigger] = useState(0);
   const [actionTrigger, setActionTrigger] = useState(null);

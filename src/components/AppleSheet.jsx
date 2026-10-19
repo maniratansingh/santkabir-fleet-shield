@@ -143,10 +143,10 @@ function AppleSheet({
   onFitRoute,
   onFocusDistance,
   onOpenProvisionModal,
-  detent = 'half', // 'peek', 'half', 'full'
+  detent = 'peek', // 'peek', 'half', 'full'
   onChangeDetent,
 }) {
-  const [filter, setFilter] = useState('all'); // 'all', 'moving', 'in_field', 'at_base'
+  const [filter, setFilter] = useState('all'); // 'all', 'moving'
   const [qrModalVehicleId, setQrModalVehicleId] = useState(null);
 
   const openProvision = (id) => {
@@ -163,11 +163,9 @@ function AppleSheet({
     else onChangeDetent('peek');
   };
 
-  // Filtered vehicles
+  // Filtered vehicles (Only 2 filters: All & En Route)
   const filteredVehicles = vehicles.filter((v) => {
     if (filter === 'moving') return v.status === 'moving' || v.status === 'returning';
-    if (filter === 'in_field') return v.status === 'in_field';
-    if (filter === 'at_base') return v.status === 'at_base';
     return true;
   });
 
@@ -480,12 +478,11 @@ function AppleSheet({
           ) : (
             /* VIEW B: FLEET LIST OVERVIEW */
             <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Filter Tabs (No At Base Tab) */}
+              {/* Filter Tabs (Only 2 tabs: All & En Route) */}
               <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 mb-2">
                 {[
                   { key: 'all', label: `All (${vehicles.length})` },
                   { key: 'moving', label: 'En Route' },
-                  { key: 'in_field', label: 'In Field' },
                 ].map((tab) => (
                   <button
                     key={tab.key}
