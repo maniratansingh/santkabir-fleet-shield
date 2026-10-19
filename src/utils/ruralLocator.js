@@ -1,4 +1,5 @@
 import ruralVillages from '../data/ruralVillages.json';
+import { BASE_HOSPITAL } from '../data/mockData';
 
 // Haversine formula
 function calculateDistKm(lat1, lon1, lat2, lon2) {
@@ -19,7 +20,9 @@ function calculateDistKm(lat1, lon1, lat2, lon2) {
 const locationCache = new Map();
 
 /**
- * Resolves the nearest rural village or outreach eye camp location
+ * Resolves the nearest rural village or landmark based on LIVE GPS coordinates.
+ * Strictly dynamic: guarantees accurate live vicinity (e.g. "Near Munderwa", "Near Gaur Bazar")
+ * without predefined destination assumptions.
  * @param {number} lat - Latitude
  * @param {number} lon - Longitude
  * @returns {object} { village, block, district, distKm, isCamp, badge, label }
@@ -32,7 +35,7 @@ export function getNearestRuralLocation(lat, lon) {
       district: 'Sant Kabir Nagar',
       distKm: 0,
       isCamp: false,
-      badge: 'Base Station',
+      badge: 'Base Hospital',
       label: 'Sant Kabir Eye Hospital (Khalilabad Base)',
     };
   }
@@ -40,6 +43,25 @@ export function getNearestRuralLocation(lat, lon) {
   const cacheKey = `${lat.toFixed(3)},${lon.toFixed(3)}`;
   if (locationCache.has(cacheKey)) {
     return locationCache.get(cacheKey);
+  }
+
+  // Check proximity to Sant Kabir Hospital Base (Khalilabad)
+  const baseLat = BASE_HOSPITAL?.lat || 26.779703;
+  const baseLon = BASE_HOSPITAL?.lon || 83.072184;
+  const distFromBase = calculateDistKm(lat, lon, baseLat, baseLon);
+
+  if (distFromBase <= 1.2) {
+    const baseResult = {
+      village: 'Sant Kabir Base Hospital',
+      block: 'Khalilabad',
+      district: 'Sant Kabir Nagar',
+      distKm: distFromBase,
+      isCamp: false,
+      badge: 'Base Hospital',
+      label: 'Sant Kabir Eye Hospital (Khalilabad Base)',
+    };
+    locationCache.set(cacheKey, baseResult);
+    return baseResult;
   }
 
   let nearest = ruralVillages[0];
@@ -54,23 +76,23 @@ export function getNearestRuralLocation(lat, lon) {
     }
   }
 
-  const isAtCamp = minDistance <= 3.5;
-  const badge = isAtCamp ? `Camp: ${nearest.name}` : `Near ${nearest.name}`;
-  const label = isAtCamp
-    ? `📍 Outreach Camp: ${nearest.name} (${nearest.block} Block, ${nearest.district}) • ${minDistance} km`
-    : `📍 En Route near ${nearest.name} (${nearest.district}) • ${minDistance} km away`;
+  const cleanName = nearest.name.replace(/ (Gram|Sadar|Nagar)$/, '');
+  const isDirectlyAtVillage = minDistance <= 1.5;
+  const badge = isDirectlyAtVillage ? cleanName : `Near ${cleanName}`;
+  const label = isDirectlyAtVillage
+    ? `📍 Outreach Camp: ${cleanName} (${nearest.district})`
+    : `📍 En Route near ${cleanName} (${nearest.district}) • ${minDistance} km away`;
 
   const result = {
-    village: nearest.name,
+    village: cleanName,
     block: nearest.block,
     district: nearest.district,
     distKm: minDistance,
-    isCamp: isAtCamp,
+    isCamp: isDirectlyAtVillage,
     badge,
     label,
   };
 
-  // Limit cache size to 500 keys
   if (locationCache.size > 500) {
     const firstKey = locationCache.keys().next().value;
     locationCache.delete(firstKey);

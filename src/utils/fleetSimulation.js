@@ -2,6 +2,8 @@
 // Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
 // Guarantees zero-blanking, zero-stutter, butter-smooth physical velocity (zero humping / zero jumping).
 
+import { getNearestRuralLocation } from './ruralLocator';
+
 const BASE_LAT = 26.779703;
 const BASE_LON = 83.072184;
 
@@ -198,6 +200,7 @@ export function simulateFleetAtTime(fleet, now = Date.now()) {
 
     const roadDistKm = Math.round((targetDistMeters / 1000) * 10) / 10;
     const straightDistKm = calculateDistanceKm(BASE_LAT, BASE_LON, lat, lon);
+    const liveLoc = getNearestRuralLocation(lat, lon);
 
     let trail = [];
     if (isReturning) {
@@ -220,6 +223,10 @@ export function simulateFleetAtTime(fleet, now = Date.now()) {
       distFromBaseKm: straightDistKm,
       roadDistFromBaseKm: roadDistKm,
       trail,
+      villageBadge: liveLoc.badge,
+      villageName: liveLoc.village,
+      villageBlock: liveLoc.block,
+      villageDistrict: liveLoc.district,
       status: isParked ? 'standby' : (isReturning ? 'returning' : 'moving'),
       isLive: true,
       isParked,

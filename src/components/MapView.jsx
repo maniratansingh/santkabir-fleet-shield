@@ -1121,17 +1121,20 @@ function MapView({
       const gapMins = v.gapMinutes || 1;
       const badgeColor = isGap ? '#F59E0B' : (isParked ? '#94A3B8' : vColor);
 
-      const cleanCampName = (v.villageName || v.villageBadge || 'Kalwari Bazar').replace(/^Camp:\s*/, '');
+      const liveLoc = (v.lat && v.lon)
+        ? getNearestRuralLocation(Number(v.lat), Number(v.lon))
+        : { badge: v.villageBadge || 'Purvanchal Region' };
+
       let statusBadgeText = '';
       let statusBadgeClass = '';
       if (isGap) {
         statusBadgeText = `⏳ Gap ${gapMins}m`;
         statusBadgeClass = 'bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30';
-      } else if (isParked && liveDist < 1) {
+      } else if (isParked && liveDist < 1.2) {
         statusBadgeText = 'Base Hospital';
         statusBadgeClass = 'bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/30';
       } else {
-        statusBadgeText = cleanCampName;
+        statusBadgeText = liveLoc.badge;
         statusBadgeClass = 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30';
       }
 

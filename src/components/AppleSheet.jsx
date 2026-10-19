@@ -51,9 +51,9 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
   const uniqueColors = getUniqueVehicleColor(v.id);
   const vColor = v.lineColor || uniqueColors.line;
   const distKm = v.roadDistFromBaseKm || getVehicleDistance(v);
-  const locationLabel = v.villageBadge 
-    ? `${v.villageBadge} (${v.villageDistrict || 'UP'})`
-    : (v.lat && v.lon ? getNearestRuralLocation(Number(v.lat), Number(v.lon)).badge : 'Purvanchal Region');
+  const locationLabel = (v.lat && v.lon) 
+    ? getNearestRuralLocation(Number(v.lat), Number(v.lon)).badge
+    : (v.villageBadge || 'Purvanchal Region');
 
   return (
     <div
@@ -374,7 +374,9 @@ function AppleSheet({
                     <div className="flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: selectedVehicle.lineColor || '#007AFF', boxShadow: `0 0 8px ${selectedVehicle.lineColor || '#007AFF'}` }}></span>
                       <span className="text-[10px] font-bold uppercase tracking-wider font-mono" style={{ color: selectedVehicle.lineColor || '#007AFF' }}>
-                        {selectedVehicle.villageBadge || (selectedVehicle.status === 'returning' ? 'Returning to Base' : 'En Route to Outreach Camp')}
+                        {(selectedVehicle.lat && selectedVehicle.lon)
+                          ? getNearestRuralLocation(Number(selectedVehicle.lat), Number(selectedVehicle.lon)).badge
+                          : (selectedVehicle.villageBadge || 'En Route')}
                       </span>
                     </div>
                     <div className="text-right">
