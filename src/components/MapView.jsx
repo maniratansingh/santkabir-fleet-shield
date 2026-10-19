@@ -511,8 +511,9 @@ function MapView({
     bounds.extend([Number(veh.lon || 0), Number(veh.lat || 0)]);
 
     const split = getDeliveryRouteSplit(veh);
-    if (split.upcomingRoute && split.upcomingRoute.length > 0) {
-      split.upcomingRoute.forEach((pt) => bounds.extend(pt));
+    const routePts = (split.roadPath && split.roadPath.length > 0) ? split.roadPath : split.upcomingRoute;
+    if (routePts && routePts.length > 0) {
+      routePts.forEach((pt) => bounds.extend(pt));
     }
 
     const isWideScreen = typeof window !== 'undefined' && window.innerWidth >= 640;
@@ -939,20 +940,31 @@ function MapView({
         map.removeSource('delivery-trail-routes');
       }
 
+      // 2. Traveled Highway Road Trail Behind Active Vehicles
+      if (map.getSource('delivery-trail-routes')) {
+        if (map.getLayer('delivery-trail-line')) map.removeLayer('delivery-trail-line');
+        map.removeSource('delivery-trail-routes');
+      }
+
       const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
       const trailFeatures = activeVehicles
         .filter(v => v.id === selectedVehicleId)
         .map((v) => {
           const split = getDeliveryRouteSplit(v);
+          const uniqueColors = getUniqueVehicleColor(v.id);
+          const vColor = v.lineColor || uniqueColors.line;
+          const trailCoords = (split.roadPath && split.roadPath.length > 1)
+            ? split.roadPath
+            : (split.completedTrail && split.completedTrail.length > 1 ? split.completedTrail : []);
           return {
             type: 'Feature',
             geometry: {
               type: 'LineString',
-              coordinates: split.completedTrail,
+              coordinates: trailCoords,
             },
             properties: {
               vehicleId: v.id,
-              lineColor: v.lineColor || '#007AFF',
+              lineColor: vColor,
               isSelected: true,
             },
           };
@@ -992,7 +1004,7 @@ function MapView({
         },
       });
 
-      // 3. Active Turn-by-Turn Road Navigation Corridor for each working vehicle
+      // 3. Active Turn-by-Turn Road Navigation Corridor strictly behind each working vehicle back to Base Hospital
       if (map.getSource('delivery-incoming-routes')) {
         if (map.getLayer('delivery-incoming-road')) map.removeLayer('delivery-incoming-road');
         if (map.getLayer('delivery-incoming-casing')) map.removeLayer('delivery-incoming-casing');
@@ -1004,16 +1016,21 @@ function MapView({
         const split = getDeliveryRouteSplit(v);
         const uniqueColors = getUniqueVehicleColor(v.id);
         const isSelected = v.id === selectedVehicleId;
+        const vLineColor = v.lineColor || uniqueColors.line;
+        const vGlowColor = v.glowColor || uniqueColors.glow;
+        const routeCoords = (split.roadPath && split.roadPath.length > 1)
+          ? split.roadPath
+          : (split.completedTrail && split.completedTrail.length > 1 ? split.completedTrail : []);
         return {
           type: 'Feature',
           geometry: {
             type: 'LineString',
-            coordinates: split.upcomingRoute,
+            coordinates: routeCoords,
           },
           properties: {
             vehicleId: v.id,
-            lineColor: v.lineColor || uniqueColors.line,
-            glowColor: v.glowColor || uniqueColors.glow,
+            lineColor: vLineColor,
+            glowColor: vGlowColor,
             isSelected: isSelected,
             hasSelection: hasSelection,
             status: v.status,
@@ -1029,7 +1046,7 @@ function MapView({
         },
       });
 
-      // Layer A: Ambient Glowing Halo Beneath Navigation Corridor
+      // Layer A: Ambient Glowing Halo Beneath Road Track (per-vehicle assigned glow color)
       map.addLayer({
         id: 'delivery-incoming-casing',
         type: 'line',
@@ -1043,26 +1060,26 @@ function MapView({
           'line-color': ['get', 'glowColor'],
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            8, ['case', ['get', 'isSelected'], 7.0, ['get', 'hasSelection'], 2.0, 4.0],
-            11, ['case', ['get', 'isSelected'], 9.5, ['get', 'hasSelection'], 2.5, 5.5],
-            14, ['case', ['get', 'isSelected'], 13.0, ['get', 'hasSelection'], 3.5, 8.0],
-            16, ['case', ['get', 'isSelected'], 16.0, ['get', 'hasSelection'], 4.5, 11.0],
+            8, ['case', ['get', 'isSelected'], 7.0, ['get', 'hasSelection'], 2.5, 4.5],
+            11, ['case', ['get', 'isSelected'], 9.5, ['get', 'hasSelection'], 3.0, 6.0],
+            14, ['case', ['get', 'isSelected'], 13.0, ['get', 'hasSelection'], 4.0, 8.5],
+            16, ['case', ['get', 'isSelected'], 16.0, ['get', 'hasSelection'], 5.0, 11.5],
           ],
           'line-opacity': [
             'case',
-            ['get', 'isSelected'], 0.85,
-            ['get', 'hasSelection'], 0.08,
-            0.35,
+            ['get', 'isSelected'], 0.9,
+            ['get', 'hasSelection'], 0.25,
+            0.5,
           ],
           'line-blur': [
             'case',
             ['get', 'isSelected'], 2.5,
-            1.0,
+            1.2,
           ],
         },
       });
 
-      // Layer B: Solid Google Maps / Apple Maps Navigation Road Ribbon (Dynamic per Vehicle Color, No Dashes)
+      // Layer B: Solid Road Ribbon strictly behind vehicle (100% per-vehicle assigned color, zero forward lines)
       map.addLayer({
         id: 'delivery-incoming-road',
         type: 'line',
@@ -1076,16 +1093,16 @@ function MapView({
           'line-color': ['get', 'lineColor'],
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            8, ['case', ['get', 'isSelected'], 4.5, ['get', 'hasSelection'], 1.4, 2.8],
-            11, ['case', ['get', 'isSelected'], 6.0, ['get', 'hasSelection'], 1.8, 3.8],
-            14, ['case', ['get', 'isSelected'], 8.5, ['get', 'hasSelection'], 2.4, 5.5],
-            16, ['case', ['get', 'isSelected'], 11.0, ['get', 'hasSelection'], 3.2, 7.5],
+            8, ['case', ['get', 'isSelected'], 4.5, ['get', 'hasSelection'], 1.8, 3.0],
+            11, ['case', ['get', 'isSelected'], 6.0, ['get', 'hasSelection'], 2.4, 4.2],
+            14, ['case', ['get', 'isSelected'], 8.5, ['get', 'hasSelection'], 3.0, 6.0],
+            16, ['case', ['get', 'isSelected'], 11.0, ['get', 'hasSelection'], 4.0, 8.0],
           ],
           'line-opacity': [
             'case',
             ['get', 'isSelected'], 1.0,
-            ['get', 'hasSelection'], 0.18,
-            0.75,
+            ['get', 'hasSelection'], 0.45,
+            0.88,
           ],
         },
       });
@@ -1126,18 +1143,21 @@ function MapView({
     const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
     const hasSelection = Boolean(selectedVehicleId);
 
-    // Individual authentic road lines for each active working vehicle
+    // Individual authentic road lines for each active working vehicle strictly behind vehicle back to Base Hospital
     const incomingFeatures = activeVehicles.map((v) => {
       const split = getDeliveryRouteSplit(v);
       const uniqueColors = getUniqueVehicleColor(v.id);
       const vColor = v.lineColor || uniqueColors.line;
       const vGlow = v.glowColor || uniqueColors.glow;
       const isSelected = v.id === selectedVehicleId;
+      const routeCoords = (split.roadPath && split.roadPath.length > 1)
+        ? split.roadPath
+        : (split.completedTrail && split.completedTrail.length > 1 ? split.completedTrail : []);
       return {
         type: 'Feature',
         geometry: {
           type: 'LineString',
-          coordinates: split.upcomingRoute,
+          coordinates: routeCoords,
         },
         properties: {
           vehicleId: v.id,
@@ -1155,10 +1175,10 @@ function MapView({
       .map((v) => {
         const uniqueColors = getUniqueVehicleColor(v.id);
         const vColor = v.lineColor || uniqueColors.line;
-        const isSelected = true;
-        const trailCoords = Array.isArray(v.trail) && v.trail.length > 1
-          ? v.trail
-          : getDeliveryRouteSplit(v).completedTrail;
+        const split = getDeliveryRouteSplit(v);
+        const trailCoords = (split.roadPath && split.roadPath.length > 1)
+          ? split.roadPath
+          : (split.completedTrail && split.completedTrail.length > 1 ? split.completedTrail : []);
         return {
           type: 'Feature',
           geometry: {
@@ -1168,7 +1188,7 @@ function MapView({
           properties: {
             vehicleId: v.id,
             lineColor: vColor,
-            isSelected: isSelected,
+            isSelected: true,
             hasSelection: hasSelection,
           },
         };
@@ -1239,6 +1259,8 @@ function MapView({
       updateZoomLOD();
       map.on('zoom', updateZoomLOD);
       map.on('zoom', checkTieredZoom);
+      map.on('zoomend', () => updateVehicleMarkers(map));
+      map.on('moveend', () => updateVehicleMarkers(map));
       addCustomLayers(map);
       updateBaseMarker(map);
       updateDistanceVectors(map);
@@ -1337,12 +1359,47 @@ function MapView({
 
     let anyMoved = false;
 
+    // Compute screen positions to detect horizontal card overlaps and assign non-colliding vertical shelves
+    const screenPositions = [];
+    vehicles.forEach((v) => {
+      const pos = [Number(v.lon || 0), Number(v.lat || 0)];
+      let pt = { x: 0, y: 0 };
+      try {
+        if (map && typeof map.project === 'function') {
+          pt = map.project(pos);
+        }
+      } catch (e) {}
+      screenPositions.push({ id: v.id, x: pt.x, y: pt.y });
+    });
+
+    const shelfMap = new Map();
+    // Sort west to east (by X coordinate)
+    const sorted = [...screenPositions].sort((a, b) => a.x - b.x);
+    for (let i = 0; i < sorted.length; i++) {
+      const curr = sorted[i];
+      let usedShelves = new Set();
+      // Check previous vehicles that are within horizontal pill width (240px) and vertical collision box (55px)
+      for (let j = 0; j < i; j++) {
+        const other = sorted[j];
+        if (Math.abs(curr.x - other.x) < 240 && Math.abs(curr.y - other.y) < 55) {
+          usedShelves.add(shelfMap.get(other.id) || 0);
+        }
+      }
+      let shelf = 0;
+      while (usedShelves.has(shelf)) {
+        shelf++;
+      }
+      shelfMap.set(curr.id, shelf);
+    }
+
     vehicles.forEach((v) => {
       const isSelected = selectedVehicleId === v.id;
       const uniqueColors = getUniqueVehicleColor(v.id);
       const vColor = v.lineColor || uniqueColors.line;
       const liveDist = getLiveDistanceKm(v);
       const pos = [Number(v.lon || 0), Number(v.lat || 0)];
+      const shelf = shelfMap.get(v.id) || 0;
+      const shelfOffsetY = shelf * 30;
       
       const isGap = Boolean(v.isSignalGap);
       const isParked = Boolean(v.isParked);
@@ -1386,20 +1443,24 @@ function MapView({
         el.className = 'select-none pointer-events-auto will-change-transform';
         
         el.innerHTML = `
-          <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
-            <!-- Complete Apple Capsule Tag: ID • Driver • Speed • Camp • Distance (Always Visible, Zero Blink) -->
-            <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
-              style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
-              <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
-              <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
-              <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-              <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
-              <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-              <span class="marker-speed">${speedStr}</span>
-              <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-              <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
-              <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-              <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+          <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
+            <!-- Complete Apple Capsule Tag: ID • Driver • Speed • Camp • Distance (Always Visible, Zero Overlap Shelves) -->
+            <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1);">
+              <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
+                style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
+                <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
+                <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
+                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
+                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                <span class="marker-speed">${speedStr}</span>
+                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+              </div>
+              <!-- Vertical Hairline Leader Stem Connecting Elevated Card to Ambulance -->
+              <div class="marker-shelf-stem w-[1.5px] transition-all duration-250" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
             </div>
 
             <!-- 3D Isometric Ambulance (Always Visible, Zero Strobe/Blink, Hardware accelerated) -->
@@ -1423,7 +1484,9 @@ function MapView({
           marker,
           element: el,
           outerWrapper: el.querySelector('.marker-outer-wrapper'),
+          capsuleContainer: el.querySelector('.marker-capsule-container'),
           capsuleText: el.querySelector('.marker-capsule-text'),
+          shelfStem: el.querySelector('.marker-shelf-stem'),
           dotEl: el.querySelector('.marker-dot'),
           idEl: el.querySelector('.marker-id'),
           driverEl: el.querySelector('.marker-driver'),
@@ -1440,6 +1503,7 @@ function MapView({
           prevBadgeColor: badgeColor,
           prevSelected: isSelected,
           prevDark: isDark,
+          prevShelfOffsetY: shelfOffsetY,
           currentPos: pos,
           startPos: pos,
           targetPos: pos,
@@ -1456,19 +1520,22 @@ function MapView({
         if (markerObj.prevDark !== isDark) {
           // Re-render only when switching dark/light theme
           markerObj.element.innerHTML = `
-            <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
-              <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
-                style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
-                <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
-                <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
-                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-                <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
-                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-                <span class="marker-speed">${speedStr}</span>
-                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-                <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
-                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-                <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+            <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
+              <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1);">
+                <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
+                  style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
+                  <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
+                  <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
+                  <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                  <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
+                  <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                  <span class="marker-speed">${speedStr}</span>
+                  <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                  <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+                  <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                  <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+                </div>
+                <div class="marker-shelf-stem w-[1.5px] transition-all duration-250" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
               </div>
               <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${markerObj.displayAngle || targetBearing}deg); will-change: transform; transition: none;">
                 <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400 dark:ring-cyan-400 shadow-[0_0_22px_rgba(56,189,248,0.7)] pointer-events-none transition-opacity duration-300 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}"></div>
@@ -1477,7 +1544,9 @@ function MapView({
             </div>
           `;
           markerObj.outerWrapper = markerObj.element.querySelector('.marker-outer-wrapper');
+          markerObj.capsuleContainer = markerObj.element.querySelector('.marker-capsule-container');
           markerObj.capsuleText = markerObj.element.querySelector('.marker-capsule-text');
+          markerObj.shelfStem = markerObj.element.querySelector('.marker-shelf-stem');
           markerObj.dotEl = markerObj.element.querySelector('.marker-dot');
           markerObj.idEl = markerObj.element.querySelector('.marker-id');
           markerObj.driverEl = markerObj.element.querySelector('.marker-driver');
@@ -1493,7 +1562,21 @@ function MapView({
           markerObj.prevDist = distStr;
           markerObj.prevStatusText = statusBadgeText;
           markerObj.prevStatusClass = statusBadgeClass;
+          markerObj.prevShelfOffsetY = shelfOffsetY;
         } else {
+          // In-Place Vertical Shelf Layout Update (Zero Overlap)
+          if (markerObj.capsuleContainer && markerObj.prevShelfOffsetY !== shelfOffsetY) {
+            markerObj.capsuleContainer.style.transform = `translateY(-${shelfOffsetY}px)`;
+            if (markerObj.shelfStem) {
+              markerObj.shelfStem.style.height = `${shelfOffsetY}px`;
+              markerObj.shelfStem.style.opacity = shelfOffsetY > 0 ? '0.8' : '0';
+            }
+            if (markerObj.outerWrapper && !isSelected) {
+              markerObj.outerWrapper.style.zIndex = `${20 + shelf}`;
+            }
+            markerObj.prevShelfOffsetY = shelfOffsetY;
+          }
+
           // In-Place Text Updates (100% Flicker-Free, 0ms overhead)
           if (markerObj.driverEl && markerObj.prevDriver !== driverName) {
             markerObj.driverEl.textContent = driverName;

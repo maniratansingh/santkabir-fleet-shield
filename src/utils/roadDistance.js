@@ -230,6 +230,15 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     roadCoords = allVillagesRoadRoutes['Harraiya Gram']?.coordinates || roadRoutesData['CAMP-HARRAIYA']?.coordinates || [baseCoord, vehRawCoord];
   }
 
+  // Ensure roadCoords orientation starts at Sant Kabir Eye Hospital Base in Basti
+  if (roadCoords && roadCoords.length > 1) {
+    const dStart = haversineKm(roadCoords[0], baseCoord);
+    const dEnd = haversineKm(roadCoords[roadCoords.length - 1], baseCoord);
+    if (dEnd < dStart) {
+      roadCoords = [...roadCoords].reverse();
+    }
+  }
+
   // Project vehicle location accurately onto selected roadCoords
   if (roadCoords.length > 1) {
     let minD = Infinity;
@@ -251,9 +260,12 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
   }
   roadDistFromBase += haversineKm(roadCoords[bestIdx], bestProj);
 
-  // 3. Assemble road navigation route (from Base Hospital to vehicle)
-  // Every single waypoint adheres to asphalt road geometries
+  // 3. Assemble road navigation route (ALWAYS BEHIND: from Base Hospital in Basti to current vehicle location)
+  // Strictly follows asphalt road geometries — NEVER projects forward into an imaginary destination
   const roadPath = [];
+  if (haversineKm(baseCoord, roadCoords[0]) > 0.05) {
+    roadPath.push(baseCoord);
+  }
   for (let i = 0; i <= bestIdx; i++) {
     roadPath.push(roadCoords[i]);
   }
@@ -263,23 +275,13 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     roadPath.push(vehRawCoord);
   }
 
-  // Complete turn-by-turn road corridor between Base Hospital and Destination Camp
-  const fullRoute = roadCoords;
   const isReturning = vehicle.status === 'returning';
-  const upcomingRoute = roadCoords;
 
-  // Completed trail breadcrumbs behind vehicle
-  let completedTrail = [];
-  if (Array.isArray(vehicle.trail) && vehicle.trail.length > 1) {
-    completedTrail = vehicle.trail;
-  } else {
-    const startIdx = Math.max(0, bestIdx - 12);
-    completedTrail = roadCoords.slice(startIdx, bestIdx + 1);
-    completedTrail.push(bestProj);
-  }
+  // Completed road trail behind vehicle connecting back to Base Hospital
+  const completedTrail = roadPath;
 
-  const midIdx = Math.floor(roadCoords.length / 2);
-  const midPoint = roadCoords[midIdx] || vehRawCoord;
+  const midIdx = Math.floor(roadPath.length / 2);
+  const midPoint = roadPath[midIdx] || vehRawCoord;
 
   // Next road bearing
   const nextCoord = roadCoords[Math.min(bestIdx + 1, roadCoords.length - 1)];
@@ -287,9 +289,10 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
   const bearing = isReturning ? (roadBearing + 180) % 360 : roadBearing;
 
   return {
-    fullRoute,
-    upcomingRoute,
-    completedTrail,
+    roadPath,
+    fullRoute: roadPath,
+    upcomingRoute: [], // Zero forward projection — road ahead is clean
+    completedTrail: roadPath,
     roadDistFromBaseKm: Math.round(roadDistFromBase * 10) / 10,
     snappedCoord: bestProj,
     bearing,
