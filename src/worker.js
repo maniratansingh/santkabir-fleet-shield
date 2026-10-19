@@ -1700,17 +1700,8 @@ export default {
         };
       });
 
-      // Self-Healing Fleet Engine:
-      // Dynamically ensures all active fleet ambulances are live (e.g. all 17 ambulances)
-      const targetCount = ACTIVE_FLEET.length;
-      let list = reportedList;
-      if (list.length === 0) {
-        list = simulateFleetAtTime(ACTIVE_FLEET, now);
-      } else if (list.length < targetCount) {
-        const existingIds = new Set(list.map(v => v.id));
-        const simVehicles = simulateFleetAtTime(ACTIVE_FLEET, now).filter(v => !existingIds.has(v.id));
-        list = [...list, ...simVehicles];
-      }
+      // Clean Live Telemetry Mode: Return reported live telemetry (0 dummy data)
+      const list = reportedList;
 
       return new Response(JSON.stringify({
         success: true,

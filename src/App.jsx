@@ -15,9 +15,9 @@ import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
 
-  // Dynamic active Purvanchal ambulances (Adapts to any fleet size)
+  // Clean Live Telemetry Mode: Starts as empty blank sheet (0 active cars)
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [vehicles, setVehicles] = useState(() => simulateFleetAtTime(ACTIVE_FLEET, Date.now()));
+  const [vehicles, setVehicles] = useState([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
@@ -27,7 +27,7 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
-  const fleetStoreRef = useRef(new Map(simulateFleetAtTime(ACTIVE_FLEET, Date.now()).map(v => [v.id, v])));
+  const fleetStoreRef = useRef(new Map());
 
   // Theme Management (Light mode default for clinical Apple aesthetic)
   const [theme, setTheme] = useState(() => {
@@ -143,12 +143,13 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [isAutoTour]);
 
-  // Fetch real data from Cloudflare API with True 2-Way Sync & Offline Autonomous Simulation
+  // Fetch real data from Cloudflare API with True 2-Way Sync (Clean Blank Sheet Default)
   useEffect(() => {
     const fetchRealData = async () => {
+      if (isDemoMode) return; // In demo mode, local simulation controls vehicles
+
       const now = Date.now();
       const store = fleetStoreRef.current;
-      let hasLiveUpdate = false;
 
       try {
         const vehRes = await fetch('/api/vehicles').catch(() => null);
@@ -157,16 +158,14 @@ export default function App() {
           const liveList = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
           const liveIds = new Set(liveList.map(v => v.id));
 
-          // 1. Clean sync: Only prune vehicles if server returns a full fleet
-          if (liveList.length >= ACTIVE_FLEET.length) {
-            for (const storedId of Array.from(store.keys())) {
-              if (!liveIds.has(storedId)) {
-                store.delete(storedId);
-              }
+          // 1. Clean sync: Always synchronize store exactly with what server reports
+          for (const storedId of Array.from(store.keys())) {
+            if (!liveIds.has(storedId)) {
+              store.delete(storedId);
             }
           }
 
-          // 2. Upsert live and blind-spot vehicles efficiently
+          // 2. Upsert reported vehicles
           liveList.forEach(liveV => {
             const existing = store.get(liveV.id) || {};
             const colors = getUniqueVehicleColor(liveV.id);
@@ -191,36 +190,23 @@ export default function App() {
               lastSeen: liveV.lastSeen || now,
             });
           });
-          hasLiveUpdate = true;
+
+          // Sort and update state
+          setVehicles(
+            Array.from(store.values()).sort((a, b) => 
+              String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+            )
+          );
         }
       } catch (err) {
-        // Backend API offline or static asset mode
+        // Backend API offline
       }
-
-      // 3. Fallback / Static Deploy Mode: If no server update, smoothly simulate fleet along OSM routes
-      if (!hasLiveUpdate) {
-        const simulated = simulateFleetAtTime(ACTIVE_FLEET, now);
-        simulated.forEach(simV => {
-          const existing = store.get(simV.id) || {};
-          store.set(simV.id, {
-            ...existing,
-            ...simV,
-          });
-        });
-      }
-
-      // Stable alphanumeric sorting across entire active fleet (AMB-01 through AMB-17)
-      setVehicles(
-        Array.from(store.values()).sort((a, b) => 
-          String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
-        )
-      );
     };
 
     fetchRealData();
     const interval = setInterval(fetchRealData, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isDemoMode]);
 
   // Subscribe to background-resolved rural turn-by-turn routes (OSM)
   useEffect(() => {
@@ -267,8 +253,16 @@ export default function App() {
   const handleToggleDemoMode = useCallback(() => {
     setIsDemoMode(prev => {
       const next = !prev;
-      setVehicles(simulateFleetAtTime(ACTIVE_FLEET, Date.now()));
-      showToast(next ? '⚡ High-Frequency Telemetry Active' : '📍 Telemetry Standard Mode', 'info');
+      if (next) {
+        const demoFleet = simulateFleetAtTime(ACTIVE_FLEET, Date.now());
+        fleetStoreRef.current = new Map(demoFleet.map(v => [v.id, v]));
+        setVehicles(demoFleet);
+        showToast('⚡ Demo Mode: Loaded 17 Simulated Purvanchal Ambulances', 'info');
+      } else {
+        fleetStoreRef.current.clear();
+        setVehicles([]);
+        showToast('🧹 Clean Live Mode: Empty Blank Sheet (Real Telemetry Only)', 'info');
+      }
       return next;
     });
   }, []);
