@@ -312,7 +312,8 @@ export default function App() {
   const handleFitAll = useCallback(() => {
     setSelectedVehicleId(null);
     setActionTrigger({ type: 'fitAll', timestamp: Date.now() });
-    showToast('Overview: 10 Ambulances & Base Hospital', 'info');
+    const count = vehiclesRef.current?.length || 0;
+    showToast(count > 0 ? `Overview: ${count} Ambulances & Base Hospital` : 'Overview: Hospital Base Standby', 'info');
   }, []);
 
   const handleResetNorth = useCallback(() => {

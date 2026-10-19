@@ -1379,17 +1379,17 @@ function MapView({
       const curr = sorted[i];
       let shelf = 0;
       let collides = true;
-      while (collides && shelf < 8) {
+      while (collides && shelf < 4) {
         collides = false;
-        const currCardY = curr.y - shelf * 34;
+        const currCardY = curr.y - shelf * 32;
         for (let j = 0; j < i; j++) {
           const other = sorted[j];
           const otherShelf = shelfMap.get(other.id) || 0;
-          const otherCardY = other.y - otherShelf * 34;
+          const otherCardY = other.y - otherShelf * 32;
           const xDist = Math.abs(curr.x - other.x);
           const yDist = Math.abs(currCardY - otherCardY);
-          // Complete card width is ~360px (180px left/right), height is ~28px
-          if (xDist < 360 && yDist < 32) {
+          // Realistic card tag width is ~260px, clearance height ~28px
+          if (xDist < 260 && yDist < 28) {
             collides = true;
             break;
           }
