@@ -25,6 +25,7 @@ const MAP_STYLES = {
             'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
           ],
           tileSize: 256,
+          maxzoom: 16,
           attribution: 'Esri, HERE, Garmin, © OpenStreetMap contributors',
         },
         'esri-light-labels': {
@@ -33,6 +34,7 @@ const MAP_STYLES = {
             'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
           ],
           tileSize: 256,
+          maxzoom: 16,
         },
       },
       layers: [
@@ -41,14 +43,14 @@ const MAP_STYLES = {
           type: 'raster',
           source: 'esri-light-base',
           minzoom: 0,
-          maxzoom: 19,
+          maxzoom: 22,
         },
         {
           id: 'esri-light-labels-layer',
           type: 'raster',
           source: 'esri-light-labels',
           minzoom: 0,
-          maxzoom: 19,
+          maxzoom: 22,
         },
       ],
     },
@@ -65,6 +67,7 @@ const MAP_STYLES = {
             'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
           ],
           tileSize: 256,
+          maxzoom: 16,
           attribution: 'Esri, HERE, Garmin, © OpenStreetMap contributors',
         },
         'esri-dark-labels': {
@@ -73,6 +76,7 @@ const MAP_STYLES = {
             'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
           ],
           tileSize: 256,
+          maxzoom: 16,
         },
       },
       layers: [
@@ -81,14 +85,14 @@ const MAP_STYLES = {
           type: 'raster',
           source: 'esri-dark-base',
           minzoom: 0,
-          maxzoom: 19,
+          maxzoom: 22,
         },
         {
           id: 'esri-dark-labels-layer',
           type: 'raster',
           source: 'esri-dark-labels',
           minzoom: 0,
-          maxzoom: 19,
+          maxzoom: 22,
         },
       ],
     },
@@ -105,6 +109,7 @@ const MAP_STYLES = {
             'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           ],
           tileSize: 256,
+          maxzoom: 18,
           attribution: 'Source: Esri, Maxar, Earthstar Geographics',
         },
         'esri-boundaries': {
@@ -113,6 +118,7 @@ const MAP_STYLES = {
             'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
           ],
           tileSize: 256,
+          maxzoom: 18,
         },
       },
       layers: [
@@ -121,14 +127,14 @@ const MAP_STYLES = {
           type: 'raster',
           source: 'esri-imagery',
           minzoom: 0,
-          maxzoom: 19,
+          maxzoom: 22,
         },
         {
           id: 'esri-boundaries-layer',
           type: 'raster',
           source: 'esri-boundaries',
           minzoom: 0,
-          maxzoom: 19,
+          maxzoom: 22,
         },
       ],
     },
@@ -145,6 +151,7 @@ const MAP_STYLES = {
             'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
           ],
           tileSize: 256,
+          maxzoom: 19,
           attribution: 'Esri, HERE, Garmin, USGS, © OpenStreetMap contributors',
         },
       },
@@ -154,7 +161,7 @@ const MAP_STYLES = {
           type: 'raster',
           source: 'esri-streets',
           minzoom: 0,
-          maxzoom: 19,
+          maxzoom: 22,
         },
       ],
     },
@@ -772,7 +779,6 @@ function MapView({
         source: 'purvanchal-tier2-source',
         filter: ['==', '$type', 'LineString'],
         minzoom: 10.8,
-        maxzoom: 18,
         layout: {
           'line-cap': 'round',
           'line-join': 'round',
@@ -795,7 +801,6 @@ function MapView({
         source: 'purvanchal-tier2-source',
         filter: ['==', '$type', 'Point'],
         minzoom: 11.0,
-        maxzoom: 18,
         paint: {
           'circle-radius': [
             'interpolate', ['linear'], ['zoom'],
@@ -821,7 +826,6 @@ function MapView({
         source: 'purvanchal-tier2-source',
         filter: ['==', '$type', 'Point'],
         minzoom: 11.5,
-        maxzoom: 18,
         layout: {
           'text-field': ['get', 'name'],
           'text-font': ['Open Sans Semibold'],
@@ -862,7 +866,6 @@ function MapView({
         source: 'purvanchal-tier3-source',
         filter: ['==', '$type', 'LineString'],
         minzoom: 13.5,
-        maxzoom: 19,
         paint: {
           'line-color': isDark ? '#334155' : '#CBD5E1',
           'line-width': [
@@ -881,7 +884,6 @@ function MapView({
         source: 'purvanchal-tier3-source',
         filter: ['==', '$type', 'Point'],
         minzoom: 13.5,
-        maxzoom: 19,
         paint: {
           'circle-radius': [
             'interpolate', ['linear'], ['zoom'],
@@ -901,7 +903,6 @@ function MapView({
         source: 'purvanchal-tier3-source',
         filter: ['==', '$type', 'Point'],
         minzoom: 13.8,
-        maxzoom: 19,
         layout: {
           'text-field': ['get', 'name'],
           'text-font': ['Open Sans Semibold'],
