@@ -38568,7 +38568,7 @@ function getRoadHeading(coord1, coord2) {
   const brng = Math.atan2(y, x) * 180 / Math.PI;
   return Math.round((brng + 360) % 360);
 }
-var INITIAL_VEHICLES = Array.from({ length: 35 }).map((_, i) => {
+var INITIAL_VEHICLES = Array.from({ length: 10 }).map((_, i) => {
   const corridor = CORRIDOR_CONFIGS[i % CORRIDOR_CONFIGS.length];
   const wps = roadRoutes_default[corridor.id]?.coordinates || [];
   const driver = DRIVERS[i % DRIVERS.length];
