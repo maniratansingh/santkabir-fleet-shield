@@ -217,9 +217,9 @@ export default function App() {
             lineColor: liveV.lineColor || existing.lineColor || colors.line,
             glowColor: liveV.glowColor || existing.glowColor || colors.glow,
             driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
-            villageName: liveV.villageName || existing.villageName || 'Base Hospital Standby',
-            villageBlock: liveV.villageBlock || existing.villageBlock || 'Khalilabad',
-            villageDistrict: liveV.villageDistrict || existing.villageDistrict || 'Sant Kabir Nagar',
+            villageName: liveV.villageName || existing.villageName || 'Sant Kabir Eye Hospital Base (Basti)',
+            villageBlock: liveV.villageBlock || existing.villageBlock || 'Basti Sadar',
+            villageDistrict: liveV.villageDistrict || existing.villageDistrict || 'Basti',
             villageBadge: liveV.villageBadge || existing.villageBadge || 'Base Station',
             villageLabel: liveV.villageLabel || existing.villageLabel || 'Sant Kabir Eye Hospital',
             highwayName: liveV.highwayName || existing.highwayName || liveV.villageBadge || 'Highway Link',
@@ -312,7 +312,7 @@ export default function App() {
   const handleFitAll = useCallback(() => {
     setSelectedVehicleId(null);
     setActionTrigger({ type: 'fitAll', timestamp: Date.now() });
-    showToast('Overview: 17 Ambulances & Base Station', 'info');
+    showToast('Overview: 10 Ambulances & Base Hospital', 'info');
   }, []);
 
   const handleResetNorth = useCallback(() => {
@@ -323,7 +323,7 @@ export default function App() {
   const handleCenterBase = useCallback(() => {
     setSelectedVehicleId(null);
     setActionTrigger({ type: 'centerBase', timestamp: Date.now() });
-    showToast('Camera centered on Sant Kabir Hospital Base (Khalilabad)', 'info');
+    showToast('Camera centered on Sant Kabir Hospital Base (Basti)', 'info');
   }, []);
 
   const handleToggleAutoTour = useCallback(() => {
@@ -341,7 +341,7 @@ export default function App() {
         const demoFleet = simulateFleetAtTime(ACTIVE_FLEET, Date.now());
         fleetStoreRef.current = new Map(demoFleet.map(v => [v.id, v]));
         setVehicles(demoFleet);
-        showToast('⚡ Demo Mode: Loaded 17 Simulated Purvanchal Ambulances', 'info');
+        showToast('⚡ Demo Mode: Loaded 10 Active Purvanchal Ambulances', 'info');
       } else {
         fleetStoreRef.current.clear();
         setVehicles([]);

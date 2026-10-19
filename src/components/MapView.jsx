@@ -1377,17 +1377,26 @@ function MapView({
     const sorted = [...screenPositions].sort((a, b) => a.x - b.x);
     for (let i = 0; i < sorted.length; i++) {
       const curr = sorted[i];
-      let usedShelves = new Set();
-      // Check previous vehicles that are within horizontal pill width (240px) and vertical collision box (55px)
-      for (let j = 0; j < i; j++) {
-        const other = sorted[j];
-        if (Math.abs(curr.x - other.x) < 240 && Math.abs(curr.y - other.y) < 55) {
-          usedShelves.add(shelfMap.get(other.id) || 0);
-        }
-      }
       let shelf = 0;
-      while (usedShelves.has(shelf)) {
-        shelf++;
+      let collides = true;
+      while (collides && shelf < 8) {
+        collides = false;
+        const currCardY = curr.y - shelf * 34;
+        for (let j = 0; j < i; j++) {
+          const other = sorted[j];
+          const otherShelf = shelfMap.get(other.id) || 0;
+          const otherCardY = other.y - otherShelf * 34;
+          const xDist = Math.abs(curr.x - other.x);
+          const yDist = Math.abs(currCardY - otherCardY);
+          // Complete card width is ~360px (180px left/right), height is ~28px
+          if (xDist < 360 && yDist < 32) {
+            collides = true;
+            break;
+          }
+        }
+        if (collides) {
+          shelf++;
+        }
       }
       shelfMap.set(curr.id, shelf);
     }

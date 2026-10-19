@@ -134,8 +134,8 @@ export function simulateFleetAtTime(fleet, now = Date.now()) {
     const baseDwellSec = 10; // 10s turnaround at base hospital
     const cycleSec = 2 * oneWaySec + campDwellSec + baseDwellSec;
 
-    // Phase offset so all 17 ambulances are distributed nicely along their distinct corridors
-    const offsetSec = (idx * 67.3) % cycleSec;
+    // Distribute all active ambulances evenly across their distinct road corridors
+    const offsetSec = (idx / (fleet.length || 10)) * cycleSec;
     const elapsedSec = ((now / 1000) + offsetSec) % cycleSec;
 
     let targetDistMeters = 0;
