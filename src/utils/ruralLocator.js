@@ -45,20 +45,20 @@ export function getNearestRuralLocation(lat, lon) {
     return locationCache.get(cacheKey);
   }
 
-  // Check proximity to Sant Kabir Hospital Base (Khalilabad)
-  const baseLat = BASE_HOSPITAL?.lat || 26.779703;
-  const baseLon = BASE_HOSPITAL?.lon || 83.072184;
+  // Check proximity to Sant Kabir Hospital Base (Basti)
+  const baseLat = BASE_HOSPITAL?.lat || 26.797313;
+  const baseLon = BASE_HOSPITAL?.lon || 82.718401;
   const distFromBase = calculateDistKm(lat, lon, baseLat, baseLon);
 
   if (distFromBase <= 1.2) {
     const baseResult = {
       village: 'Sant Kabir Base Hospital',
-      block: 'Khalilabad',
-      district: 'Sant Kabir Nagar',
+      block: 'Basti Sadar',
+      district: 'Basti',
       distKm: distFromBase,
       isCamp: false,
       badge: 'Base Hospital',
-      label: 'Sant Kabir Eye Hospital (Khalilabad Base)',
+      label: 'Sant Kabir Eye Hospital (Basti Base)',
     };
     locationCache.set(cacheKey, baseResult);
     return baseResult;

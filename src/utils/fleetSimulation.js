@@ -4,8 +4,8 @@
 
 import { getNearestRuralLocation } from './ruralLocator';
 
-const BASE_LAT = 26.779703;
-const BASE_LON = 83.072184;
+const BASE_LAT = 26.797313;
+const BASE_LON = 82.718401;
 
 export function calculateBearing(c1, c2) {
   if (!c1 || !c2) return 0;

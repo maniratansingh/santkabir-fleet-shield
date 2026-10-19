@@ -204,7 +204,7 @@ function DynamicIsland({
               </span>
             </div>
             <a 
-              href={BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/NDr27v6mEnooeBE99'} 
+              href={BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/6eur1NCPRzC93sDG9'} 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-[11px] font-mono text-sky-600 dark:text-cyan-400 hover:underline flex items-center gap-1 font-semibold"

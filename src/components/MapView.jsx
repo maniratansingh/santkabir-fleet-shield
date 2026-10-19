@@ -7,6 +7,7 @@ import { getDeliveryRouteSplit, getAllRoadCorridors } from '../utils/roadDistanc
 import { getNearestRuralLocation } from '../utils/ruralLocator';
 import { getUniqueVehicleColor } from '../utils/colors';
 import ruralVillages from '../data/ruralVillages.json';
+import { loadTieredGeoJson } from '../utils/tieredMapCache';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
@@ -338,6 +339,40 @@ function MapView({
   const vehiclesRef = useRef(vehicles);
   const prevSelectedIdRef = useRef(null);
   const animFrameRef = useRef(null);
+  const tier2DataRef = useRef(null);
+  const tier3DataRef = useRef(null);
+  const isFetchingTier2Ref = useRef(false);
+  const isFetchingTier3Ref = useRef(false);
+
+  const checkTieredZoom = () => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const z = map.getZoom();
+
+    if (z >= 11.0 && !tier2DataRef.current && !isFetchingTier2Ref.current) {
+      isFetchingTier2Ref.current = true;
+      loadTieredGeoJson('tier2', '/data/tiered/purvanchal-tier2.geojson').then((data) => {
+        isFetchingTier2Ref.current = false;
+        if (data && mapRef.current) {
+          tier2DataRef.current = data;
+          const src = mapRef.current.getSource('purvanchal-tier2-source');
+          if (src) src.setData(data);
+        }
+      });
+    }
+
+    if (z >= 13.5 && !tier3DataRef.current && !isFetchingTier3Ref.current) {
+      isFetchingTier3Ref.current = true;
+      loadTieredGeoJson('tier3', '/data/tiered/purvanchal-tier3.geojson').then((data) => {
+        isFetchingTier3Ref.current = false;
+        if (data && mapRef.current) {
+          tier3DataRef.current = data;
+          const src = mapRef.current.getSource('purvanchal-tier3-source');
+          if (src) src.setData(data);
+        }
+      });
+    }
+  };
 
   useEffect(() => {
     vehiclesRef.current = vehicles;
@@ -535,6 +570,16 @@ function MapView({
 
     // Clean up previous custom layers before switching
     try {
+      if (map.getLayer('purvanchal-tier3-labels')) map.removeLayer('purvanchal-tier3-labels');
+      if (map.getLayer('purvanchal-tier3-dots')) map.removeLayer('purvanchal-tier3-dots');
+      if (map.getLayer('purvanchal-tier3-paths')) map.removeLayer('purvanchal-tier3-paths');
+      if (map.getSource('purvanchal-tier3-source')) map.removeSource('purvanchal-tier3-source');
+
+      if (map.getLayer('purvanchal-tier2-labels')) map.removeLayer('purvanchal-tier2-labels');
+      if (map.getLayer('purvanchal-tier2-dots')) map.removeLayer('purvanchal-tier2-dots');
+      if (map.getLayer('purvanchal-tier2-roads')) map.removeLayer('purvanchal-tier2-roads');
+      if (map.getSource('purvanchal-tier2-source')) map.removeSource('purvanchal-tier2-source');
+
       if (map.getLayer('purvanchal-village-labels')) map.removeLayer('purvanchal-village-labels');
       if (map.getLayer('purvanchal-village-dots')) map.removeLayer('purvanchal-village-dots');
       if (map.getSource('purvanchal-villages')) map.removeSource('purvanchal-villages');
@@ -558,6 +603,7 @@ function MapView({
       updateBaseMarker(map);
       updateDistanceVectors(map);
       updateVehicleMarkers(map);
+      checkTieredZoom();
     });
 
     map.setStyle(MAP_STYLES[styleKey].style);
@@ -703,6 +749,176 @@ function MapView({
           'text-color': isDark ? '#E2E8F0' : '#1E293B',
           'text-halo-color': isDark ? '#090D16' : '#FFFFFF',
           'text-halo-width': 2,
+          'text-halo-blur': 0.5,
+        },
+      });
+
+      // Tier 2: Purvanchal Panchayats, Health Centers (CHCs/PHCs) & Secondary MDR Roads (Lazy loaded z >= 11.0)
+      if (map.getSource('purvanchal-tier2-source')) {
+        if (map.getLayer('purvanchal-tier2-labels')) map.removeLayer('purvanchal-tier2-labels');
+        if (map.getLayer('purvanchal-tier2-dots')) map.removeLayer('purvanchal-tier2-dots');
+        if (map.getLayer('purvanchal-tier2-roads')) map.removeLayer('purvanchal-tier2-roads');
+        map.removeSource('purvanchal-tier2-source');
+      }
+
+      map.addSource('purvanchal-tier2-source', {
+        type: 'geojson',
+        data: tier2DataRef.current || { type: 'FeatureCollection', features: [] },
+      });
+
+      map.addLayer({
+        id: 'purvanchal-tier2-roads',
+        type: 'line',
+        source: 'purvanchal-tier2-source',
+        filter: ['==', '$type', 'LineString'],
+        minzoom: 10.8,
+        maxzoom: 18,
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': isDark ? '#475569' : '#94A3B8',
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            11, 1.2,
+            13, 2.0,
+            16, 3.8,
+          ],
+          'line-opacity': 0.7,
+        },
+      });
+
+      map.addLayer({
+        id: 'purvanchal-tier2-dots',
+        type: 'circle',
+        source: 'purvanchal-tier2-source',
+        filter: ['==', '$type', 'Point'],
+        minzoom: 11.0,
+        maxzoom: 18,
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            11, 2.2,
+            13, 3.5,
+            15, 5.0,
+          ],
+          'circle-color': [
+            'case',
+            ['==', ['get', 'type'], 'chc'], '#10B981',
+            ['==', ['get', 'type'], 'phc'], '#06B6D4',
+            isDark ? '#38BDF8' : '#0284C7',
+          ],
+          'circle-stroke-width': 1.2,
+          'circle-stroke-color': isDark ? '#0F172A' : '#FFFFFF',
+          'circle-opacity': 0.85,
+        },
+      });
+
+      map.addLayer({
+        id: 'purvanchal-tier2-labels',
+        type: 'symbol',
+        source: 'purvanchal-tier2-source',
+        filter: ['==', '$type', 'Point'],
+        minzoom: 11.5,
+        maxzoom: 18,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            11.5, 9.5,
+            14, 11,
+          ],
+          'text-offset': [0, 0.75],
+          'text-anchor': 'top',
+          'text-optional': true,
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': isDark ? '#CBD5E1' : '#334155',
+          'text-halo-color': isDark ? '#090D16' : '#FFFFFF',
+          'text-halo-width': 1.8,
+          'text-halo-blur': 0.5,
+        },
+      });
+
+      // Tier 3: Micro-Hamlets, Purvas, and Village Link Paths (Lazy loaded z >= 13.5)
+      if (map.getSource('purvanchal-tier3-source')) {
+        if (map.getLayer('purvanchal-tier3-labels')) map.removeLayer('purvanchal-tier3-labels');
+        if (map.getLayer('purvanchal-tier3-dots')) map.removeLayer('purvanchal-tier3-dots');
+        if (map.getLayer('purvanchal-tier3-paths')) map.removeLayer('purvanchal-tier3-paths');
+        map.removeSource('purvanchal-tier3-source');
+      }
+
+      map.addSource('purvanchal-tier3-source', {
+        type: 'geojson',
+        data: tier3DataRef.current || { type: 'FeatureCollection', features: [] },
+      });
+
+      map.addLayer({
+        id: 'purvanchal-tier3-paths',
+        type: 'line',
+        source: 'purvanchal-tier3-source',
+        filter: ['==', '$type', 'LineString'],
+        minzoom: 13.5,
+        maxzoom: 19,
+        paint: {
+          'line-color': isDark ? '#334155' : '#CBD5E1',
+          'line-width': [
+            'interpolate', ['linear'], ['zoom'],
+            13.5, 0.8,
+            16, 2.0,
+          ],
+          'line-dasharray': [2, 2],
+          'line-opacity': 0.65,
+        },
+      });
+
+      map.addLayer({
+        id: 'purvanchal-tier3-dots',
+        type: 'circle',
+        source: 'purvanchal-tier3-source',
+        filter: ['==', '$type', 'Point'],
+        minzoom: 13.5,
+        maxzoom: 19,
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            13.5, 1.8,
+            16, 3.2,
+          ],
+          'circle-color': isDark ? '#94A3B8' : '#64748B',
+          'circle-stroke-width': 1.0,
+          'circle-stroke-color': isDark ? '#020617' : '#FFFFFF',
+          'circle-opacity': 0.8,
+        },
+      });
+
+      map.addLayer({
+        id: 'purvanchal-tier3-labels',
+        type: 'symbol',
+        source: 'purvanchal-tier3-source',
+        filter: ['==', '$type', 'Point'],
+        minzoom: 13.8,
+        maxzoom: 19,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            13.8, 8.5,
+            16, 10,
+          ],
+          'text-offset': [0, 0.6],
+          'text-anchor': 'top',
+          'text-optional': true,
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': isDark ? '#94A3B8' : '#64748B',
+          'text-halo-color': isDark ? '#090D16' : '#FFFFFF',
+          'text-halo-width': 1.5,
           'text-halo-blur': 0.5,
         },
       });
@@ -1012,10 +1228,12 @@ function MapView({
       map.resize();
       updateZoomLOD();
       map.on('zoom', updateZoomLOD);
+      map.on('zoom', checkTieredZoom);
       addCustomLayers(map);
       updateBaseMarker(map);
       updateDistanceVectors(map);
       updateVehicleMarkers(map);
+      checkTieredZoom();
 
       setTimeout(() => {
         map.resize();
@@ -1075,8 +1293,8 @@ function MapView({
         isDark ? 'bg-slate-950/90 border border-white/10 text-white' : 'bg-white/95 border border-slate-200 text-slate-900 shadow-xs'
       } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105">
         <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-        <span>Sant Kabir Hospital (Base)</span>
-        <a href="${BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/NDr27v6mEnooeBE99'}" target="_blank" rel="noopener noreferrer" class="text-rose-500 hover:text-rose-600 font-bold ml-0.5" title="Open in Google Maps" onclick="event.stopPropagation()">↗</a>
+        <span>Sant Kabir Eye Hospital (Basti Base)</span>
+        <a href="${BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/6eur1NCPRzC93sDG9'}" target="_blank" rel="noopener noreferrer" class="text-rose-500 hover:text-rose-600 font-bold ml-0.5" title="Open in Google Maps" onclick="event.stopPropagation()">↗</a>
       </div>
     `;
 
