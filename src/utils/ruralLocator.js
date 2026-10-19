@@ -31,12 +31,12 @@ export function getNearestRuralLocation(lat, lon) {
   if (isNaN(lat) || isNaN(lon) || lat === 0 || lon === 0) {
     return {
       village: 'Base Hospital Standby',
-      block: 'Khalilabad',
-      district: 'Sant Kabir Nagar',
+      block: 'Basti Sadar',
+      district: 'Basti',
       distKm: 0,
       isCamp: false,
       badge: 'Base Hospital',
-      label: 'Sant Kabir Eye Hospital (Khalilabad Base)',
+      label: 'Sant Kabir Eye Hospital (Basti Base)',
     };
   }
 

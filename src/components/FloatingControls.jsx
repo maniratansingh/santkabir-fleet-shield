@@ -95,7 +95,7 @@ export default function FloatingControls({
         {/* Center Base Hospital */}
         <button
           onClick={onCenterBase}
-          title="Focus Sant Kabir Hospital Base (Khalilabad)"
+          title="Focus Sant Kabir Hospital Base (Basti)"
           className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
         >
           <Hospital className="w-4 h-4 text-rose-600 dark:text-rose-400" />
@@ -163,11 +163,11 @@ export default function FloatingControls({
 
       {/* Secondary Quick Utilities Dock */}
       <div className="glass-panel p-1 rounded-2xl flex flex-col items-center gap-1 shadow-lg border border-slate-200/90 dark:border-white/10">
-        {/* Demo Mode Toggle: 35 Simulated Cars vs Real GPS Clean Mode */}
+        {/* Demo Mode Toggle: 10 Simulated Cars vs Real GPS Clean Mode */}
         {onToggleDemoMode && (
           <button
             onClick={onToggleDemoMode}
-            title={isDemoMode ? "Switch to Live Real GPS Only (Remove 35 Demo Cars)" : "Load 35 Demo Ambulances for UI Preview"}
+            title={isDemoMode ? "Switch to Live Real GPS Only (Remove 10 Demo Cars)" : "Load 10 Demo Ambulances for UI Preview"}
             className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
               isDemoMode 
                 ? 'bg-amber-500 text-white shadow-xs' 

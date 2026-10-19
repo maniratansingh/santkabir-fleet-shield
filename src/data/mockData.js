@@ -92,7 +92,7 @@ function getRoadHeading(coord1, coord2) {
   return Math.round((brng + 360) % 360);
 }
 
-export const INITIAL_VEHICLES = Array.from({ length: 35 }).map((_, i) => {
+export const INITIAL_VEHICLES = Array.from({ length: 10 }).map((_, i) => {
   const corridor = CORRIDOR_CONFIGS[i % CORRIDOR_CONFIGS.length];
   const wps = roadRoutesData[corridor.id]?.coordinates || [];
   const driver = DRIVERS[i % DRIVERS.length];
