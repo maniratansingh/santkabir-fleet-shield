@@ -336,6 +336,7 @@ function MapView({
   showDistanceLines = true,
   onToggleDistanceLines,
   onResetView,
+  isSheetMinimized = false,
 }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
@@ -476,10 +477,14 @@ function MapView({
     const canvas = map.getCanvas();
     const cWidth = canvas ? (canvas.clientWidth || canvas.width) : (typeof window !== 'undefined' ? window.innerWidth : 1200);
     const cHeight = canvas ? (canvas.clientHeight || canvas.height) : (typeof window !== 'undefined' ? window.innerHeight : 800);
-    // On wide screens (>= 640px), AppleSheet takes 380px width on left + 16px margin = 396px
-    const maxLeft = isWideScreen ? Math.min(Math.max(405, Math.floor(cWidth * 0.36)), Math.max(30, cWidth - 300)) : 24;
+    // On wide screens (>= 640px), AppleSheet takes 380px width on left + 16px margin = 396px, unless sheet is minimized
+    const maxLeft = isSheetMinimized
+      ? Math.max(40, Math.floor(cWidth * 0.05))
+      : (isWideScreen ? Math.min(Math.max(405, Math.floor(cWidth * 0.36)), Math.max(30, cWidth - 300)) : 24);
     const maxTop = Math.max(30, Math.min(90, Math.floor(cHeight * 0.12)));
-    const maxBottom = isWideScreen ? Math.max(30, Math.min(80, Math.floor(cHeight * 0.12))) : Math.min(220, Math.floor(cHeight * 0.32));
+    const maxBottom = isSheetMinimized
+      ? Math.max(70, Math.floor(cHeight * 0.10))
+      : (isWideScreen ? Math.max(30, Math.min(80, Math.floor(cHeight * 0.12))) : Math.min(220, Math.floor(cHeight * 0.32)));
     const maxRight = Math.max(30, Math.min(80, Math.floor(cWidth * 0.08)));
 
     const padding = { top: maxTop, bottom: maxBottom, left: maxLeft, right: maxRight };
@@ -514,9 +519,13 @@ function MapView({
     const canvas = map.getCanvas();
     const cWidth = canvas ? (canvas.clientWidth || canvas.width) : (typeof window !== 'undefined' ? window.innerWidth : 1200);
     const cHeight = canvas ? (canvas.clientHeight || canvas.height) : (typeof window !== 'undefined' ? window.innerHeight : 800);
-    const maxLeft = isWideScreen ? Math.min(Math.max(405, Math.floor(cWidth * 0.36)), Math.max(30, cWidth - 300)) : 24;
+    const maxLeft = isSheetMinimized
+      ? Math.max(40, Math.floor(cWidth * 0.05))
+      : (isWideScreen ? Math.min(Math.max(405, Math.floor(cWidth * 0.36)), Math.max(30, cWidth - 300)) : 24);
     const maxTop = Math.max(35, Math.min(100, Math.floor(cHeight * 0.14)));
-    const maxBottom = isWideScreen ? Math.max(30, Math.min(80, Math.floor(cHeight * 0.14))) : Math.min(220, Math.floor(cHeight * 0.32));
+    const maxBottom = isSheetMinimized
+      ? Math.max(70, Math.floor(cHeight * 0.10))
+      : (isWideScreen ? Math.max(30, Math.min(80, Math.floor(cHeight * 0.14))) : Math.min(220, Math.floor(cHeight * 0.32)));
     const maxRight = Math.max(30, Math.min(80, Math.floor(cWidth * 0.08)));
 
     const padding = { top: maxTop, bottom: maxBottom, left: maxLeft, right: maxRight };
@@ -531,7 +540,7 @@ function MapView({
     });
   };
 
-  // Center camera on a specific vehicle (Upright North-up orientation, smooth glide without dizzy spinning)
+  // Center camera on a specific vehicle (Upright North-up orientation, smooth parabolic glide without dizzy spinning)
   const focusVehicle = (vehId) => {
     const map = mapRef.current;
     if (!map) return;
@@ -543,15 +552,15 @@ function MapView({
       center: [Number(veh.lon || 0), Number(veh.lat || 0)],
       padding: {
         top: 60,
-        bottom: isDesktop ? 60 : 200,
-        left: isDesktop ? 400 : 24,
+        bottom: isSheetMinimized ? 80 : (isDesktop ? 60 : 200),
+        left: isSheetMinimized ? 60 : (isDesktop ? 400 : 24),
         right: 40,
       },
-      zoom: 13.5,
-      pitch: 24,
+      zoom: 13.8,
+      pitch: 28,
       bearing: 0,
       speed: 1.1,
-      curve: 1.3,
+      curve: 1.42,
       essential: true,
     });
   };
@@ -1590,20 +1599,7 @@ function MapView({
     if (selectedVehicleId && mapRef.current) {
       if (prevSelectedIdRef.current !== selectedVehicleId) {
         prevSelectedIdRef.current = selectedVehicleId;
-        const selected = vehicles.find((v) => v.id === selectedVehicleId);
-        if (selected) {
-          const d = calculateDistanceKm(
-            BASE_HOSPITAL.lat,
-            BASE_HOSPITAL.lon,
-            Number(selected.lat || 0),
-            Number(selected.lon || 0)
-          );
-          if (d > 8) {
-            fitVehicleRoute(selectedVehicleId);
-          } else {
-            focusVehicle(selectedVehicleId);
-          }
-        }
+        focusVehicle(selectedVehicleId);
       }
     } else {
       prevSelectedIdRef.current = null;

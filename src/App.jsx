@@ -126,38 +126,35 @@ export default function App() {
         return;
       }
 
-      const tourItems = [
-        ...currentVehicles.map(v => ({ 
-          type: 'vehicle', 
-          id: v.id, 
-          name: v.name, 
+      // Alternating TV Tour: Dynamic Zoom-In to Ambulance (8.5s) <-> Regional Fleet Overview (6s)
+      const tourItems = [];
+      currentVehicles.forEach((v) => {
+        tourItems.push({
+          type: 'vehicle',
+          id: v.id,
+          name: v.name,
           driver: v.driverName,
           isSignalGap: Boolean(v.isSignalGap),
           gapMinutes: v.gapMinutes || 1,
-        })),
-        { type: 'all', name: 'Fleet Overview' },
-      ];
+        });
+        tourItems.push({ type: 'all', name: 'Fleet Overview' });
+      });
 
       tourIndexRef.current = (tourIndexRef.current + 1) % tourItems.length;
       const current = tourItems[tourIndexRef.current];
 
-      let nextDelay = 12000;
+      let nextDelay = 8500;
 
       if (current.type === 'vehicle') {
         setSelectedVehicleId(current.id);
         setDetent('peek'); // keep UI minimal during TV auto-tour
-        if (current.isSignalGap) {
-          nextDelay = 6000; // Shorter dwell time on network blind spot vehicles
-        } else {
-          nextDelay = 12000; // Full 12s focus on actively moving vehicles
-        }
+        nextDelay = current.isSignalGap ? 5000 : 8500;
       } else {
         setSelectedVehicleId(null);
         setFitTrigger(prev => prev + 1);
         setDetent('peek');
-        nextDelay = 10000;
+        nextDelay = 6000;
       }
-
 
       timeoutId = setTimeout(runTourStep, nextDelay);
     };
@@ -411,6 +408,7 @@ export default function App() {
         showDistanceLines={showDistanceLines}
         onToggleDistanceLines={handleToggleDistanceLines}
         onResetView={handleResetView}
+        isSheetMinimized={detent === 'peek'}
       />
 
       {/* 2. Top-Center Dynamic Island Status Capsule */}
