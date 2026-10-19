@@ -55,14 +55,18 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 - **Local Village Names on Canvas**: 75+ Gram Panchayats and outreach eye camp bazars across Eastern UP (*Semariyawan, Belhar Kala, Baghnagar, Maghar, Harraiya, Rudhauli, Bansi, Itwa, Tanda, Dhanghata*, etc.) render directly onto the map surface.
 - **Zero Network Delay**: Embedded locally in browser memory via MapLibre GL WebGL symbol layers with contrast halos.
 
-### 4. Apple Maps & Anti-Blink SVG Engine
+### 4. Apple Clinical UI & Anti-Blink SVG Engine
 - **Persistent DOM Markers**: Markers are preserved across TV cycles and selection toggles—SVGs are never destroyed or re-parsed, eliminating flashing/blinking completely.
+- **Non-Overlapping Vertical Clearance Shelves**: 2D screen coordinate collision-avoidance automatically elevates vehicle tags onto stacked vertical shelves ($32\text{px}$ spacing) with color-matched SVG stem lines when ambulances cluster nearby.
+- **Strict Backward-Only Road Lifelines**: Road ribbons strictly trace backward from the ambulance's current GPS position to the Base Hospital in Basti (`26.797313°N, 82.718401°E`) in that vehicle's own unique color. Zero forward lines into unconfirmed destinations.
 - **Golden Ratio Color Engine**: Generates 60+ non-colliding distinct route line colors and ambient halos using the Golden Ratio Conjugate in HSL space.
 - **Interactive Apple Sheet**: Bottom floating sheet with 3 detent levels (`peek`, `half`, `full`), driver call shortcuts, and 1-tap external turn-by-turn navigation.
 
-### 5. Smart TV Wallboard Kiosk Mode
-- **Adaptive Tour Pacing**: Automatically allocates 12 seconds of focus to actively moving vehicles and 6 seconds to vehicles in temporary signal gaps.
+### 5. Smart TV Wallboard Kiosk Mode (Cinematic Auto-Tour)
+- **Alternating Parabolic Cadence**: Seamlessly alternates between an 8.5s dynamic close-up tracking shot ($z = 13.8, 28^\circ$ pitch) and a 6.0s regional fleet overview ($z \approx 10.2, 0^\circ$ pitch).
+- **TV-Optimized Centered Framing**: Dynamically centers vehicle markers on 16:9 large-screen monitors when the bottom sheet is minimized.
 - **Two-Way Live Sync**: Adding, moving, or decommissioning cars updates the TV wallboard live every 2 seconds without requiring anyone to press F5 or refresh.
+- **Dark Canvas by Default**: Clean, high-contrast, watermark-free Dark Gray Canvas for low-glare command center displays.
 - **Detailed Specification**: See [ARCHITECTURE.md](ARCHITECTURE.md) for full system diagrams and engineering specs.
 
 ---

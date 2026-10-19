@@ -2,7 +2,7 @@
 
 > **Ultra-Low-Latency Rural Outreach Fleet Command & Telemetry Wallboard**  
 > **Author & Architect**: [Mani Ratan Singh](https://mrps.in) • [github.com/maniratansingh](https://github.com/maniratansingh)  
-> **Operational Base**: Sant Kabir Eye Hospital, Khalilabad / Basti District, Eastern Uttar Pradesh, India.  
+> **Operational Base**: Sant Kabir Eye Hospital, Basti District, Eastern Uttar Pradesh, India.  
 > **Production Live Endpoint**: [https://fleet.mrps.in](https://fleet.mrps.in)
 
 ---
@@ -11,7 +11,7 @@
 
 **Sant Kabir Fleet Shield** is an edge-native, zero-server-cost fleet command and live telemetry tracking wallboard engineered for rural medical outreach in Eastern Uttar Pradesh (Purvanchal), India. 
 
-The hospital operates a network of outreach ambulances, mobile surgical units, and vision screening vans dispatched to rural Gram Panchayats and eye camp locations across **Sant Kabir Nagar, Basti, Siddharthnagar, Gorakhpur, Ambedkar Nagar, Gonda, and Ayodhya**.
+The hospital operates a network of outreach ambulances, mobile surgical units, and vision screening vans dispatched to rural Gram Panchayats and eye camp locations across **Basti, Sant Kabir Nagar, Siddharthnagar, Gorakhpur, Ambedkar Nagar, Gonda, and Ayodhya**.
 
 ### Critical Realities of the Operating Environment:
 1. **No Physical Street Addresses**: Outreach eye camps take place in remote rural hamlets and Gram Panchayats with no formal street addresses.
@@ -26,7 +26,7 @@ The hospital operates a network of outreach ambulances, mobile surgical units, a
 ```
                                   +-------------------------------------------------------------+
                                   |         Sant Kabir Eye Hospital (Base Command Center)       |
-                                  |             26.7797° N, 83.0722° E (Khalilabad, UP)         |
+                                  |                26.797313° N, 82.718401° E (Basti, UP)       |
                                   +-------------------------------------------------------------+
                                                                  ▲
                                                                  │
@@ -107,11 +107,11 @@ In traditional React map applications, re-rendering markers on each state tick c
   - For vehicles beyond 12 (up to 100+ concurrent units), employs the **Golden Ratio Conjugate** ($\phi \approx 0.618033988749895$) in HSL color space.
   - Generates mathematically guaranteed non-colliding route line colors (`88%` saturation, `50%` lightness) and ambient glow halos (`92%` saturation, `68%` lightness).
 
-### 3.6. Smart TV Wallboard Kiosk Mode
-- **Adaptive Tour Pacing in [`src/App.jsx`](src/App.jsx)**:
-  - Actively moving vehicles with live 4G receive **12 seconds** of dedicated camera framing.
-  - Vehicles currently in rural signal gaps receive a brief **6 seconds** of framing (notifying staff of the blind spot before smoothly moving on).
-  - District Overview receives **10 seconds** of framing before repeating the cycle.
+### 3.6. Smart TV Wallboard Kiosk Mode & Cinematic Tour Cadence
+- **Parabolic Auto-Tour Alternating Loop in [`src/App.jsx`](src/App.jsx)**:
+  - **Ambulance Close-Up Tracking Shot (8.5s)**: Glides dynamically to active ambulances at high zoom ($z = 13.8$, $28^\circ$ pitch) with full road lifeline and speed display. Vehicles in temporary signal gaps are allocated 5.0 seconds.
+  - **Regional Fleet Overview (6.0s)**: Smoothly transitions outward ($z \approx 10.2$, $0^\circ$ pitch) to frame all active ambulances across Purvanchal districts before progressing to the next unit.
+  - **TV-Optimized Centered Framing**: When the bottom Apple Sheet is in default `peek` capsule mode, camera padding dynamically centers vehicle markers on 16:9 large-screen TV displays.
 - **North-Up Upright Camera**:
   - `focusVehicle` maintains upright North-up orientation (`bearing: 0`, `pitch: 28`), preventing disorienting camera spins when switching between cars heading in opposite directions.
 
@@ -129,6 +129,17 @@ To guarantee that 24/7 TV wallboards never load stale JavaScript bundles or cach
     ```
 - **In [`index.html`](index.html)**:
   - Browser-level `<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />` enforcement.
+
+### 3.8. Non-Overlapping Vertical Clearance Shelves & SVG Leader Lines
+When multiple ambulances cluster around nearby villages or highway junctions (e.g. Walterganj, Captain Ganj, Saunghat), naive map markers overlap and obscure telemetry tags:
+- **2D Screen Coordinate Collision Detection**: In [`src/components/MapView.jsx`](src/components/MapView.jsx), vehicle pixel coordinates (`map.project([lon, lat])`) are evaluated in real time.
+- **Vertical Shelf Allocation**: For any vehicles within $360\text{px}$ horizontal distance, the system pushes subsequent cards onto collision-free vertical shelves with $32\text{px}$ spacing ($Y$-offsets of $-42\text{px}, -76\text{px}, -110\text{px}$, etc.).
+- **Dynamic Leader Stem Lines**: An SVG leader overlay renders crisp, anti-aliased stem lines with dual-stroke contrast halos matching each ambulance's assigned color, connecting the elevated tag back to the vehicle's exact GPS center.
+- **100% Information Retention**: All 10 ambulance tags retain full visibility (ID, driver name, speed, rural vicinity, and distance to base) with zero clutter.
+
+### 3.9. Dynamic Backward-Only Road Lifelines
+- **Strict Backward-Only Topology**: In [`src/utils/roadDistance.js`](src/utils/roadDistance.js), forward route projections into unknown future destinations are eliminated. The road ribbon exclusively tracks backward from the current live vehicle GPS position to the Base Hospital in Basti (`26.797313°N, 82.718401°E`).
+- **1-to-1 Vehicle-to-Track Color Binding**: Both the solid road ribbon and ambient glow layer are bound to `v.lineColor` and `v.glowColor`, ensuring instant visual association between each ambulance and its respective route across Uttar Pradesh.
 
 ---
 
