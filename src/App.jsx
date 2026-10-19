@@ -42,7 +42,7 @@ export default function App() {
   const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
   const [detent, setDetent] = useState('peek'); // Default minimized to peek capsule
-  const [isAutoTour, setIsAutoTour] = useState(false);
+  const [isAutoTour, setIsAutoTour] = useState(true); // Default TV Wallboard Auto-Tour ON
   const [fitTrigger, setFitTrigger] = useState(0);
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
