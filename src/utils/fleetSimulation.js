@@ -2,8 +2,8 @@
 // Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
 // Guarantees zero-blanking, zero-stutter, butter-smooth movement across any fleet size.
 
-const BASE_LAT = 26.797313;
-const BASE_LON = 82.718401;
+const BASE_LAT = 26.779703;
+const BASE_LON = 83.072184;
 
 export function calculateBearing(c1, c2) {
   if (!c1 || !c2) return 0;

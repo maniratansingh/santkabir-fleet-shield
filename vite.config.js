@@ -8,8 +8,8 @@ const DEVELOPER_BANNER = `/* Built & Engineered by Mani Ratan Singh (https://mrp
 
 function telemetryDevPlugin() {
   const liveVehicles = new Map();
-  const BASE_LAT = 26.797313;
-  const BASE_LON = 82.718401;
+  const BASE_LAT = 26.779703;
+  const BASE_LON = 83.072184;
 
   function calculateDistanceKm(lat1, lon1, lat2, lon2) {
     const R = 6371;

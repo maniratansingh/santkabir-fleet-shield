@@ -90,17 +90,17 @@ function DynamicIsland({
         /* Normal Compact Dynamic Island Capsule */
         <div 
           onClick={() => setIsExpanded(prev => !prev)}
-          className="glass-panel px-3.5 py-1.5 rounded-full flex items-center gap-2.5 sm:gap-4 shadow-xl border cursor-pointer select-none transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] border-slate-200/90 dark:border-white/10"
+          className="glass-panel px-3.5 py-1.5 rounded-full flex items-center gap-2.5 sm:gap-3.5 shadow-xl border cursor-pointer select-none transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] border-slate-200/90 dark:border-white/10 whitespace-nowrap"
         >
           {/* Developer Logo Avatar */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <img 
               src="/avatar.png" 
               alt="Mani Ratan Singh" 
-              className="w-7 h-7 rounded-full object-cover border border-slate-200 dark:border-white/10 shadow-xs"
+              className="w-7 h-7 rounded-full object-cover border border-slate-200 dark:border-white/10 shadow-xs shrink-0"
               onError={(e) => { e.target.src = 'https://avatars.githubusercontent.com/u/85608407?v=4'; }}
             />
-            <div className="hidden md:flex flex-col">
+            <div className="hidden lg:flex flex-col">
               <span className="text-xs font-bold tracking-tight text-slate-900 dark:text-white leading-none">
                 Sant Kabir Eye Hospital
               </span>
@@ -111,21 +111,21 @@ function DynamicIsland({
           </div>
 
           {/* Divider */}
-          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block shrink-0" />
 
           {/* Live Fleet Status Pill (Steady Aura, Zero Blink) */}
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="relative flex h-2 w-2 shrink-0">
               <span className={`relative inline-flex rounded-full h-2 w-2 shadow-[0_0_8px_rgba(16,185,129,0.6)] ${
                 vehicles.length === 0 ? 'bg-sky-500' : (signalGapCount > 0 ? 'bg-amber-500' : 'bg-emerald-500')
               }`}></span>
             </span>
             {vehicles.length === 0 ? (
-              <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+              <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 whitespace-nowrap">
                 Hospital Standby • Telemetry Ready
               </span>
             ) : (
-              <>
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
                 <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
                   {movingCount} En Route
                 </span>
@@ -150,7 +150,7 @@ function DynamicIsland({
                 <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hidden sm:inline">
                   {vehicles.length} Active Fleet
                 </span>
-              </>
+              </div>
             )}
           </div>
 

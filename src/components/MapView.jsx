@@ -470,13 +470,21 @@ function MapView({
     }
 
     const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+    const canvas = map.getCanvas();
+    const cWidth = canvas ? (canvas.clientWidth || canvas.width) : (typeof window !== 'undefined' ? window.innerWidth : 1200);
+    const cHeight = canvas ? (canvas.clientHeight || canvas.height) : (typeof window !== 'undefined' ? window.innerHeight : 800);
+    const maxLeft = Math.max(30, Math.min(420, Math.floor(cWidth * 0.35)));
+    const maxTop = Math.max(30, Math.min(100, Math.floor(cHeight * 0.14)));
+    const maxBottom = Math.max(30, Math.min(80, Math.floor(cHeight * 0.14)));
+    const maxRight = Math.max(30, Math.min(80, Math.floor(cWidth * 0.08)));
+
     const padding = isDesktop
-      ? { top: 120, bottom: 90, left: 440, right: 100 }
-      : { top: 100, bottom: 380, left: 50, right: 50 };
+      ? { top: maxTop, bottom: maxBottom, left: maxLeft, right: maxRight }
+      : { top: maxTop, bottom: Math.min(200, Math.floor(cHeight * 0.30)), left: 24, right: 24 };
 
     map.fitBounds(bounds, {
       padding,
-      maxZoom: 12.5,
+      maxZoom: 13.8,
       pitch: 22,
       bearing: 0,
       duration: options.duration !== undefined ? options.duration : 1000,
@@ -491,8 +499,10 @@ function MapView({
     const veh = vehicles.find((v) => v.id === vehId);
     if (!veh) return;
 
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
     map.flyTo({
       center: [Number(veh.lon || 0), Number(veh.lat || 0)],
+      offset: isDesktop ? [140, 0] : [0, -80],
       zoom: 13.5,
       pitch: 28,
       bearing: 0,
@@ -774,16 +784,20 @@ function MapView({
           'line-width': [
             'case',
             ['get', 'isSelected'],
-            8.5,
-            4.0,
+            9.5,
+            ['get', 'hasSelection'],
+            2.0,
+            3.5,
           ],
           'line-opacity': [
             'case',
             ['get', 'isSelected'],
-            0.6,
-            0.25,
+            0.75,
+            ['get', 'hasSelection'],
+            0.05,
+            0.20,
           ],
-          'line-blur': 2,
+          'line-blur': 2.5,
         },
       });
 
@@ -803,13 +817,17 @@ function MapView({
             'case',
             ['get', 'isSelected'],
             5.5,
-            3.0,
+            ['get', 'hasSelection'],
+            1.8,
+            2.6,
           ],
           'line-opacity': [
             'case',
             ['get', 'isSelected'],
             1.0,
-            0.85,
+            ['get', 'hasSelection'],
+            0.15,
+            0.45,
           ],
         },
       });
@@ -848,6 +866,7 @@ function MapView({
 
     const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
     const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
+    const hasSelection = Boolean(selectedVehicleId);
 
     // Individual authentic road lines for each active working vehicle
     const incomingFeatures = activeVehicles.map((v) => {
@@ -867,6 +886,7 @@ function MapView({
           lineColor: vColor,
           glowColor: vGlow,
           isSelected: isSelected,
+          hasSelection: hasSelection,
           status: v.status,
         },
       };
@@ -889,9 +909,14 @@ function MapView({
           vehicleId: v.id,
           lineColor: vColor,
           isSelected: isSelected,
+          hasSelection: hasSelection,
         },
       };
     });
+
+    // Elevate selected vehicle route to the end so it renders on top in WebGL
+    incomingFeatures.sort((a, b) => (a.properties.isSelected ? 1 : 0) - (b.properties.isSelected ? 1 : 0));
+    trailFeatures.sort((a, b) => (a.properties.isSelected ? 1 : 0) - (b.properties.isSelected ? 1 : 0));
 
     if (map.getSource('delivery-incoming-routes')) {
       map.getSource('delivery-incoming-routes').setData({
@@ -905,8 +930,12 @@ function MapView({
         type: 'FeatureCollection',
         features: trailFeatures,
       });
-    } else if (map.isStyleLoaded()) {
-      addCustomLayers(map);
+    }
+
+    if (!map.getSource('delivery-incoming-routes') || !map.getSource('delivery-trail-routes')) {
+      if (map.isStyleLoaded()) {
+        addCustomLayers(map);
+      }
     }
 
     // Clean up any remaining distance markers if any exist
@@ -1085,23 +1114,25 @@ function MapView({
         el.className = 'select-none pointer-events-auto will-change-transform';
         
         el.innerHTML = `
-          <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
-            <!-- Apple Capsule (High-contrast, zero backdrop-filter blur for 60fps WebGL) -->
+          <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
+            <!-- Apple Capsule (Compact by default, smoothly expands on hover or selection) -->
             <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
               style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
               <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
               <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
               <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
               <span class="marker-speed">${speedStr}</span>
-              <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-              <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
-              <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-              <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+              <span class="marker-detail-extra ${isSelected ? 'inline-flex' : 'hidden group-hover:inline-flex'} items-center gap-1.5 transition-all duration-150">
+                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+              </span>
             </div>
 
             <!-- 3D Isometric Ambulance (Zero Strobe/Blink, Hardware accelerated) -->
             <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${targetBearing}deg); will-change: transform; transition: none;">
-              <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
+              <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100 animate-pulse' : 'opacity-0'}"></div>
               ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
             </div>
           </div>
@@ -1128,6 +1159,7 @@ function MapView({
           distEl: el.querySelector('.marker-dist'),
           haloEl: el.querySelector('.selection-halo'),
           rotatorEl: el.querySelector('.ambulance-rotator'),
+          detailExtraEl: el.querySelector('.marker-detail-extra'),
           prevSpeed: speedStr,
           prevDist: distStr,
           prevStatusText: statusBadgeText,
@@ -1151,20 +1183,22 @@ function MapView({
         if (markerObj.prevDark !== isDark) {
           // Re-render only when switching dark/light theme
           markerObj.element.innerHTML = `
-            <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-40' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
+            <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out;">
               <div class="marker-capsule-text mb-1 px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
                 style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
                 <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
                 <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
                 <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
                 <span class="marker-speed">${speedStr}</span>
-                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-                <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
-                <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
-                <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+                <span class="marker-detail-extra ${isSelected ? 'inline-flex' : 'hidden group-hover:inline-flex'} items-center gap-1.5 transition-all duration-150">
+                  <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                  <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+                  <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
+                  <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
+                </span>
               </div>
               <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${markerObj.displayAngle || targetBearing}deg); will-change: transform; transition: none;">
-                <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
+                <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400/80 shadow-[0_0_20px_rgba(56,189,248,0.55)] pointer-events-none transition-opacity duration-200 ${isSelected ? 'opacity-100 animate-pulse' : 'opacity-0'}"></div>
                 ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
               </div>
             </div>
@@ -1178,6 +1212,7 @@ function MapView({
           markerObj.distEl = markerObj.element.querySelector('.marker-dist');
           markerObj.haloEl = markerObj.element.querySelector('.selection-halo');
           markerObj.rotatorEl = markerObj.element.querySelector('.ambulance-rotator');
+          markerObj.detailExtraEl = markerObj.element.querySelector('.marker-detail-extra');
           markerObj.prevDark = isDark;
           markerObj.prevSelected = isSelected;
           markerObj.prevSpeed = speedStr;
@@ -1208,11 +1243,20 @@ function MapView({
             markerObj.prevSelected = isSelected;
             if (markerObj.outerWrapper) {
               if (isSelected) {
-                markerObj.outerWrapper.classList.add('scale-110', 'z-40');
+                markerObj.outerWrapper.classList.add('scale-110', 'z-50');
                 markerObj.outerWrapper.classList.remove('hover:scale-105', 'z-20');
               } else {
-                markerObj.outerWrapper.classList.remove('scale-110', 'z-40');
+                markerObj.outerWrapper.classList.remove('scale-110', 'z-50');
                 markerObj.outerWrapper.classList.add('hover:scale-105', 'z-20');
+              }
+            }
+            if (markerObj.detailExtraEl) {
+              if (isSelected) {
+                markerObj.detailExtraEl.classList.remove('hidden');
+                markerObj.detailExtraEl.classList.add('inline-flex');
+              } else {
+                markerObj.detailExtraEl.classList.remove('inline-flex');
+                markerObj.detailExtraEl.classList.add('hidden');
               }
             }
             if (markerObj.haloEl) {
@@ -1294,7 +1338,7 @@ function MapView({
             Number(selected.lat || 0),
             Number(selected.lon || 0)
           );
-          if (d > 25) {
+          if (d > 8) {
             fitVehicleRoute(selectedVehicleId);
           } else {
             focusVehicle(selectedVehicleId);

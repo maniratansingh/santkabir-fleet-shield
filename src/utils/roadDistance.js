@@ -263,22 +263,23 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     roadPath.push(vehRawCoord);
   }
 
-  // Upcoming navigation ribbon (corridor from vehicle to base if returning, or base to vehicle if outbound)
+  // Complete turn-by-turn road corridor between Base Hospital and Destination Camp
+  const fullRoute = roadCoords;
   const isReturning = vehicle.status === 'returning';
-  const upcomingRoute = isReturning ? [...roadPath].reverse() : roadPath;
+  const upcomingRoute = roadCoords;
 
   // Completed trail breadcrumbs behind vehicle
   let completedTrail = [];
   if (Array.isArray(vehicle.trail) && vehicle.trail.length > 1) {
     completedTrail = vehicle.trail;
   } else {
-    const startIdx = Math.max(0, bestIdx - 6);
+    const startIdx = Math.max(0, bestIdx - 12);
     completedTrail = roadCoords.slice(startIdx, bestIdx + 1);
     completedTrail.push(bestProj);
   }
 
-  const midIdx = Math.floor(roadPath.length / 2);
-  const midPoint = roadPath[midIdx] || vehRawCoord;
+  const midIdx = Math.floor(roadCoords.length / 2);
+  const midPoint = roadCoords[midIdx] || vehRawCoord;
 
   // Next road bearing
   const nextCoord = roadCoords[Math.min(bestIdx + 1, roadCoords.length - 1)];
@@ -286,6 +287,7 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
   const bearing = isReturning ? (roadBearing + 180) % 360 : roadBearing;
 
   return {
+    fullRoute,
     upcomingRoute,
     completedTrail,
     roadDistFromBaseKm: Math.round(roadDistFromBase * 10) / 10,
