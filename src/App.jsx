@@ -15,14 +15,11 @@ import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
 
-  // Default to dev simulation on localhost so the user sees live movement in their Chrome tab immediately;
-  // On deployed production site, defaults to clean live telemetry mode (0 cars, blank sheet).
+  // Demo simulation mode (OFF by default on refresh; click wand button or use ?demo to activate)
   const [isDemoMode, setIsDemoMode] = useState(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      if (params.has('live')) return false;
-      if (params.has('dev') || params.has('demo')) return true;
-      return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      return params.has('dev') || params.has('demo');
     }
     return false;
   });
@@ -30,8 +27,7 @@ export default function App() {
   const [vehicles, setVehicles] = useState(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if ((isLocal || params.has('dev') || params.has('demo')) && !params.has('live')) {
+      if (params.has('dev') || params.has('demo')) {
         return simulateFleetAtTime(ACTIVE_FLEET, Date.now());
       }
     }
@@ -48,22 +44,29 @@ export default function App() {
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
   const fleetStoreRef = useRef(new Map(
-    typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    typeof window !== 'undefined' && (new URLSearchParams(window.location.search).has('dev') || new URLSearchParams(window.location.search).has('demo'))
       ? simulateFleetAtTime(ACTIVE_FLEET, Date.now()).map(v => [v.id, v])
       : []
   ));
 
-  // Theme Management (Light mode default for clinical Apple aesthetic)
+  // Theme Management (Dark Canvas default for high-contrast fleet command wallboard)
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('sk_theme');
       if (saved) return saved;
-      return 'light';
+      return 'dark';
     }
-    return 'light';
+    return 'dark';
   });
 
-  const [activeStyleKey, setActiveStyleKey] = useState(theme === 'dark' ? 'dark' : 'light');
+  const [activeStyleKey, setActiveStyleKey] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sk_theme');
+      if (saved) return saved;
+      return 'dark';
+    }
+    return 'dark';
+  });
 
   // Synchronize <html> class
   useEffect(() => {
@@ -233,10 +236,8 @@ export default function App() {
         return;
       }
 
-      // PRIORITY 2: Dev / Localhost / Explicit Demo Mode simulation
-      // If server has 0 vehicles AND we are on localhost or in demo mode,
-      // cruise the full ACTIVE_FLEET (17 ambulances) smoothly on OSM roads!
-      if (isDemoMode || isLocal) {
+      // PRIORITY 2: Explicit Demo Mode simulation (User activated via wand or ?demo)
+      if (isDemoMode) {
         const simulated = simulateFleetAtTime(ACTIVE_FLEET, now);
         const simIds = new Set(simulated.map(v => v.id));
 
