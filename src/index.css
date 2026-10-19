@@ -101,32 +101,24 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
   z-index: 50 !important;
 }
 
-/* Map Adaptive Level of Detail (LOD) */
-/* Overview Mode (Zoom < 11.2): Unselected markers collapse into sleek compact AirTag beacons */
-.map-zoom-overview .marker-outer-wrapper:not(.is-selected):not(:hover) .marker-capsule-text {
+/* Custom Marker styles */
+.maplibre-marker {
+  cursor: pointer;
+}
+
+.maplibre-marker:hover {
+  z-index: 50 !important;
+}
+
+/* Always keep ambulance tags and 3D vehicles visible (Zero-Blink & Crisp) */
+.marker-compact-beacon {
   display: none !important;
 }
-.map-zoom-overview .marker-outer-wrapper:not(.is-selected):not(:hover) .ambulance-rotator {
-  display: none !important;
+.marker-capsule-text {
+  display: flex !important;
 }
-.map-zoom-overview .marker-outer-wrapper:not(.is-selected):not(:hover) .marker-compact-beacon {
+.ambulance-rotator {
   display: flex !important;
 }
 
-/* Detailed Mode (Zoom >= 11.2) or Hover or Selected: Show full 3D Isometric ambulance & capsule */
-.map-zoom-detailed .marker-compact-beacon {
-  display: none !important;
-}
-.map-zoom-overview .marker-outer-wrapper.is-selected .marker-compact-beacon,
-.map-zoom-overview .marker-outer-wrapper:hover .marker-compact-beacon {
-  display: none !important;
-}
-.map-zoom-overview .marker-outer-wrapper.is-selected .marker-capsule-text,
-.map-zoom-overview .marker-outer-wrapper:hover .marker-capsule-text {
-  display: flex !important;
-}
-.map-zoom-overview .marker-outer-wrapper.is-selected .ambulance-rotator,
-.map-zoom-overview .marker-outer-wrapper:hover .ambulance-rotator {
-  display: flex !important;
-}
 

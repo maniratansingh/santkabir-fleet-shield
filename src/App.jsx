@@ -147,19 +147,17 @@ export default function App() {
         setSelectedVehicleId(current.id);
         setDetent('peek'); // keep UI minimal during TV auto-tour
         if (current.isSignalGap) {
-          showToast(`📺 TV Auto-Tour: ${current.name} (⏳ Signal Gap ${current.gapMinutes}m)`, 'warning');
           nextDelay = 6000; // Shorter dwell time on network blind spot vehicles
         } else {
-          showToast(`📺 TV Auto-Tour: Focusing ${current.name} (${current.driver || 'Driver'})`, 'info');
           nextDelay = 12000; // Full 12s focus on actively moving vehicles
         }
       } else {
         setSelectedVehicleId(null);
         setFitTrigger(prev => prev + 1);
         setDetent('peek');
-        showToast('📺 TV Auto-Tour: Purvanchal Fleet Overview', 'info');
         nextDelay = 10000;
       }
+
 
       timeoutId = setTimeout(runTourStep, nextDelay);
     };

@@ -25,26 +25,27 @@ async function run() {
 
   const evalRes = await send('Runtime.evaluate', {
     expression: `(() => {
-      const markers = document.querySelectorAll('.marker-outer-wrapper');
-      const dynamicIslandText = document.querySelector('.flex.items-center.gap-2.text-xs')?.textContent || '';
-      const sheetCards = document.querySelectorAll('.marker-outer-wrapper');
+      const map = window.__map;
+      if (!map) return 'No window.__map';
+      
+      // Let's inspect active vehicles and what getDeliveryRouteSplit does in the browser context
+      // We can grab vehicles from the DOM or react if possible, or evaluate vehicles in App
+      const debug = window.__debug || {};
+      
       return {
-        markerCount: markers.length,
-        markerIds: Array.from(markers).map(m => m.querySelector('.marker-id')?.textContent),
-        dynamicIslandText,
+        styleLoaded: map.isStyleLoaded(),
+        sources: Object.keys(map.getStyle().sources),
+        deliveryIncoming: map.getSource('delivery-incoming-routes') ? {
+          loaded: map.getSource('delivery-incoming-routes').loaded(),
+          data: map.getSource('delivery-incoming-routes')._data
+        } : null,
+        markersCount: Object.keys(window.__markers || {}).length,
       };
     })()`,
     returnByValue: true
   });
-  console.log('LIVE TELEMETRY RESULT:', JSON.stringify(evalRes.result.value, null, 2));
 
-  // Capture screenshot of live 13-car telemetry
-  const screenshotRes = await send('Page.captureScreenshot', { format: 'png' });
-  const fs = await import('fs');
-  const screenshotPath = '/Users/mrps/.gemini/antigravity/brain/7d354a9a-c354-4554-9af1-1ff9d31a9cfa/live_13_cars_telemetry.png';
-  fs.writeFileSync(screenshotPath, Buffer.from(screenshotRes.data, 'base64'));
-  console.log(`Saved screenshot to ${screenshotPath}`);
-
+  console.log('EVAL RESULT:', JSON.stringify(evalRes.result ? evalRes.result.value : evalRes, null, 2));
   ws.close();
 }
 run();
