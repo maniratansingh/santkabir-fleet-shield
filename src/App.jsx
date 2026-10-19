@@ -15,9 +15,29 @@ import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 export default function App() {
 
-  // Clean Live Telemetry Mode: Starts as empty blank sheet (0 active cars)
-  const [isDemoMode, setIsDemoMode] = useState(false);
-  const [vehicles, setVehicles] = useState([]);
+  // Default to dev simulation on localhost so the user sees live movement in their Chrome tab immediately;
+  // On deployed production site, defaults to clean live telemetry mode (0 cars, blank sheet).
+  const [isDemoMode, setIsDemoMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('live')) return false;
+      if (params.has('dev') || params.has('demo')) return true;
+      return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    }
+    return false;
+  });
+
+  const [vehicles, setVehicles] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if ((isLocal || params.has('dev') || params.has('demo')) && !params.has('live')) {
+        return simulateFleetAtTime(ACTIVE_FLEET, Date.now());
+      }
+    }
+    return [];
+  });
+
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
@@ -27,7 +47,11 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
-  const fleetStoreRef = useRef(new Map());
+  const fleetStoreRef = useRef(new Map(
+    typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? simulateFleetAtTime(ACTIVE_FLEET, Date.now()).map(v => [v.id, v])
+      : []
+  ));
 
   // Theme Management (Light mode default for clinical Apple aesthetic)
   const [theme, setTheme] = useState(() => {
@@ -205,6 +229,35 @@ export default function App() {
 
     fetchRealData();
     const interval = setInterval(fetchRealData, 2000);
+    return () => clearInterval(interval);
+  }, [isDemoMode]);
+
+  // Dev / Demo Mode: Continuous High-Fidelity Road Cruising Simulation Loop
+  useEffect(() => {
+    if (!isDemoMode) return;
+
+    const runSimStep = () => {
+      const now = Date.now();
+      const simulated = simulateFleetAtTime(ACTIVE_FLEET, now);
+      const store = fleetStoreRef.current;
+      simulated.forEach(simV => {
+        const existing = store.get(simV.id) || {};
+        store.set(simV.id, {
+          ...existing,
+          ...simV,
+          lastSeen: now,
+        });
+      });
+
+      setVehicles(
+        Array.from(store.values()).sort((a, b) => 
+          String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+        )
+      );
+    };
+
+    runSimStep();
+    const interval = setInterval(runSimStep, 2000);
     return () => clearInterval(interval);
   }, [isDemoMode]);
 
