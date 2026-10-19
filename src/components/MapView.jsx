@@ -431,9 +431,17 @@ function MapView({
     });
 
     const isDesktop = typeof window !== 'undefined' && window.innerWidth > 768;
+    const canvas = map.getCanvas();
+    const cWidth = canvas ? (canvas.clientWidth || canvas.width) : (typeof window !== 'undefined' ? window.innerWidth : 1200);
+    const cHeight = canvas ? (canvas.clientHeight || canvas.height) : (typeof window !== 'undefined' ? window.innerHeight : 800);
+    const maxLeft = Math.max(20, Math.min(380, Math.floor(cWidth * 0.30)));
+    const maxTop = Math.max(20, Math.min(90, Math.floor(cHeight * 0.12)));
+    const maxBottom = Math.max(20, Math.min(75, Math.floor(cHeight * 0.12)));
+    const maxRight = Math.max(20, Math.min(70, Math.floor(cWidth * 0.08)));
+
     const padding = isDesktop
-      ? { top: 110, bottom: 85, left: 420, right: 90 }
-      : { top: 100, bottom: 380, left: 40, right: 40 };
+      ? { top: maxTop, bottom: maxBottom, left: maxLeft, right: maxRight }
+      : { top: maxTop, bottom: Math.min(200, Math.floor(cHeight * 0.30)), left: 24, right: 24 };
 
     map.fitBounds(bounds, {
       padding,
@@ -944,6 +952,14 @@ function MapView({
     });
 
     return () => {
+      Object.values(markersRef.current).forEach(m => { try { m.marker.remove(); } catch (e) {} });
+      markersRef.current = {};
+      Object.values(distanceMarkersRef.current).forEach(m => { try { m.marker.remove(); } catch (e) {} });
+      distanceMarkersRef.current = {};
+      if (baseMarkerRef.current) {
+        try { baseMarkerRef.current.remove(); } catch (e) {}
+        baseMarkerRef.current = null;
+      }
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -1057,9 +1073,14 @@ function MapView({
       const targetBearing = Number(v.bearing || 0);
 
       let markerObj = markersRef.current[v.id];
+      const isConnected = markerObj?.marker?.getElement()?.isConnected;
 
-      // CREATE MARKER IF NOT EXISTS (Strictly once, never destroy while active)
-      if (!markerObj) {
+      // CREATE MARKER IF NOT EXISTS OR DETACHED FROM ACTIVE MAP CANVAS
+      if (!markerObj || !isConnected) {
+        if (markerObj) {
+          try { markerObj.marker.remove(); } catch (e) {}
+          delete markersRef.current[v.id];
+        }
         const el = document.createElement('div');
         el.className = 'select-none pointer-events-auto will-change-transform';
         

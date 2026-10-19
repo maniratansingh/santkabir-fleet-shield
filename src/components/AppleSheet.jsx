@@ -71,7 +71,7 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
             className="w-2.5 h-2.5 rounded-full shrink-0" 
             style={{ backgroundColor: vColor, boxShadow: `0 0 6px ${vColor}88` }} 
           />
-          <span className="text-xs font-mono font-extrabold text-slate-900 dark:text-white truncate">
+          <span className="text-xs font-mono font-extrabold text-slate-900 dark:text-white shrink-0">
             {v.id}
           </span>
           <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">

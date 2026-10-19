@@ -100,6 +100,7 @@ export default function App() {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         setSelectedVehicleId(null);
+        setFitTrigger(prev => prev + 1);
         setIsDriverModalOpen(false);
         setIsAutoTour(false);
       }
@@ -167,98 +168,118 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [isAutoTour]);
 
-  // Fetch real data from Cloudflare API with True 2-Way Sync (Clean Blank Sheet Default)
+  // Unified Telemetry Sync & Continuous High-Fidelity Road Cruising Engine
   useEffect(() => {
-    const fetchRealData = async () => {
-      if (isDemoMode) return; // In demo mode, local simulation controls vehicles
+    let isSubscribed = true;
 
+    const syncFleet = async () => {
       const now = Date.now();
       const store = fleetStoreRef.current;
+      const isLocal = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
+      let serverVehicles = null;
       try {
         const vehRes = await fetch('/api/vehicles').catch(() => null);
         if (vehRes && vehRes.ok) {
           const vehData = await vehRes.json();
-          const liveList = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
-          const liveIds = new Set(liveList.map(v => v.id));
-
-          // 1. Clean sync: Always synchronize store exactly with what server reports
-          for (const storedId of Array.from(store.keys())) {
-            if (!liveIds.has(storedId)) {
-              store.delete(storedId);
-            }
+          const list = Array.isArray(vehData) ? vehData : (vehData.vehicles || []);
+          if (Array.isArray(list) && list.length > 0) {
+            serverVehicles = list;
           }
-
-          // 2. Upsert reported vehicles
-          liveList.forEach(liveV => {
-            const existing = store.get(liveV.id) || {};
-            const colors = getUniqueVehicleColor(liveV.id);
-
-            store.set(liveV.id, {
-              ...existing,
-              ...liveV,
-              isLive: Boolean(liveV.isLive !== false),
-              isSignalGap: Boolean(liveV.isSignalGap),
-              gapMinutes: liveV.gapMinutes || 0,
-              isParked: Boolean(liveV.isParked),
-              lineColor: liveV.lineColor || existing.lineColor || colors.line,
-              glowColor: liveV.glowColor || existing.glowColor || colors.glow,
-              driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
-              villageName: liveV.villageName || existing.villageName || 'Base Hospital Standby',
-              villageBlock: liveV.villageBlock || existing.villageBlock || 'Khalilabad',
-              villageDistrict: liveV.villageDistrict || existing.villageDistrict || 'Sant Kabir Nagar',
-              villageBadge: liveV.villageBadge || existing.villageBadge || 'Base Station',
-              villageLabel: liveV.villageLabel || existing.villageLabel || 'Sant Kabir Eye Hospital',
-              highwayName: liveV.highwayName || existing.highwayName || liveV.villageBadge || 'Highway Link',
-              roadDistFromBaseKm: liveV.roadDistFromBaseKm || existing.roadDistFromBaseKm || 0,
-              lastSeen: liveV.lastSeen || now,
-            });
-          });
-
-          // Sort and update state
-          setVehicles(
-            Array.from(store.values()).sort((a, b) => 
-              String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
-            )
-          );
         }
       } catch (err) {
         // Backend API offline
       }
-    };
 
-    fetchRealData();
-    const interval = setInterval(fetchRealData, 2000);
-    return () => clearInterval(interval);
-  }, [isDemoMode]);
+      if (!isSubscribed) return;
 
-  // Dev / Demo Mode: Continuous High-Fidelity Road Cruising Simulation Loop
-  useEffect(() => {
-    if (!isDemoMode) return;
+      // PRIORITY 1: Real-time Telemetry reported to /api/vehicles
+      if (serverVehicles && serverVehicles.length > 0) {
+        const liveIds = new Set(serverVehicles.map(v => v.id));
 
-    const runSimStep = () => {
-      const now = Date.now();
-      const simulated = simulateFleetAtTime(ACTIVE_FLEET, now);
-      const store = fleetStoreRef.current;
-      simulated.forEach(simV => {
-        const existing = store.get(simV.id) || {};
-        store.set(simV.id, {
-          ...existing,
-          ...simV,
-          lastSeen: now,
+        // Synchronize store with reported server vehicles
+        for (const storedId of Array.from(store.keys())) {
+          if (!liveIds.has(storedId)) {
+            store.delete(storedId);
+          }
+        }
+
+        serverVehicles.forEach(liveV => {
+          const existing = store.get(liveV.id) || {};
+          const colors = getUniqueVehicleColor(liveV.id);
+
+          store.set(liveV.id, {
+            ...existing,
+            ...liveV,
+            isLive: Boolean(liveV.isLive !== false),
+            isSignalGap: Boolean(liveV.isSignalGap),
+            gapMinutes: liveV.gapMinutes || 0,
+            isParked: Boolean(liveV.isParked),
+            lineColor: liveV.lineColor || existing.lineColor || colors.line,
+            glowColor: liveV.glowColor || existing.glowColor || colors.glow,
+            driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
+            villageName: liveV.villageName || existing.villageName || 'Base Hospital Standby',
+            villageBlock: liveV.villageBlock || existing.villageBlock || 'Khalilabad',
+            villageDistrict: liveV.villageDistrict || existing.villageDistrict || 'Sant Kabir Nagar',
+            villageBadge: liveV.villageBadge || existing.villageBadge || 'Base Station',
+            villageLabel: liveV.villageLabel || existing.villageLabel || 'Sant Kabir Eye Hospital',
+            highwayName: liveV.highwayName || existing.highwayName || liveV.villageBadge || 'Highway Link',
+            roadDistFromBaseKm: liveV.roadDistFromBaseKm || existing.roadDistFromBaseKm || 0,
+            lastSeen: liveV.lastSeen || now,
+          });
         });
-      });
 
-      setVehicles(
-        Array.from(store.values()).sort((a, b) => 
-          String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
-        )
-      );
+        setVehicles(
+          Array.from(store.values()).sort((a, b) => 
+            String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+          )
+        );
+        return;
+      }
+
+      // PRIORITY 2: Dev / Localhost / Explicit Demo Mode simulation
+      // If server has 0 vehicles AND we are on localhost or in demo mode,
+      // cruise the full ACTIVE_FLEET (17 ambulances) smoothly on OSM roads!
+      if (isDemoMode || isLocal) {
+        const simulated = simulateFleetAtTime(ACTIVE_FLEET, now);
+        const simIds = new Set(simulated.map(v => v.id));
+
+        // Clean any stale vehicles not in ACTIVE_FLEET
+        for (const storedId of Array.from(store.keys())) {
+          if (!simIds.has(storedId)) {
+            store.delete(storedId);
+          }
+        }
+
+        simulated.forEach(simV => {
+          const existing = store.get(simV.id) || {};
+          store.set(simV.id, {
+            ...existing,
+            ...simV,
+            lastSeen: now,
+          });
+        });
+
+        setVehicles(
+          Array.from(store.values()).sort((a, b) => 
+            String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+          )
+        );
+        return;
+      }
+
+      // PRIORITY 3: Production Clean Blank Sheet (0 cars reporting)
+      store.clear();
+      setVehicles([]);
     };
 
-    runSimStep();
-    const interval = setInterval(runSimStep, 2000);
-    return () => clearInterval(interval);
+    syncFleet();
+    const interval = setInterval(syncFleet, 2000);
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
   }, [isDemoMode]);
 
   // Subscribe to background-resolved rural turn-by-turn routes (OSM)
@@ -322,6 +343,9 @@ export default function App() {
 
   const handleSelectVehicle = useCallback((id) => {
     setSelectedVehicleId(id);
+    if (!id) {
+      setFitTrigger(prev => prev + 1);
+    }
   }, []);
 
   const handleToggleDistanceLines = useCallback(() => {
