@@ -7,6 +7,22 @@
 
 ---
 
+## Current Implementation Snapshot (Authoritative)
+
+- **Base**: Sant Kabir Eye Hospital, Basti — `26.797313, 82.718401`. One base only. Khalilabad is not a base, hub, or route origin.
+- **Hosting**: Cloudflare Worker with static assets (`wrangler deploy`), not Cloudflare Pages.
+- **Live state**: one SQLite-backed Durable Object, `PurvanchalFleetHub`, with WebSocket Hibernation.
+- **Dashboard stream**: `wss://<host>/api/ws` sends a snapshot, then vehicle deltas.
+- **Tracker stream**: `wss://<host>/api/ws?role=tracker` accepts JSON or compact arrays; speed is in knots.
+- **Fallback polling**: the dashboard polls `/api/vehicles` every 10 seconds only when the WebSocket is disconnected.
+- **Routes**: 195 base-anchored village routes, plus 17/15/11 fleet route arrays. Generated offline with OSRM; no runtime OSRM dependency.
+- **Route guard**: `npm run test:routes` fails if any route starts more than 0.75 km from Basti.
+- **Gazetteer**: 195 local named places. Camp labels are not inferred from proximity.
+- **TV mode**: close-up zoom 13.2, continuous overview step.
+- **Branches**: `main` production, `testing` QA, `experimental` sandbox. See `docs/BRANCHING.md`.
+
+---
+
 ## 1. System Overview & Real-World Domain
 
 **Sant Kabir Fleet Shield** is an edge-native, zero-server-cost fleet command and live telemetry tracking wallboard engineered for rural medical outreach in Eastern Uttar Pradesh (Purvanchal), India. 
@@ -23,38 +39,32 @@ The hospital operates a network of outreach ambulances, mobile surgical units, a
 
 ## 2. High-Level System Architecture
 
+```text
++--------------------------------------------------------------+
+|     Sant Kabir Eye Hospital, Basti (26.797313, 82.718401)     |
+|                 The one and only dispatch base               |
++--------------------------------------------------------------+
+                              ▲
+                              │
+        wss://host/api/ws?role=tracker          wss://host/api/ws
+                              │                         │
++-----------------------------+----+       +------------+--------------+
+| Cloudflare Worker (worker.js)    |       | Dashboard wallboard       |
+| /api/track, /api/ws, assets      |◄──────┤ MapLibre + React          |
++------------------┬---------------+ delta | TV kiosk mode             |
+                   │                       +---------------------------+
+                   │
++------------------▼--------------------------------------------+
+| PurvanchalFleetHub — one SQLite-backed Durable Object         |
+| live fleet state · WebSocket broadcast · 60s snapshot          |
+| hibernating sockets · tracker ack/delta                        |
++---------------------------------------------------------------+
 ```
-                                  +-------------------------------------------------------------+
-                                  |         Sant Kabir Eye Hospital (Base Command Center)       |
-                                  |                26.797313° N, 82.718401° E (Basti, UP)       |
-                                  +-------------------------------------------------------------+
-                                                                 ▲
-                                                                 │
-                                           +---------------------+---------------------+
-                                           │                                           │
-                                    HTTP GET /api/vehicles                     HTTP POST /api/location
-                                (2s Polling / Zero-Cache)                  (Traccar / OsmAnd Protocol)
-                                           │                                           │
-                        +------------------▼------------------+             +----------▼----------+
-                        |  Cloudflare Edge Worker (worker.js) |             | Android Fleet APK   |
-                        |      (Global Anycast Network)       |             | Foreground GPS Svc  |
-                        +------------------┬------------------+             +---------------------+
-                                           │
-                     +---------------------+---------------------+
-                     │                                           │
-           [Edge In-Memory Map]                        [Edge Static Assets]
-        - 35-min Decommission Prune                - Vite 8 / React 19 SPA
-        - 15-min Rural Blind Spot Grace            - MapLibre GL WebGL Engine
-        - Golden Ratio Color Allocator             - 75+ Village Gazetteer
-        - Nearest Rural Locator Engine             - Strict Zero-Cache Headers
-                     │                                           │
-                     +---------------------►---------------------+
-                                           │
-                         +-----------------▼-----------------+
-                         |      Live Command Wallboard       |
-                         |  (TV Kiosk Auto-Tour / WebGL 60fps) |
-                         +-----------------------------------+
-```
+
+The dashboard keeps a 10-second HTTP polling fallback only while the
+WebSocket is disconnected. HTTP telemetry is mirrored into the hub at most
+once per vehicle per 30 seconds. The hub is the live source of truth; the
+Worker itself no longer keeps an in-memory fleet map.
 
 ---
 
@@ -92,9 +102,9 @@ In traditional React map applications, re-rendering markers on each state tick c
   - SVG gradient and filter IDs use deterministic identifiers (`ambWindshield_${vId}`) rather than `Math.random()`, eliminating SVG re-rasterization flashes entirely.
   - Marker element position updates use CSS transitions (`transition-all duration-700 ease-out`), ensuring that when a car reconnects to 4G after an 8-minute gap, it **smoothly glides** to its new location rather than jumping abruptly.
 
-### 3.4. 75+ Purvanchal Rural Village Gazetteer
+### 3.4. 195-Place Purvanchal Rural Gazetteer
 - **In [`src/data/ruralVillages.json`](src/data/ruralVillages.json)**:
-  - Cached database of 75+ Gram Panchayats and eye camp bazars across Eastern UP (*Semariyawan, Belhar Kala, Baghnagar, Maghar, Harraiya, Rudhauli, Bansi, Itwa, Tanda, Dhanghata*, etc.).
+  - Cached database of 195 named places and eye camp bazars across Eastern UP (*Semariyawan, Belhar Kala, Baghnagar, Maghar, Harraiya, Rudhauli, Bansi, Itwa, Tanda, Dhanghata*, etc.).
 - **MapLibre WebGL Integration**:
   - Registered as an in-memory GeoJSON source (`'purvanchal-villages'`).
   - Layer `'purvanchal-village-dots'`: Location circle indicator.
@@ -109,7 +119,7 @@ In traditional React map applications, re-rendering markers on each state tick c
 
 ### 3.6. Smart TV Wallboard Kiosk Mode & Cinematic Tour Cadence
 - **Parabolic Auto-Tour Alternating Loop in [`src/App.jsx`](src/App.jsx)**:
-  - **Ambulance Close-Up Tracking Shot (8.5s)**: Glides dynamically to active ambulances at high zoom ($z = 13.8$, $28^\circ$ pitch) with full road lifeline and speed display. Vehicles in temporary signal gaps are allocated 5.0 seconds.
+  - **Ambulance Close-Up Tracking Shot (8.5s)**: Glides dynamically to active ambulances at high zoom ($z = 13.2$, $28^\circ$ pitch) with full road lifeline and speed display. Vehicles in temporary signal gaps are allocated 5.0 seconds.
   - **Regional Fleet Overview (6.0s)**: Smoothly transitions outward ($z \approx 10.2$, $0^\circ$ pitch) to frame all active ambulances across Purvanchal districts before progressing to the next unit.
   - **TV-Optimized Centered Framing**: When the bottom Apple Sheet is in default `peek` capsule mode, camera padding dynamically centers vehicle markers on 16:9 large-screen TV displays.
 - **North-Up Upright Camera**:

@@ -3,7 +3,7 @@
 > **Real-Time Outreach Fleet Command & Telemetry Wallboard**  
 > Engineered by **[Mani Ratan Singh](https://mrps.in)** • [github.com/maniratansingh](https://github.com/maniratansingh)  
 > Operational Command Center for **Sant Kabir Eye Hospital**, Basti, Uttar Pradesh.  
-> **100% Serverless on Cloudflare Pages** (Zero external databases, zero servers, zero monthly hosting costs).
+> **100% Serverless on Cloudflare Workers + Durable Objects** (Zero external databases, zero servers, zero monthly hosting costs).
 
 ---
 
@@ -15,59 +15,86 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 
 ---
 
-## 🌟 Key Architecture & Capabilities
+## 🌟 Current Architecture & Capabilities
 
-```
+```text
 +--------------------------------------------------------------+
-|             Sant Kabir Eye Hospital (Basti, UP)              |
-|                     Base Command Center                      |
+|        Sant Kabir Eye Hospital, Basti (26.797313, 82.718401) |
+|                 The one and only dispatch base               |
 +--------------------------------------------------------------+
                                ▲
-                               │ 3s Edge Polling
                                │
-                +------------------------------+
-                |   Cloudflare Pages Worker    |
-                |         (_worker.js)         |
-                +------------------------------+
-                    ▲                      ▲
-                    │ HTTP POST/GET        │ HTTP GET
-                    │ /api/location        │ /api/vehicles
-                    │                      │
-+-----------------------------+  +-----------------------------+
-|    Ambulance 01 (In Field)  |  |   Ambulance 02 (En Route)   |
-|   Fleet Shield Android APK  |  |  Fleet Shield Android APK   |
-|   Foreground GPS Telemetry  |  |  Foreground GPS Telemetry   |
-+-----------------------------+  +-----------------------------+
+          +--------------------+--------------------+
+          │                                         │
+   wss://host/api/ws?role=tracker              wss://host/api/ws
+          │                                         │
++---------▼----------------+             +----------▼----------+
+| Cloudflare Worker        |             | Dashboard wallboard |
+| /api/track, /api/ws      |◄── snapshot ─┤ MapLibre + React   |
+| static assets            |    + delta   | TV kiosk mode       |
++---------┬----------------+             +---------------------+
+          │
++---------▼-------------------------------------------+
+| PurvanchalFleetHub (one SQLite-backed Durable Object)|
+| live fleet state · WebSocket broadcast · 60s snapshot |
++------------------------------------------------------+
 ```
 
-### 1. 100% Serverless Edge Architecture
-- **Zero Database Requirement**: Runs entirely on Cloudflare Pages advanced edge runtime via `src/worker.js`.
-- **In-Memory Edge Telemetry Engine**: Ingests, validates, and serves live ambulance locations with automatic 35-minute stale session retirement.
-- **Strict Zero-Cache Headers**: Live responses enforce `Cache-Control: no-store` and `CDN-Cache-Control: no-store`, ensuring TV wallboards never load stale cache.
-- **52,000+ Request Stress-Tested**: Benchmark verified at 174.6 RPS, 97ms P50 latency, and 100% success rate.
+### 1. One base, one source of truth
+- **Sant Kabir Eye Hospital, Basti** is the only base: `26.797313, 82.718401`.
+- Khalilabad is a town and a road destination, **not** a base, hub, or route origin.
+- `src/utils/baseLocation.js` is the single shared base coordinate.
+- `npm run test:routes` verifies that every village and fleet route starts within 0.75 km of Basti.
 
-### 2. 15-Minute Rural Signal Gap Grace Period & Dead-Zone Resilience
-- **No Disappearing Vehicles**: Ambulances passing through rural forest cover or 2G dead zones stay locked at their **Last Known Position** for up to 15 minutes.
-- **Visual Amber Gap Badges**: Displays `AMB-02 • ⏳ Signal Gap (6m ago) • Semariyawan` without deleting or flickering the car icon.
-- **Smooth Glide on Reconnection**: When 4G returns, the vehicle smoothly glides over 0.7s to its new coordinate rather than jumping abruptly.
+### 2. Cloudflare Workers + Durable Object
+- The app deploys as a **Worker with static assets** (`wrangler deploy`), not the legacy Pages dashboard.
+- `PurvanchalFleetHub` is a single SQLite-backed Durable Object and the live source of truth.
+- Dashboard clients connect to `wss://<host>/api/ws`; trackers use `wss://<host>/api/ws?role=tracker`.
+- WebSocket Hibernation keeps idle sockets cheap.
+- The hub stores a fleet snapshot in its own SQLite every 60 seconds.
 
-### 3. 75+ Purvanchal Village Gazetteer & Camp Mapping
-- **Local Village Names on Canvas**: 75+ Gram Panchayats and outreach eye camp bazars across Eastern UP (*Semariyawan, Belhar Kala, Baghnagar, Maghar, Harraiya, Rudhauli, Bansi, Itwa, Tanda, Dhanghata*, etc.) render directly onto the map surface.
-- **Zero Network Delay**: Embedded locally in browser memory via MapLibre GL WebGL symbol layers with contrast halos.
+### 3. Telemetry and free-tier limits
+- WebSocket should be the primary tracker path. After the upgrade, messages do not count as new Worker requests.
+- HTTP telemetry still works, but every request counts against the Workers Free request quota.
+- 25 vehicles at 5-second HTTP = **432,000 requests/day**, which exceeds the free 100k/day allowance.
+- WebSocket messages are billed to the Durable Object at roughly 20:1; 432,000 messages/day ≈ **21,600 billed DO requests/day**.
+- HTTP telemetry is mirrored into the hub at most once every 30 seconds per vehicle. That throttle does not reduce the incoming Worker request count.
+- The dashboard uses a **10-second HTTP polling fallback** only when the WebSocket is not connected.
 
-### 4. Apple Clinical UI & Anti-Blink SVG Engine
-- **Persistent DOM Markers**: Markers are preserved across TV cycles and selection toggles—SVGs are never destroyed or re-parsed, eliminating flashing/blinking completely.
-- **Non-Overlapping Vertical Clearance Shelves**: 2D screen coordinate collision-avoidance automatically elevates vehicle tags onto stacked vertical shelves ($32\text{px}$ spacing) with color-matched SVG stem lines when ambulances cluster nearby.
-- **Strict Backward-Only Road Lifelines**: Road ribbons strictly trace backward from the ambulance's current GPS position to the Base Hospital in Basti (`26.797313°N, 82.718401°E`) in that vehicle's own unique color. Zero forward lines into unconfirmed destinations.
-- **Golden Ratio Color Engine**: Generates 60+ non-colliding distinct route line colors and ambient halos using the Golden Ratio Conjugate in HSL space.
-- **Interactive Apple Sheet**: Bottom floating sheet with 3 detent levels (`peek`, `half`, `full`), driver call shortcuts, and 1-tap external turn-by-turn navigation.
+### 4. Precomputed, base-anchored routes
+- `src/data/allVillagesRoadRoutes.json` contains **195 routes**, all starting at Basti.
+- `initial17Fleet.js`, `purvanchal15FleetData.*`, and `initial11Fleet.js` contain matching base-anchored route arrays.
+- Routes are generated **offline** with OSRM and committed. The deployed app does not call OSRM at runtime.
+- Regenerate with:
+  ```bash
+  npm run data:routes
+  ```
+- The generator is resumable and failure-safe; it will not overwrite the main file with partial data.
+- The map renders route geometry only; no artificial hub or straight-line base connector is synthesized.
 
-### 5. Smart TV Wallboard Kiosk Mode (Cinematic Auto-Tour)
-- **Alternating Parabolic Cadence**: Seamlessly alternates between an 8.5s dynamic close-up tracking shot ($z = 13.8, 28^\circ$ pitch) and a 6.0s regional fleet overview ($z \approx 10.2, 0^\circ$ pitch).
-- **TV-Optimized Centered Framing**: Dynamically centers vehicle markers on 16:9 large-screen monitors when the bottom sheet is minimized.
-- **Two-Way Live Sync**: Adding, moving, or decommissioning cars updates the TV wallboard live every 2 seconds without requiring anyone to press F5 or refresh.
-- **Dark Canvas by Default**: Clean, high-contrast, watermark-free Dark Gray Canvas for low-glare command center displays.
-- **Detailed Specification**: See [ARCHITECTURE.md](ARCHITECTURE.md) for full system diagrams and engineering specs.
+### 5. Rural gazetteer
+- The local gazetteer has **195 named places** across the operating districts.
+- The UI resolves the **current place name** from GPS; it does not schedule or predict camps.
+- The demo data does not assign a camp based on proximity.
+
+### 6. UI and wallboard
+- Apple-inspired type, spacing, surfaces and controls.
+- Persistent DOM markers, zero-blink SVG vehicles, 30px vertical clearance shelves.
+- Fleet states: **Moving, On scene, Returning, At base, No signal**.
+- TV auto-tour uses a **13.2** close-up zoom and a continuous overview step.
+- Compact summary popover links to the full fleet sheet instead of duplicating the roster.
+- Dark and light themes; map attribution is available in compact form.
+
+### 7. Branch model
+- **`main`** — stable production.
+- **`testing`** — integration and verification work.
+- **`experimental`** — new and unusual ideas; not production.
+- Old merged branches are archived as tags.
+- See [docs/BRANCHING.md](docs/BRANCHING.md).
+
+### 8. Accurate data and routing notes
+- See [docs/DATA_AND_ROUTING.md](docs/DATA_AND_ROUTING.md) for the route pipeline, counts, OSRM policy and cache strategy.
+- See [docs/TESTING.md](docs/TESTING.md) for the test suites and release checks.
 
 ---
 
@@ -158,26 +185,39 @@ npm run build
 
 # 5. Preview production build locally
 npm run preview
+
+# 6. Run verification
+npm test                  # master contract + route anchor guard
+npm run test:kalman
+npm run test:map-matching
+npm run test:do-ws        # requires wrangler dev on :8787
+npm run test:routes       # route origin guard only
 ```
 
 ---
 
 ## ☁️ Deployment Guide
 
-### Direct Upload (Drag & Drop) to Cloudflare Pages
-1. Build the production bundle:
-   ```bash
-   npm run build
-   cd dist && zip -r ../santkabir-dist-only.zip . -x "*.DS_Store" && cd ..
-   ```
-2. Log into the [Cloudflare Dashboard](https://dash.cloudflare.com) $\rightarrow$ **Workers & Pages** $\rightarrow$ **Create application** $\rightarrow$ **Pages** $\rightarrow$ **Upload assets**.
-3. Drag and drop `santkabir-dist-only.zip` into the upload zone.
-4. Click **Deploy site**. The deployment is instantly live on Cloudflare's global edge network.
-5. Set the admin secret used by `POST/DELETE /api/clear`:
-   ```bash
-   npx wrangler pages secret put ADMIN_SECRET_KEY --project-name=<pages-project>
-   ```
-   For local development, start the server with `ADMIN_SECRET_KEY=<value> npm run dev`.
+### Deploy with Wrangler (Workers + static assets)
+
+```bash
+npm run build
+npx wrangler deploy
+```
+
+Set the admin key used by `POST/DELETE /api/clear`:
+
+```bash
+npx wrangler secret put ADMIN_SECRET_KEY
+```
+
+Do **not** deploy this version through the legacy Pages dashboard. `wrangler.toml` defines the Worker entry, the static asset binding (`ASSETS`), and the `FLEET_HUB` Durable Object binding.
+
+For local development:
+
+```bash
+ADMIN_SECRET_KEY=dev-admin-key npm run dev
+```
 
 ### Durable Object WebSocket Hub
 
@@ -255,7 +295,7 @@ Host: fleet.mrps.in
 * Returns an immediate `HTTP 200 OK` response (`{"success": true, ...}`).
 
 ### 3. Cloudflare & Infrastructure Setup
-1. **Port 443 Standard HTTPS**: Traffic is terminated on port 443 via Cloudflare Pages.
+1. **Port 443 Standard HTTPS**: Traffic is terminated on port 443 via the Cloudflare Worker.
 2. **Cloudflare WAF Custom Rule**:
    * Navigate to **Cloudflare Dashboard** $\rightarrow$ **Security** $\rightarrow$ **WAF** $\rightarrow$ **Custom Rules**.
    * Action: **Bypass / Skip** Bot Fight Mode and Browser Integrity Check.
