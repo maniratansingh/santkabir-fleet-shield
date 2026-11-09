@@ -1,9 +1,10 @@
 import { FLEET_15 } from './purvanchal15FleetData.js';
 import { getUniqueVehicleColor } from '../utils/colors.js';
+import { BASE_LAT, BASE_LON } from '../utils/baseLocation.js';
 
 export const INITIAL_11_FLEET = FLEET_15.slice(0, 11).map((c, i) => {
   const midIdx = Math.floor(c.coords.length * (0.3 + (i % 5) * 0.12));
-  const pt = c.coords[midIdx] || c.coords[0] || [83.0722, 26.7797];
+  const pt = c.coords[midIdx] || c.coords[0] || [BASE_LON, BASE_LAT];
   const nextPt = c.coords[Math.min(c.coords.length - 1, midIdx + 1)] || pt;
   const colors = getUniqueVehicleColor(c.id);
 

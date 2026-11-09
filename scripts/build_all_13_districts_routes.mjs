@@ -17,12 +17,14 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { BASE_LAT, BASE_LON } from '../src/utils/baseLocation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const BASE_LON = 83.0722;
-const BASE_LAT = 26.7797;
+// One base only: Sant Kabir Eye Hospital, Basti.
+// Khalilabad is not a base and must never be used as the route origin.
+const FORCE = process.env.FORCE === '1';
 
 const BLOCKS_13_DISTRICTS = [
   // 1. Basti (14 blocks)
@@ -230,7 +232,7 @@ const BLOCKS_13_DISTRICTS = [
 console.log(`========================================================================`);
 console.log(`🚑 PRECOMPUTING 100% AUTHENTIC ROAD ROUTES FOR 13 PURVANCHAL DISTRICTS`);
 console.log(`📍 Total Blocks & Tehsils: ${BLOCKS_13_DISTRICTS.length}`);
-console.log(`🏥 Base Hospital: Khalilabad [${BASE_LON}, ${BASE_LAT}]`);
+console.log(`🏥 Base Hospital: Sant Kabir Eye Hospital, Basti [${BASE_LON}, ${BASE_LAT}]`);
 console.log(`========================================================================\n`);
 
 // Google Polyline Encoder
@@ -312,8 +314,8 @@ let fetchedNew = 0;
 for (const loc of BLOCKS_13_DISTRICTS) {
   const key = loc.name;
   
-  // Use existing if already in cache and has waypoints
-  if (finalRoutes[key] && Array.isArray(finalRoutes[key].coordinates) && finalRoutes[key].coordinates.length > 5) {
+  // Use existing only when it is already base-anchored and FORCE is not set.
+  if (!FORCE && finalRoutes[key] && Array.isArray(finalRoutes[key].coordinates) && finalRoutes[key].coordinates.length > 5) {
     completed++;
     process.stdout.write(`\r[${completed}/${BLOCKS_13_DISTRICTS.length}] Cached: ${loc.name.padEnd(25)} (${loc.district})`);
     continue;

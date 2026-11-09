@@ -296,7 +296,7 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     roadPath.push(...main);
   } else {
     // The corridor is not base-anchored. Prefer a base corridor that reaches
-    // the vehicle almost exactly; otherwise join at the Khalilabad hub.
+    // the vehicle almost exactly; otherwise use only the true road section.
     let bestLink = null;
     for (const [corridorId, corridor] of Object.entries(roadRoutesData)) {
       const coords = corridor.coordinates;
@@ -320,28 +320,10 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
       roadPath.push(...main);
       matchedCorridorName = roadRoutesData[bestLink.id]?.name || bestLink.id;
     } else {
-      // Base -> Khalilabad hub -> the vehicle's village road.
-      const hubCoords = roadRoutesData['CAMP-KHALILABAD']?.coordinates;
-      if (hubCoords && hubCoords.length > 1) {
-        const hubStart = projectOnPolyline(baseCoord, hubCoords);
-        const hubEnd = projectOnPolyline(roadCoords[0], hubCoords);
-        const baseLeg = buildPolylineSection(hubCoords, hubStart, hubEnd);
-        const routeStart = projectOnPolyline(roadCoords[0], roadCoords);
-        const routeLeg = buildPolylineSection(roadCoords, routeStart, vehProj);
-
-        if (haversineKm(baseCoord, baseLeg[0] || baseCoord) > 0.05) {
-          roadPath.push(baseCoord);
-        }
-        roadPath.push(...baseLeg);
-        if (roadPath.length && routeLeg.length && haversineKm(roadPath[roadPath.length - 1], routeLeg[0]) > 0.05) {
-          roadPath.push(routeLeg[0]);
-        }
-        roadPath.push(...routeLeg);
-      } else {
-        // Last resort: nearest corridor section with a short base link.
-        const main = buildPolylineSection(roadCoords, baseProj, vehProj);
-        roadPath.push(baseCoord, ...main);
-      }
+      // Do not synthesize a hub. If the route is not base-anchored and no
+      // base corridor reaches it, draw only the true road section near the
+      // vehicle instead of inventing a long straight connector.
+      roadPath.push(...buildPolylineSection(roadCoords, baseProj, vehProj));
     }
   }
 
