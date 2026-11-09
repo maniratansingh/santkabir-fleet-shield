@@ -22,6 +22,7 @@ import { getNearestRuralLocation } from '../utils/ruralLocator';
 import { getUniqueVehicleColor } from '../utils/colors';
 import { getFleetState, countFleetStates, sortVehiclesByPriority } from '../utils/fleetStatus';
 import ProvisioningQrModal from './ProvisioningQrModal';
+import { useDraggableSheet } from '../hooks/useDraggableSheet';
 
 const STATE_TEXT = {
   no_signal: 'text-amber-600 dark:text-amber-400',
@@ -183,13 +184,10 @@ function AppleSheet({
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
   const selectedState = selectedVehicle ? getFleetState(selectedVehicle) : null;
-
-  // Cycling detents
-  const cycleDetent = () => {
-    if (detent === 'peek') onChangeDetent('half');
-    else if (detent === 'half') onChangeDetent('full');
-    else onChangeDetent('peek');
-  };
+  const { height, isDragging, isExpanded, handleProps } = useDraggableSheet({
+    detent,
+    onChangeDetent,
+  });
 
   // Operational counts shared with the header.
   const counts = countFleetStates(vehicles);
@@ -207,29 +205,24 @@ function AppleSheet({
   });
   const sortedVehicles = sortVehiclesByPriority(filteredVehicles);
 
-  // Determine height classes based on detent
-  const getDetentHeightClass = () => {
-    if (detent === 'peek') return 'h-16';
-    if (detent === 'half') return 'h-[560px] max-h-[calc(100vh-6rem)]';
-    return 'h-[680px] max-h-[calc(100vh-5rem)]';
-  };
-
   return (
     <div
-      className={`fixed bottom-[calc(0.75rem+var(--safe-bottom))] left-[calc(0.75rem+var(--safe-left))] z-30 pointer-events-auto w-[92vw] sm:w-[380px] glass-panel rounded-[24px] shadow-xl border border-slate-200/90 dark:border-white/10 flex flex-col transition-all duration-300 overflow-hidden ${getDetentHeightClass()}`}
+      className={`fixed bottom-[calc(0.75rem+var(--safe-bottom))] left-[calc(0.75rem+var(--safe-left))] z-30 pointer-events-auto w-[92vw] sm:w-[380px] glass-panel rounded-[24px] shadow-xl border border-slate-200/90 dark:border-white/10 flex flex-col overflow-hidden ${isDragging ? 'select-none' : ''}`}
+      style={{ height }}
     >
       {/* Drag handle */}
       <button
         type="button"
-        onClick={cycleDetent}
+        {...handleProps}
         aria-label={detent === 'full' ? 'Collapse fleet panel' : 'Expand fleet panel'}
-        className="w-full min-h-6 pt-2 pb-2 flex flex-col items-center justify-center cursor-pointer group"
+        aria-expanded={isExpanded}
+        className="w-full min-h-8 pt-2.5 pb-2.5 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing group"
       >
         <span className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600 group-hover:bg-sky-500 transition-colors" />
       </button>
 
       {/* Peek */}
-      {detent === 'peek' && (
+      {!isExpanded && (
         <div
           role="button"
           tabIndex={0}
@@ -273,7 +266,7 @@ function AppleSheet({
       )}
 
       {/* DETENT = HALF OR FULL */}
-      {detent !== 'peek' && (
+      {isExpanded && (
         <div className="flex-1 flex flex-col overflow-hidden px-3.5 pb-3">
           {/* VIEW A: SELECTED VEHICLE (AirTag Precision Item Platter) */}
           {selectedVehicle ? (
