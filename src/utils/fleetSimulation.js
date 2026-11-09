@@ -3,6 +3,7 @@
 // Guarantees zero-blanking, zero-stutter, butter-smooth physical velocity (zero humping / zero jumping).
 
 import { getNearestRuralLocation } from './ruralLocator';
+import { getDeliveryRouteSplit } from './roadDistance';
 
 const BASE_LAT = 26.797313;
 const BASE_LON = 82.718401;
@@ -210,7 +211,7 @@ export function simulateFleetAtTime(fleet, now = Date.now()) {
     }
     if (trail.length === 0) trail = [[lon, lat]];
 
-    return {
+    const vehicleState = {
       ...car,
       lat,
       lon,
@@ -231,6 +232,15 @@ export function simulateFleetAtTime(fleet, now = Date.now()) {
       isLive: true,
       isParked,
       lastSeen: now,
+    };
+
+    // The simulation walks a village route that starts at the Khalilabad hub,
+    // so its route progress is not the distance from the hospital. Use the
+    // same base-anchored split that the map renders.
+    const split = getDeliveryRouteSplit(vehicleState);
+    return {
+      ...vehicleState,
+      roadDistFromBaseKm: split?.roadDistFromBaseKm ?? roadDistKm,
     };
   });
 }

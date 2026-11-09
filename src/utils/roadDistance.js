@@ -100,6 +100,56 @@ export function projectPointOnSegment(p, a, b) {
   };
 }
 
+// Nearest point on a polyline, with the segment index and interpolation t.
+function projectOnPolyline(point, coords) {
+  let best = { dist: Infinity, idx: 0, t: 0, point: coords[0] };
+  for (let i = 0; i < coords.length - 1; i++) {
+    const proj = projectPointOnSegment(point, coords[i], coords[i + 1]);
+    const d = haversineKm(point, proj.point);
+    if (d < best.dist) {
+      best = { dist: d, idx: i, t: proj.t, point: proj.point };
+    }
+  }
+  return best;
+}
+
+// Build the section of a polyline between two projected points. The result is
+// ordered from `start.point` to `end.point` and never wraps around the ends.
+function buildPolylineSection(coords, start, end) {
+  const points = [start.point];
+
+  if (start.idx === end.idx) {
+    points.push(end.point);
+  } else if (start.idx < end.idx) {
+    for (let i = start.idx + 1; i <= end.idx; i++) points.push(coords[i]);
+    points.push(end.point);
+  } else {
+    for (let i = start.idx; i > end.idx; i--) points.push(coords[i]);
+    points.push(end.point);
+  }
+
+  return dedupePath(points);
+}
+
+function dedupePath(points) {
+  const out = [];
+  for (const point of points) {
+    if (!point) continue;
+    if (out.length === 0 || haversineKm(out[out.length - 1], point) > 0.005) {
+      out.push(point);
+    }
+  }
+  return out;
+}
+
+function pathLengthKm(points) {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += haversineKm(points[i - 1], points[i]);
+  }
+  return total;
+}
+
 // Get the high-fidelity road polyline coordinates for a given corridor ID
 export function getRoadCoordinates(corridorId) {
   if (allVillagesRoadRoutes[corridorId] && allVillagesRoadRoutes[corridorId].coordinates) {
@@ -211,16 +261,11 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
   }
 
   // Case F: Fallback to nearest regional highway corridor
-  let bestIdx = 0;
-  let bestProj = vehRawCoord;
-
   if (!roadCoords) {
     const match = matchNearestCorridor(vehRawCoord);
     const corridor = roadRoutesData[match.corridor];
     if (corridor && corridor.coordinates) {
       roadCoords = corridor.coordinates;
-      bestIdx = match.idx;
-      bestProj = match.snapped;
       matchedCorridorName = corridor.name || match.corridor;
     }
   }
@@ -230,62 +275,87 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     roadCoords = allVillagesRoadRoutes['Harraiya Gram']?.coordinates || roadRoutesData['CAMP-HARRAIYA']?.coordinates || [baseCoord, vehRawCoord];
   }
 
-  // Ensure roadCoords orientation starts at Sant Kabir Eye Hospital Base in Basti
-  if (roadCoords && roadCoords.length > 1) {
-    const dStart = haversineKm(roadCoords[0], baseCoord);
-    const dEnd = haversineKm(roadCoords[roadCoords.length - 1], baseCoord);
-    if (dEnd < dStart) {
-      roadCoords = [...roadCoords].reverse();
-    }
-  }
+  // Project the hospital and the vehicle onto the chosen route geometry.
+  // Never reorder the route: the nearest point to the hospital may be in the
+  // middle of the corridor, not at either endpoint.
+  const baseProj = projectOnPolyline(baseCoord, roadCoords);
+  const vehProj = projectOnPolyline(vehRawCoord, roadCoords);
 
-  // Project vehicle location accurately onto selected roadCoords
-  if (roadCoords.length > 1) {
-    let minD = Infinity;
-    for (let i = 0; i < roadCoords.length - 1; i++) {
-      const { point: proj } = projectPointOnSegment(vehRawCoord, roadCoords[i], roadCoords[i + 1]);
-      const d = haversineKm(vehRawCoord, proj);
-      if (d < minD) {
-        minD = d;
-        bestIdx = i;
-        bestProj = proj;
+  const isReturning = vehicle.status === 'returning';
+  const NEAR_BASE_KM = 1.0;
+  const MAX_CORRIDOR_LINK_KM = 1.0;
+  let roadPath = [];
+
+  if (baseProj.dist <= NEAR_BASE_KM) {
+    // The corridor itself passes close to Basti. Use that section and add a
+    // short base connector only if the projection is slightly off the pin.
+    const main = buildPolylineSection(roadCoords, baseProj, vehProj);
+    if (haversineKm(baseCoord, main[0] || baseCoord) > 0.05) {
+      roadPath.push(baseCoord);
+    }
+    roadPath.push(...main);
+  } else {
+    // The corridor is not base-anchored. Prefer a base corridor that reaches
+    // the vehicle almost exactly; otherwise join at the Khalilabad hub.
+    let bestLink = null;
+    for (const [corridorId, corridor] of Object.entries(roadRoutesData)) {
+      const coords = corridor.coordinates;
+      if (!coords || coords.length < 2) continue;
+      // Only corridors that actually start at the hospital.
+      if (haversineKm(coords[0], baseCoord) > 0.5) continue;
+      const corridorStart = projectOnPolyline(baseCoord, coords);
+      const corridorProj = projectOnPolyline(vehRawCoord, coords);
+      if (corridorProj.dist <= MAX_CORRIDOR_LINK_KM) {
+        if (!bestLink || corridorProj.dist < bestLink.proj.dist) {
+          bestLink = { id: corridorId, coords, start: corridorStart, proj: corridorProj };
+        }
+      }
+    }
+
+    if (bestLink) {
+      const main = buildPolylineSection(bestLink.coords, bestLink.start, bestLink.proj);
+      if (haversineKm(baseCoord, main[0] || baseCoord) > 0.05) {
+        roadPath.push(baseCoord);
+      }
+      roadPath.push(...main);
+      matchedCorridorName = roadRoutesData[bestLink.id]?.name || bestLink.id;
+    } else {
+      // Base -> Khalilabad hub -> the vehicle's village road.
+      const hubCoords = roadRoutesData['CAMP-KHALILABAD']?.coordinates;
+      if (hubCoords && hubCoords.length > 1) {
+        const hubStart = projectOnPolyline(baseCoord, hubCoords);
+        const hubEnd = projectOnPolyline(roadCoords[0], hubCoords);
+        const baseLeg = buildPolylineSection(hubCoords, hubStart, hubEnd);
+        const routeStart = projectOnPolyline(roadCoords[0], roadCoords);
+        const routeLeg = buildPolylineSection(roadCoords, routeStart, vehProj);
+
+        if (haversineKm(baseCoord, baseLeg[0] || baseCoord) > 0.05) {
+          roadPath.push(baseCoord);
+        }
+        roadPath.push(...baseLeg);
+        if (roadPath.length && routeLeg.length && haversineKm(roadPath[roadPath.length - 1], routeLeg[0]) > 0.05) {
+          roadPath.push(routeLeg[0]);
+        }
+        roadPath.push(...routeLeg);
+      } else {
+        // Last resort: nearest corridor section with a short base link.
+        const main = buildPolylineSection(roadCoords, baseProj, vehProj);
+        roadPath.push(baseCoord, ...main);
       }
     }
   }
 
-  // 2. Calculate true road distance from Sant Kabir Hospital Base to vehicle
-  let roadDistFromBase = 0;
-  for (let i = 0; i < bestIdx; i++) {
-    roadDistFromBase += haversineKm(roadCoords[i], roadCoords[i + 1]);
-  }
-  roadDistFromBase += haversineKm(roadCoords[bestIdx], bestProj);
-
-  // 3. Assemble road navigation route (ALWAYS BEHIND: from Base Hospital in Basti to current vehicle location)
-  // Strictly follows asphalt road geometries — NEVER projects forward into an imaginary destination
-  const roadPath = [];
-  if (haversineKm(baseCoord, roadCoords[0]) > 0.05) {
-    roadPath.push(baseCoord);
-  }
-  for (let i = 0; i <= bestIdx; i++) {
-    roadPath.push(roadCoords[i]);
-  }
-  roadPath.push(bestProj);
-  // If slightly off road, smoothly append raw coordinate
-  if (haversineKm(bestProj, vehRawCoord) > 0.015) {
+  roadPath = dedupePath(roadPath);
+  if (roadPath.length && haversineKm(roadPath[roadPath.length - 1], vehRawCoord) > 0.015) {
     roadPath.push(vehRawCoord);
   }
+  roadPath = dedupePath(roadPath);
 
-  const isReturning = vehicle.status === 'returning';
-
-  // Completed road trail behind vehicle connecting back to Base Hospital
-  const completedTrail = roadPath;
-
-  const midIdx = Math.floor(roadPath.length / 2);
-  const midPoint = roadPath[midIdx] || vehRawCoord;
-
-  // Next road bearing
-  const nextCoord = roadCoords[Math.min(bestIdx + 1, roadCoords.length - 1)];
-  const roadBearing = calculateBearing(roadCoords[bestIdx], nextCoord);
+  const roadDistFromBase = pathLengthKm(roadPath);
+  const midPoint = roadPath[Math.floor(roadPath.length / 2)] || vehRawCoord;
+  const prevCoord = roadPath[roadPath.length - 2] || roadPath[0] || vehRawCoord;
+  const lastCoord = roadPath[roadPath.length - 1] || vehRawCoord;
+  const roadBearing = calculateBearing(prevCoord, lastCoord);
   const bearing = isReturning ? (roadBearing + 180) % 360 : roadBearing;
 
   return {
@@ -294,7 +364,7 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     upcomingRoute: [], // Zero forward projection — road ahead is clean
     completedTrail: roadPath,
     roadDistFromBaseKm: Math.round(roadDistFromBase * 10) / 10,
-    snappedCoord: bestProj,
+    snappedCoord: vehProj.point,
     bearing,
     midPoint,
     corridorName: matchedCorridorName,
