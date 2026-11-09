@@ -15,6 +15,12 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 
 ---
 
+<p align="center">
+  <img src="docs/assets/screenshots/fleet-overview-dark.jpg" alt="Sant Kabir Fleet Shield dark wallboard" width="100%" />
+</p>
+
+<p align="center"><em>Live TV wallboard — base-anchored routes, compact fleet tags, and one clear status line.</em></p>
+
 ## 🌟 Current Architecture & Capabilities
 
 ```text
@@ -95,6 +101,39 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 ### 8. Accurate data and routing notes
 - See [docs/DATA_AND_ROUTING.md](docs/DATA_AND_ROUTING.md) for the route pipeline, counts, OSRM policy and cache strategy.
 - See [docs/TESTING.md](docs/TESTING.md) for the test suites and release checks.
+
+---
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/fleet-list-dark.jpg" alt="Operational fleet list" />
+      <br /><strong>Operational fleet list</strong><br />
+      Priority sorting, four state filters, and real vehicle states.
+    </td>
+    <td width="50%">
+      <img src="docs/assets/screenshots/vehicle-detail-light.jpg" alt="Vehicle detail sheet" />
+      <br /><strong>Vehicle detail</strong><br />
+      Fleet-colour identity, driver contact, live position and navigation.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/provisioning-light.jpg" alt="Provisioning dialog" />
+      <br /><strong>Provisioning</strong><br />
+      Two-column QR setup with a single-scan Android flow.
+    </td>
+    <td width="50%">
+      <img src="docs/assets/screenshots/route-anchoring.jpg" alt="Base-anchored routes" />
+      <br /><strong>Route anchoring</strong><br />
+      Every route starts at Sant Kabir Eye Hospital, Basti.
+    </td>
+  </tr>
+</table>
+
+[Open the full screenshot gallery](docs/SCREENSHOTS.md)
 
 ---
 
