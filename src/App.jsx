@@ -88,6 +88,7 @@ export default function App() {
 
   const tourIndexRef = useRef(0);
   const vehiclesRef = useRef(vehicles);
+  const wsConnectedRef = useRef(false);
   useEffect(() => {
     vehiclesRef.current = vehicles;
   }, [vehicles]);
@@ -271,10 +272,126 @@ export default function App() {
     };
 
     syncFleet();
-    const interval = setInterval(syncFleet, 2000);
+    const interval = setInterval(() => {
+      // When the Durable Object WebSocket is live, polling is only a fallback.
+      if (!wsConnectedRef.current || isDemoMode) syncFleet();
+    }, isDemoMode ? 2000 : 10000);
     return () => {
       isSubscribed = false;
       clearInterval(interval);
+    };
+  }, [isDemoMode]);
+
+  // Event-driven fleet updates over the Durable Object WebSocket hub.
+  // HTTPS deployments connect by default; local HTTP needs ?ws=1.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const params = new URLSearchParams(window.location.search);
+    const enableWs = window.location.protocol === 'https:' || params.has('ws');
+    if (!enableWs) return undefined;
+
+    let closed = false;
+    let reconnectTimer = null;
+    let heartbeatTimer = null;
+    let attempt = 0;
+    let socket = null;
+
+    const upsertVehicle = (liveV, now) => {
+      if (!liveV || !liveV.id) return;
+      const store = fleetStoreRef.current;
+      const existing = store.get(liveV.id) || {};
+      const colors = getUniqueVehicleColor(liveV.id);
+      store.set(liveV.id, {
+        ...existing,
+        ...liveV,
+        isLive: Boolean(liveV.isLive !== false),
+        isSignalGap: Boolean(liveV.isSignalGap),
+        gapMinutes: liveV.gapMinutes || 0,
+        isParked: Boolean(liveV.isParked),
+        lineColor: liveV.lineColor || existing.lineColor || colors.line,
+        glowColor: liveV.glowColor || existing.glowColor || colors.glow,
+        driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
+        villageName: liveV.villageName || existing.villageName || 'Sant Kabir Eye Hospital Base (Basti)',
+        villageBlock: liveV.villageBlock || existing.villageBlock || 'Basti Sadar',
+        villageDistrict: liveV.villageDistrict || existing.villageDistrict || 'Basti',
+        villageBadge: liveV.villageBadge || existing.villageBadge || 'Base Station',
+        villageLabel: liveV.villageLabel || existing.villageLabel || 'Sant Kabir Eye Hospital',
+        highwayName: liveV.highwayName || existing.highwayName || liveV.villageBadge || 'Highway Link',
+        roadDistFromBaseKm: liveV.roadDistFromBaseKm || existing.roadDistFromBaseKm || 0,
+        lastSeen: liveV.lastSeen || now,
+      });
+    };
+
+    const publish = () => {
+      setVehicles(
+        Array.from(fleetStoreRef.current.values()).sort((a, b) =>
+          String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
+        )
+      );
+    };
+
+    const handleMessage = (event) => {
+      if (isDemoMode) return;
+      let payload;
+      try { payload = JSON.parse(event.data); } catch (e) { return; }
+      const now = Date.now();
+
+      if (payload?.type === 'snapshot' && Array.isArray(payload.vehicles) && payload.vehicles.length > 0) {
+        const store = fleetStoreRef.current;
+        const liveIds = new Set(payload.vehicles.map(v => v.id));
+        for (const id of Array.from(store.keys())) {
+          if (!liveIds.has(id)) store.delete(id);
+        }
+        payload.vehicles.forEach(v => upsertVehicle(v, now));
+        publish();
+      } else if (payload?.type === 'delta' && payload.vehicle) {
+        upsertVehicle(payload.vehicle, now);
+        publish();
+      } else if (payload?.type === 'clear') {
+        fleetStoreRef.current.clear();
+        setVehicles([]);
+      }
+    };
+
+    const connect = () => {
+      if (closed) return;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      socket = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
+
+      socket.onopen = () => {
+        attempt = 0;
+        wsConnectedRef.current = true;
+        try { socket.send(JSON.stringify({ type: 'subscribe' })); } catch (e) {}
+        heartbeatTimer = setInterval(() => {
+          try { socket.send('ping'); } catch (e) {}
+        }, 25000);
+      };
+      socket.onmessage = handleMessage;
+      socket.onerror = () => {};
+      socket.onclose = () => {
+        wsConnectedRef.current = false;
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+        }
+        if (!closed) {
+          attempt += 1;
+          const delay = Math.min(15000, 1000 * (2 ** Math.min(attempt, 4)));
+          reconnectTimer = setTimeout(connect, delay);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      wsConnectedRef.current = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (socket) {
+        try { socket.close(); } catch (e) {}
+      }
     };
   }, [isDemoMode]);
 

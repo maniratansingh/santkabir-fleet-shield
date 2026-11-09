@@ -197,6 +197,9 @@ function createKinematicFilter(options = {}) {
 // src/worker.js
 var liveVehicles = /* @__PURE__ */ new Map();
 var vehicleFilters = /* @__PURE__ */ new Map();
+var HUB_NAME = "purvanchal-fleet";
+var HUB_FORWARD_INTERVAL_MS = 3e4;
+var lastHubForward = /* @__PURE__ */ new Map();
 async function safeEqual(a, b) {
   const enc = new TextEncoder();
   const [ha, hb] = await Promise.all([
@@ -1670,10 +1673,20 @@ function calculateBearing(c1, c2) {
   return Math.round((brng + 360) % 360);
 }
 var worker_default = {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname.endsWith(".apk") || url.pathname.startsWith("/downloads/")) {
       return new Response("Not Found", { status: 404 });
+    }
+    if (url.pathname === "/api/ws" || url.pathname === "/api/ws/") {
+      if (!env.FLEET_HUB) {
+        return new Response(JSON.stringify({ error: "WebSocket hub not configured" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+      const hub = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME));
+      return hub.fetch(request);
     }
     const hasTraccarParams = (url.searchParams.has("id") || url.searchParams.has("uniqueId") || url.searchParams.has("deviceId") || url.searchParams.has("deviceid")) && (url.searchParams.has("lat") || url.searchParams.has("latitude"));
     const isTelemetryPath = url.pathname === "/api/track" || url.pathname === "/api/track/" || url.pathname === "/api/location" || url.pathname === "/api/location/" || url.pathname === "/api/v1/telemetry" || url.pathname === "/api/v1/telemetry/" || url.pathname === "/location" || url.pathname === "/track" || url.pathname === "/telemetry";
@@ -1810,6 +1823,19 @@ var worker_default = {
         isLive: true
       };
       liveVehicles.set(vehId, record);
+      if (env.FLEET_HUB) {
+        const nowMs = Date.now();
+        const lastForward = lastHubForward.get(vehId) || 0;
+        if (nowMs - lastForward >= HUB_FORWARD_INTERVAL_MS) {
+          lastHubForward.set(vehId, nowMs);
+          const hubPush = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME)).fetch("https://fleet-hub/track", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(record)
+          }).catch(() => null);
+          if (ctx?.waitUntil) ctx.waitUntil(hubPush);
+        }
+      }
       return new Response(JSON.stringify({
         success: true,
         app: "Sant Kabir Fleet Shield",
@@ -1860,6 +1886,11 @@ var worker_default = {
       }
       liveVehicles.clear();
       vehicleFilters.clear();
+      lastHubForward.clear();
+      if (env.FLEET_HUB) {
+        const hubClear = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME)).fetch("https://fleet-hub/clear", { method: "DELETE" }).catch(() => null);
+        if (ctx?.waitUntil) ctx.waitUntil(hubClear);
+      }
       return new Response(JSON.stringify({
         success: true,
         message: "Live telemetry cache cleared",
@@ -1880,6 +1911,7 @@ var worker_default = {
         if (now - lastSeen > DECOMMISSION_TIMEOUT_MS) {
           liveVehicles.delete(vKey);
           vehicleFilters.delete(vKey);
+          lastHubForward.delete(vKey);
         }
       }
       const reportedList = Array.from(liveVehicles.values()).map((vVal) => {
@@ -2024,6 +2056,145 @@ var worker_default = {
     return assetResponse;
   }
 };
+var PurvanchalFleetHub = class {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.vehicles = /* @__PURE__ */ new Map();
+    this.lastSnapshotAt = 0;
+    if (typeof WebSocketRequestResponsePair !== "undefined") {
+      this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    }
+    this.state.blockConcurrencyWhile(async () => {
+      const saved = await this.state.storage.get("fleet_snapshot");
+      if (Array.isArray(saved)) {
+        this.vehicles = new Map(saved.filter((v) => v && v.id).map((v) => [String(v.id), v]));
+      }
+    });
+  }
+  async fetch(request) {
+    const url = new URL(request.url);
+    const jsonHeaders = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    };
+    if (url.pathname.endsWith("/ws")) {
+      const upgrade = request.headers.get("Upgrade");
+      if (!upgrade || upgrade.toLowerCase() !== "websocket") {
+        return new Response(JSON.stringify({ error: "Expected WebSocket upgrade" }), {
+          status: 426,
+          headers: jsonHeaders
+        });
+      }
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      this.state.acceptWebSocket(server);
+      try {
+        server.send(JSON.stringify({
+          type: "snapshot",
+          vehicles: Array.from(this.vehicles.values()),
+          timestamp: Date.now()
+        }));
+      } catch (e) {
+      }
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    if (url.pathname.endsWith("/track") && request.method === "POST") {
+      try {
+        const record = await request.json();
+        if (record && record.id) {
+          this.vehicles.set(String(record.id), record);
+          this.broadcast({ type: "delta", vehicle: record });
+          this.persistSnapshotIfDue();
+        }
+      } catch (e) {
+      }
+      return new Response(JSON.stringify({ success: true, count: this.vehicles.size }), {
+        status: 200,
+        headers: jsonHeaders
+      });
+    }
+    if (url.pathname.endsWith("/vehicles")) {
+      return new Response(JSON.stringify({
+        success: true,
+        vehicles: Array.from(this.vehicles.values()),
+        count: this.vehicles.size,
+        timestamp: Date.now()
+      }), { status: 200, headers: jsonHeaders });
+    }
+    if (url.pathname.endsWith("/clear") && (request.method === "DELETE" || request.method === "POST")) {
+      this.vehicles.clear();
+      this.broadcast({ type: "clear", timestamp: Date.now() });
+      if (this.state.waitUntil) {
+        this.state.waitUntil(this.state.storage.put("fleet_snapshot", []));
+      }
+      return new Response(JSON.stringify({ success: true, count: 0 }), {
+        status: 200,
+        headers: jsonHeaders
+      });
+    }
+    return new Response(JSON.stringify({ error: "Not found" }), {
+      status: 404,
+      headers: jsonHeaders
+    });
+  }
+  webSocketMessage(ws, message) {
+    try {
+      const data = JSON.parse(message);
+      if (data?.type === "ping") {
+        ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
+      } else if (data?.type === "subscribe") {
+        ws.send(JSON.stringify({
+          type: "snapshot",
+          vehicles: Array.from(this.vehicles.values()),
+          timestamp: Date.now()
+        }));
+      } else if (data?.type === "track" && data.vehicle?.id) {
+        this.vehicles.set(String(data.vehicle.id), data.vehicle);
+        this.broadcast({ type: "delta", vehicle: data.vehicle });
+        this.persistSnapshotIfDue();
+      }
+    } catch (e) {
+      if (message === "ping") {
+        ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
+      }
+    }
+  }
+  webSocketClose(ws, code, reason, wasClean) {
+    try {
+      ws.close(code, "Hub closing connection");
+    } catch (e) {
+    }
+  }
+  webSocketError(ws, error) {
+    try {
+      ws.close(1011, "Hub socket error");
+    } catch (e) {
+    }
+  }
+  broadcast(message) {
+    const payload = JSON.stringify(message);
+    for (const ws of this.state.getWebSockets()) {
+      try {
+        ws.send(payload);
+      } catch (e) {
+      }
+    }
+  }
+  persistSnapshotIfDue() {
+    const now = Date.now();
+    if (now - this.lastSnapshotAt < 6e4) return;
+    this.lastSnapshotAt = now;
+    const snapshot = Array.from(this.vehicles.values());
+    if (this.state.waitUntil) {
+      this.state.waitUntil(this.state.storage.put("fleet_snapshot", snapshot));
+    } else {
+      this.state.storage.put("fleet_snapshot", snapshot).catch(() => {
+      });
+    }
+  }
+};
 export {
+  PurvanchalFleetHub,
   worker_default as default
 };

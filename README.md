@@ -179,6 +179,27 @@ npm run preview
    ```
    For local development, start the server with `ADMIN_SECRET_KEY=<value> npm run dev`.
 
+### Durable Object WebSocket Hub
+
+The project now deploys as a Worker with static assets (`wrangler deploy`), not
+through the legacy Pages dashboard. `wrangler.toml` binds one SQLite-backed
+`PurvanchalFleetHub` Durable Object:
+
+- Dashboard clients connect to `wss://<host>/api/ws`.
+- The hub sends a snapshot on connect and a `delta` message when a vehicle moves.
+- Idle sockets use the WebSocket Hibernation API, so they do not accrue
+  duration charges while nothing is being sent.
+- HTTP telemetry is mirrored into the hub at most once every 30 seconds per
+  vehicle to stay inside the Workers Free / Durable Objects 100,000 request/day
+  allowance. WebSocket tracker ingestion bypasses that throttle.
+- The hub stores a fleet snapshot in its own SQLite storage every 60 seconds
+  (1,440 writes/day). A D1 binding can replace this later; no D1 database is
+  required for the free deployment.
+- The dashboard keeps a 10-second HTTP polling fallback for browsers that cannot
+  establish a WebSocket. It does not poll while the socket is connected.
+- Verify the hub locally with `npx wrangler dev --port 8787 --local` and
+  `node scripts/verify_do_ws.mjs`.
+
 ---
 
 ## 📱 Master Integration Specification (Android App ↔ Web Backend)

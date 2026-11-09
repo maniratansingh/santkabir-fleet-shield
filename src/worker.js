@@ -12,6 +12,13 @@ const liveVehicles = new Map();
 // raw covariance state is never serialized to the dashboard.
 const vehicleFilters = new Map();
 
+// Durable Object hub forwarding. HTTP trackers are throttled so the free
+// Workers Free / Durable Objects request quota is not exhausted. Trackers that
+// move to the WebSocket path get immediate updates without this throttle.
+const HUB_NAME = 'purvanchal-fleet';
+const HUB_FORWARD_INTERVAL_MS = 30000;
+const lastHubForward = new Map();
+
 // Constant-time comparison of two secrets (fixed-length SHA-256 digests)
 async function safeEqual(a, b) {
   const enc = new TextEncoder();
@@ -1496,12 +1503,26 @@ function calculateBearing(c1, c2) {
 
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     // Explicit 404 for any legacy APK or download paths
     if (url.pathname.endsWith('.apk') || url.pathname.startsWith('/downloads/')) {
       return new Response('Not Found', { status: 404 });
+    }
+
+    // WebSocket hub: dashboard clients and, later, tracker clients connect here.
+    // The Durable Object holds the single global fleet state and hibernates idle
+    // sockets at zero duration cost.
+    if (url.pathname === '/api/ws' || url.pathname === '/api/ws/') {
+      if (!env.FLEET_HUB) {
+        return new Response(JSON.stringify({ error: 'WebSocket hub not configured' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+      const hub = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME));
+      return hub.fetch(request);
     }
 
     // 1. Endpoint: Universal Telemetry Receiver (Supports Traccar Client, OsmAnd, GPSLogger, Sant Kabir Fleet Shield Android App)
@@ -1671,6 +1692,26 @@ export default {
       // Store in edge memory cache
       liveVehicles.set(vehId, record);
 
+      // Mirror the processed record into the global Durable Object hub.
+      // HTTP ingestion is throttled to one forward per vehicle per 30 s so the
+      // free DO request quota is not exhausted. WebSocket trackers bypass this.
+      if (env.FLEET_HUB) {
+        const nowMs = Date.now();
+        const lastForward = lastHubForward.get(vehId) || 0;
+        if (nowMs - lastForward >= HUB_FORWARD_INTERVAL_MS) {
+          lastHubForward.set(vehId, nowMs);
+          const hubPush = env.FLEET_HUB
+            .get(env.FLEET_HUB.idFromName(HUB_NAME))
+            .fetch('https://fleet-hub/track', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(record),
+            })
+            .catch(() => null);
+          if (ctx?.waitUntil) ctx.waitUntil(hubPush);
+        }
+      }
+
       // Immediate HTTP 200 OK required by Android app
       return new Response(JSON.stringify({ 
         success: true, 
@@ -1729,6 +1770,14 @@ export default {
 
       liveVehicles.clear();
       vehicleFilters.clear();
+      lastHubForward.clear();
+      if (env.FLEET_HUB) {
+        const hubClear = env.FLEET_HUB
+          .get(env.FLEET_HUB.idFromName(HUB_NAME))
+          .fetch('https://fleet-hub/clear', { method: 'DELETE' })
+          .catch(() => null);
+        if (ctx?.waitUntil) ctx.waitUntil(hubClear);
+      }
       return new Response(JSON.stringify({
         success: true,
         message: 'Live telemetry cache cleared',
@@ -1753,6 +1802,7 @@ export default {
         if (now - lastSeen > DECOMMISSION_TIMEOUT_MS) {
           liveVehicles.delete(vKey);
           vehicleFilters.delete(vKey);
+          lastHubForward.delete(vKey);
         }
       }
 
@@ -1916,3 +1966,148 @@ export default {
     return assetResponse;
   },
 };
+
+// Global fleet coordinator. One SQLite-backed Durable Object owns the live
+// fleet mirror and all hibernating WebSocket connections. Dashboards receive a
+// snapshot on connect and deltas on movement.
+export class PurvanchalFleetHub {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.vehicles = new Map();
+    this.lastSnapshotAt = 0;
+
+    if (typeof WebSocketRequestResponsePair !== 'undefined') {
+      // Plain-text "ping" is answered without waking the hibernating object.
+      this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    }
+
+    this.state.blockConcurrencyWhile(async () => {
+      const saved = await this.state.storage.get('fleet_snapshot');
+      if (Array.isArray(saved)) {
+        this.vehicles = new Map(saved.filter(v => v && v.id).map(v => [String(v.id), v]));
+      }
+    });
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    const jsonHeaders = {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    };
+
+    if (url.pathname.endsWith('/ws')) {
+      const upgrade = request.headers.get('Upgrade');
+      if (!upgrade || upgrade.toLowerCase() !== 'websocket') {
+        return new Response(JSON.stringify({ error: 'Expected WebSocket upgrade' }), {
+          status: 426,
+          headers: jsonHeaders,
+        });
+      }
+
+      const pair = new WebSocketPair();
+      const [client, server] = Object.values(pair);
+      this.state.acceptWebSocket(server);
+      try {
+        server.send(JSON.stringify({
+          type: 'snapshot',
+          vehicles: Array.from(this.vehicles.values()),
+          timestamp: Date.now(),
+        }));
+      } catch (e) {}
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    if (url.pathname.endsWith('/track') && request.method === 'POST') {
+      try {
+        const record = await request.json();
+        if (record && record.id) {
+          this.vehicles.set(String(record.id), record);
+          this.broadcast({ type: 'delta', vehicle: record });
+          this.persistSnapshotIfDue();
+        }
+      } catch (e) {}
+      return new Response(JSON.stringify({ success: true, count: this.vehicles.size }), {
+        status: 200,
+        headers: jsonHeaders,
+      });
+    }
+
+    if (url.pathname.endsWith('/vehicles')) {
+      return new Response(JSON.stringify({
+        success: true,
+        vehicles: Array.from(this.vehicles.values()),
+        count: this.vehicles.size,
+        timestamp: Date.now(),
+      }), { status: 200, headers: jsonHeaders });
+    }
+
+    if (url.pathname.endsWith('/clear') && (request.method === 'DELETE' || request.method === 'POST')) {
+      this.vehicles.clear();
+      this.broadcast({ type: 'clear', timestamp: Date.now() });
+      if (this.state.waitUntil) {
+        this.state.waitUntil(this.state.storage.put('fleet_snapshot', []));
+      }
+      return new Response(JSON.stringify({ success: true, count: 0 }), {
+        status: 200,
+        headers: jsonHeaders,
+      });
+    }
+
+    return new Response(JSON.stringify({ error: 'Not found' }), {
+      status: 404,
+      headers: jsonHeaders,
+    });
+  }
+
+  webSocketMessage(ws, message) {
+    try {
+      const data = JSON.parse(message);
+      if (data?.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+      } else if (data?.type === 'subscribe') {
+        ws.send(JSON.stringify({
+          type: 'snapshot',
+          vehicles: Array.from(this.vehicles.values()),
+          timestamp: Date.now(),
+        }));
+      } else if (data?.type === 'track' && data.vehicle?.id) {
+        this.vehicles.set(String(data.vehicle.id), data.vehicle);
+        this.broadcast({ type: 'delta', vehicle: data.vehicle });
+        this.persistSnapshotIfDue();
+      }
+    } catch (e) {
+      if (message === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+      }
+    }
+  }
+
+  webSocketClose(ws, code, reason, wasClean) {
+    try { ws.close(code, 'Hub closing connection'); } catch (e) {}
+  }
+
+  webSocketError(ws, error) {
+    try { ws.close(1011, 'Hub socket error'); } catch (e) {}
+  }
+
+  broadcast(message) {
+    const payload = JSON.stringify(message);
+    for (const ws of this.state.getWebSockets()) {
+      try { ws.send(payload); } catch (e) {}
+    }
+  }
+
+  persistSnapshotIfDue() {
+    const now = Date.now();
+    if (now - this.lastSnapshotAt < 60000) return;
+    this.lastSnapshotAt = now;
+    const snapshot = Array.from(this.vehicles.values());
+    if (this.state.waitUntil) {
+      this.state.waitUntil(this.state.storage.put('fleet_snapshot', snapshot));
+    } else {
+      this.state.storage.put('fleet_snapshot', snapshot).catch(() => {});
+    }
+  }
+}
