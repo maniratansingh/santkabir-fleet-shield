@@ -115,7 +115,7 @@ function DynamicIsland({
 
           {/* Live Fleet Status Pill (Steady Aura, Zero Blink) */}
           <div className="flex items-center gap-2 shrink-0">
-            <span className="relative flex h-2 w-2 shrink-0">
+            <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
               <span className={`relative inline-flex rounded-full h-2 w-2 shadow-[0_0_8px_rgba(16,185,129,0.6)] ${
                 vehicles.length === 0 ? 'bg-sky-500' : (signalGapCount > 0 ? 'bg-amber-500' : 'bg-emerald-500')
               }`}></span>
@@ -239,7 +239,11 @@ function DynamicIsland({
                   >
                     <div className="min-w-0 pr-2">
                       <div className="flex items-center gap-1.5">
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${v.status === 'moving' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                        <span
+                          aria-hidden="true"
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${v.status === 'moving' ? 'bg-emerald-500' : 'bg-slate-400'}`}
+                        ></span>
+                        <span className="sr-only">{v.status === 'moving' ? 'Moving' : 'Stationary'}</span>
                         <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                           {v.name}
                         </span>

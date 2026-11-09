@@ -100,6 +100,49 @@ async function runTests() {
   assert(optionsRes.status === 204, 'OPTIONS preflight returns HTTP 204 No Content');
   assert(optionsRes.headers.get('Access-Control-Allow-Origin') === '*', 'CORS allows * origin');
 
+  // --- TEST 5: /api/clear ADMIN GUARD ---
+  console.log('\n📌 Test Suite 5: /api/clear Admin Guard');
+  const clearEnv = { ...env, ADMIN_SECRET_KEY: 'test-admin-key' };
+
+  const noKeyRes = await worker.fetch(
+    new Request('https://fleet.mrps.in/api/clear', { method: 'DELETE' }),
+    clearEnv
+  );
+  assert(noKeyRes.status === 401, '/api/clear rejects missing X-Admin-Key with HTTP 401');
+
+  const badKeyRes = await worker.fetch(
+    new Request('https://fleet.mrps.in/api/clear', {
+      method: 'DELETE',
+      headers: { 'X-Admin-Key': 'wrong-key' },
+    }),
+    clearEnv
+  );
+  assert(badKeyRes.status === 401, '/api/clear rejects an invalid X-Admin-Key with HTTP 401');
+
+  const getRes = await worker.fetch(
+    new Request('https://fleet.mrps.in/api/clear', {
+      method: 'GET',
+      headers: { 'X-Admin-Key': 'test-admin-key' },
+    }),
+    clearEnv
+  );
+  assert(getRes.status === 405, '/api/clear rejects GET with HTTP 405');
+
+  const okRes = await worker.fetch(
+    new Request('https://fleet.mrps.in/api/clear', {
+      method: 'DELETE',
+      headers: { 'X-Admin-Key': 'test-admin-key' },
+    }),
+    clearEnv
+  );
+  assert(okRes.status === 200, '/api/clear accepts the correct key with HTTP 200');
+
+  const unconfiguredRes = await worker.fetch(
+    new Request('https://fleet.mrps.in/api/clear', { method: 'DELETE' }),
+    env
+  );
+  assert(unconfiguredRes.status === 503, '/api/clear fails closed with HTTP 503 when ADMIN_SECRET_KEY is unset');
+
   console.log(`\n========================================`);
   console.log(`🎉 ALL TESTS COMPLETED: ${passed}/${total} PASSED`);
   console.log(`========================================\n`);

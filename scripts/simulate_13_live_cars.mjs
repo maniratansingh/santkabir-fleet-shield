@@ -91,9 +91,20 @@ console.log('===================================================================
 // Clean existing fleet cache on target host
 async function clearFleet() {
   try {
-    await fetch(CLEAR_ENDPOINT, { method: 'POST' }).catch(() => null);
+    const adminKey = process.env.ADMIN_SECRET_KEY;
+    if (!adminKey) {
+      console.warn('⚠️ ADMIN_SECRET_KEY not set — skipping cache clear.');
+      return;
+    }
+    await fetch(CLEAR_ENDPOINT, {
+      method: 'DELETE',
+      headers: { 'X-Admin-Key': adminKey },
+    }).catch(() => null);
     if (!TARGET_HOST.includes('localhost')) {
-      await fetch('http://localhost:3000/api/clear', { method: 'POST' }).catch(() => null);
+      await fetch('http://localhost:3000/api/clear', {
+        method: 'DELETE',
+        headers: { 'X-Admin-Key': adminKey },
+      }).catch(() => null);
     }
     console.log('🧹 Live fleet cache cleared on server. Deploying 13 ambulances on real roads...\n');
   } catch (e) {}

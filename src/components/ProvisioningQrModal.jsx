@@ -168,12 +168,22 @@ export default function ProvisioningQrModal({
   };
 
   const handleClearVehicles = async () => {
+    const adminKey = window.prompt('Enter ADMIN_SECRET_KEY to wipe live telemetry:');
+    if (!adminKey) return;
     try {
-      await fetch('/api/clear');
+      const res = await fetch('/api/clear', {
+        method: 'DELETE',
+        headers: { 'X-Admin-Key': adminKey },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
       setClearStatus(true);
       setTimeout(() => setClearStatus(false), 2500);
     } catch (e) {
       console.error('Failed to clear vehicles:', e);
+      window.alert(`Clear failed: ${e.message}`);
     }
   };
 

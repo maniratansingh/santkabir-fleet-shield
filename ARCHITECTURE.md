@@ -195,8 +195,10 @@ When multiple ambulances cluster around nearby villages or highway junctions (e.
 ```
 
 ### 4.3. Cache Flush (`/api/clear`)
-- **Method**: `GET`, `POST`
-- **Action**: Clears in-memory vehicle cache immediately.
+- **Method**: `POST`, `DELETE` (admin only)
+- **Auth**: Requires `X-Admin-Key` matching the `ADMIN_SECRET_KEY` deployment secret.
+- **Action**: Clears the in-memory vehicle cache immediately.
+- **Responses**: `200` on success, `401` on missing/invalid key, `405` for any other method, `503` if the secret is not provisioned.
 
 ---
 

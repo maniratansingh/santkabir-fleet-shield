@@ -170,6 +170,34 @@ function telemetryDevPlugin() {
       }
 
       if (parsedUrl.pathname === '/api/clear' || parsedUrl.pathname === '/api/clear/') {
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204;
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'POST, DELETE, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Admin-Key');
+          res.end();
+          return;
+        }
+        if (req.method !== 'POST' && req.method !== 'DELETE') {
+          res.statusCode = 405;
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Allow', 'POST, DELETE, OPTIONS');
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+        const devAdminKey = process.env.ADMIN_SECRET_KEY;
+        if (!devAdminKey) {
+          res.statusCode = 503;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'ADMIN_SECRET_KEY is not set for the dev server' }));
+          return;
+        }
+        if (req.headers['x-admin-key'] !== devAdminKey) {
+          res.statusCode = 401;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
         liveVehicles.clear();
         res.statusCode = 200;
         res.setHeader('Content-Type', 'application/json');

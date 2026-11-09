@@ -22,36 +22,62 @@
 
 /* Dark Mode Glass */
 .dark .glass-panel {
-  background: rgba(11, 27, 51, 0.85);
+  background: rgba(11, 27, 51, 0.93);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(56, 189, 248, 0.16);
+  border: 1px solid rgba(56, 189, 248, 0.28);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
 }
 
 .dark .glass-panel-glow {
-  background: rgba(11, 27, 51, 0.94);
+  background: rgba(11, 27, 51, 0.97);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(14, 165, 233, 0.4);
+  border: 1px solid rgba(14, 165, 233, 0.55);
   box-shadow: 0 0 25px rgba(6, 182, 212, 0.2), 0 10px 35px 0 rgba(0, 0, 0, 0.5);
 }
 
 /* Light Mode Glass (Clean, Clinical, Crisp, Premium Medical) */
 html:not(.dark) .glass-panel {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(226, 232, 240, 0.95);
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
 }
 
 html:not(.dark) .glass-panel-glow {
-  background: rgba(255, 255, 255, 0.98);
+  background: rgba(255, 255, 255, 1);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(14, 165, 233, 0.45);
+  border: 1px solid rgba(14, 165, 233, 0.55);
   box-shadow: 0 0 25px rgba(14, 165, 233, 0.12), 0 12px 32px -4px rgba(15, 23, 42, 0.08);
+}
+
+/* Mobile marker tags: keep ID • speed • status, drop the long fields that
+   caused cards to overflow and collide on narrow screens. */
+@media (max-width: 640px) {
+  .marker-capsule-text .marker-driver,
+  .marker-capsule-text .marker-dist,
+  .marker-capsule-text .marker-speed,
+  .marker-capsule-text .marker-status,
+  .marker-capsule-text .marker-sep {
+    display: none;
+  }
+  .marker-capsule-text {
+    font-size: 9px;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}
+
+/* Overview zoom: compact tags. The full driver/distance string is too wide
+   when ten ambulances are clustered; it caused edge clipping and overlap.
+   Zoom in past the overview threshold to reveal the full tag. */
+.map-zoom-overview .marker-capsule-text .marker-driver,
+.map-zoom-overview .marker-capsule-text .marker-dist,
+.map-zoom-overview .marker-capsule-text .marker-sep {
+  display: none;
 }
 
 /* Steady Aura for Base Hospital & Sites (Zero Blink) */

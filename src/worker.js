@@ -3,11 +3,28 @@
 // Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
 // Production Clean: 0 Mock Data. Dynamic live telemetry only.
 
-// In-memory telemetry cache for active fleet ambulances
-import { ACTIVE_FLEET } from './data/activeFleet.js';
-import { simulateFleetAtTime } from './utils/fleetSimulation.js';
+import { createKinematicFilter } from './utils/kalman.js';
 
+// In-memory telemetry cache for active fleet ambulances
 const liveVehicles = new Map();
+
+// Per-vehicle GPS noise filters. Kept separate from the public record so the
+// raw covariance state is never serialized to the dashboard.
+const vehicleFilters = new Map();
+
+// Constant-time comparison of two secrets (fixed-length SHA-256 digests)
+async function safeEqual(a, b) {
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(String(a))),
+    crypto.subtle.digest('SHA-256', enc.encode(String(b))),
+  ]);
+  const av = new Uint8Array(ha);
+  const bv = new Uint8Array(hb);
+  let diff = 0;
+  for (let i = 0; i < av.length; i++) diff |= av[i] ^ bv[i];
+  return diff === 0;
+}
 
 const BASE_LAT = 26.797313;
 const BASE_LON = 82.718401;
@@ -1475,7 +1492,7 @@ function calculateBearing(c1, c2) {
   return Math.round((brng + 360) % 360);
 }
 
-// Live simulation is handled dynamically by simulateFleetAtTime(ACTIVE_FLEET, now)
+// Live simulation is handled client-side in src/App.jsx
 
 
 export default {
@@ -1588,20 +1605,32 @@ export default {
       const vehId = String(id).trim().toUpperCase();
       const existing = liveVehicles.get(vehId) || {};
       const colors = getVehicleColors(vehId);
-      const cleanLat = Number(lat.toFixed(6));
-      const cleanLon = Number(lon.toFixed(6));
-      const distKm = calculateDistanceKm(BASE_LAT, BASE_LON, cleanLat, cleanLon);
+      const rawLat = Number(lat.toFixed(6));
+      const rawLon = Number(lon.toFixed(6));
+
+      // Smooth the raw GPS fix before it enters shared fleet state. The first
+      // fix for a vehicle is returned raw, so the initial position is exact.
+      let filter = vehicleFilters.get(vehId);
+      if (!filter) {
+        filter = createKinematicFilter();
+        vehicleFilters.set(vehId, filter);
+      }
+      const smoothed = filter.update(rawLat, rawLon, accuracy, timestamp);
+      const filteredLat = Number((Number.isFinite(smoothed.lat) ? smoothed.lat : rawLat).toFixed(6));
+      const filteredLon = Number((Number.isFinite(smoothed.lon) ? smoothed.lon : rawLon).toFixed(6));
+
+      const distKm = calculateDistanceKm(BASE_LAT, BASE_LON, filteredLat, filteredLon);
       const roadDistKm = Math.round(distKm * 1.15 * 10) / 10;
 
       // Keep last 30 coordinates for live highway trail breadcrumbs
       const prevTrail = Array.isArray(existing.trail) ? existing.trail : [];
-      const updatedTrail = [...prevTrail.slice(-29), [cleanLon, cleanLat]];
+      const updatedTrail = [...prevTrail.slice(-29), [filteredLon, filteredLat]];
 
-      const ruralLoc = resolveVillage(cleanLat, cleanLon);
+      const ruralLoc = resolveVillage(filteredLat, filteredLon);
 
       let computedBearing = Math.round(((bearing % 360) + 360) % 360);
-      if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== cleanLat || existing.lon !== cleanLon)) {
-        computedBearing = calculateBearing([existing.lon, existing.lat], [cleanLon, cleanLat]);
+      if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== filteredLat || existing.lon !== filteredLon)) {
+        computedBearing = calculateBearing([existing.lon, existing.lat], [filteredLon, filteredLat]);
       } else if (computedBearing === 0 && existing.bearing) {
         computedBearing = existing.bearing;
       }
@@ -1614,8 +1643,8 @@ export default {
         driverPhone: existing.driverPhone || '',
         plate: existing.plate || vehId,
         status: speedKmH > 3 ? 'moving' : (distKm < 0.25 ? 'at_base' : 'in_field'),
-        lat: cleanLat,
-        lon: cleanLon,
+        lat: filteredLat,
+        lon: filteredLon,
         speed: speedKmH,
         speedKnots: Number(rawSpeed.toFixed(2)),
         bearing: computedBearing,
@@ -1658,9 +1687,48 @@ export default {
       });
     }
 
-    // 2. Endpoint: /api/clear (Clears in-memory live telemetry cache)
+    // 2. Endpoint: /api/clear (Admin-only: clears in-memory live telemetry cache)
     if (url.pathname === '/api/clear' || url.pathname === '/api/clear/') {
+      if (request.method === 'OPTIONS') {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+          },
+        });
+      }
+
+      if (request.method !== 'POST' && request.method !== 'DELETE') {
+        return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+          status: 405,
+          headers: {
+            'Content-Type': 'application/json',
+            'Allow': 'POST, DELETE, OPTIONS',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+
+      // Fail closed if the deployment secret was never provisioned.
+      if (!env.ADMIN_SECRET_KEY) {
+        return new Response(JSON.stringify({ error: 'Admin endpoint not configured' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+
+      const suppliedKey = request.headers.get('X-Admin-Key') || '';
+      if (!(await safeEqual(suppliedKey, env.ADMIN_SECRET_KEY))) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+
       liveVehicles.clear();
+      vehicleFilters.clear();
       return new Response(JSON.stringify({
         success: true,
         message: 'Live telemetry cache cleared',
@@ -1684,6 +1752,7 @@ export default {
         const lastSeen = vVal.updatedAt || vVal.lastSeen || 0;
         if (now - lastSeen > DECOMMISSION_TIMEOUT_MS) {
           liveVehicles.delete(vKey);
+          vehicleFilters.delete(vKey);
         }
       }
 

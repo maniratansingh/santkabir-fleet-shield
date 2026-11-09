@@ -173,6 +173,11 @@ npm run preview
 2. Log into the [Cloudflare Dashboard](https://dash.cloudflare.com) $\rightarrow$ **Workers & Pages** $\rightarrow$ **Create application** $\rightarrow$ **Pages** $\rightarrow$ **Upload assets**.
 3. Drag and drop `santkabir-dist-only.zip` into the upload zone.
 4. Click **Deploy site**. The deployment is instantly live on Cloudflare's global edge network.
+5. Set the admin secret used by `POST/DELETE /api/clear`:
+   ```bash
+   npx wrangler pages secret put ADMIN_SECRET_KEY --project-name=<pages-project>
+   ```
+   For local development, start the server with `ADMIN_SECRET_KEY=<value> npm run dev`.
 
 ---
 
