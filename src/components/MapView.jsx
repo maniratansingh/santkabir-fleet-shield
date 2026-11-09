@@ -1359,45 +1359,83 @@ function MapView({
 
     let anyMoved = false;
 
-    // Compute screen positions to detect horizontal card overlaps and assign non-colliding vertical shelves
+    // Compute screen positions to detect horizontal card overlaps and assign
+    // non-colliding vertical shelves. Project the marker's *current animated*
+    // position, not the future target, or the shelf can flip mid-glide.
+    const SHELF_STEP_PX = 30;
+    const SHELF_TRIGGER_Y_PX = 28;
+    const SHELF_RELEASE_Y_PX = 52;
+    const SHELF_CARD_WIDTH_PX = 260;
+    const MAX_SHELVES = 4;
+
     const screenPositions = [];
     vehicles.forEach((v) => {
-      const pos = [Number(v.lon || 0), Number(v.lat || 0)];
+      const targetPos = [Number(v.lon || 0), Number(v.lat || 0)];
+      const markerObj = markersRef.current[v.id];
+      const projectPos = markerObj?.currentPos || targetPos;
       let pt = { x: 0, y: 0 };
       try {
         if (map && typeof map.project === 'function') {
-          pt = map.project(pos);
+          pt = map.project(projectPos);
         }
       } catch (e) {}
-      screenPositions.push({ id: v.id, x: pt.x, y: pt.y });
+      screenPositions.push({
+        id: v.id,
+        x: pt.x,
+        y: pt.y,
+        prevShelf: Math.max(0, Math.min(MAX_SHELVES, markerObj?.prevShelf || 0)),
+      });
     });
 
     const shelfMap = new Map();
-    // Sort west to east (by X coordinate)
-    const sorted = [...screenPositions].sort((a, b) => a.x - b.x);
+    // Sort west to east (by X coordinate), with a stable ID tie-breaker.
+    const sorted = [...screenPositions].sort(
+      (a, b) => (a.x - b.x) || String(a.id).localeCompare(String(b.id))
+    );
+
+    const collidesAt = (curr, shelf, other, otherShelf, yThreshold) => {
+      const currCardY = curr.y - shelf * SHELF_STEP_PX;
+      const otherCardY = other.y - otherShelf * SHELF_STEP_PX;
+      return (
+        Math.abs(curr.x - other.x) < SHELF_CARD_WIDTH_PX &&
+        Math.abs(currCardY - otherCardY) < yThreshold
+      );
+    };
+
     for (let i = 0; i < sorted.length; i++) {
       const curr = sorted[i];
-      let shelf = 0;
-      let collides = true;
-      while (collides && shelf < 4) {
-        collides = false;
-        const currCardY = curr.y - shelf * 32;
+      let shelf = curr.prevShelf;
+
+      // Raise only until the marker is clear at normal clearance.
+      while (shelf < MAX_SHELVES) {
+        let hit = false;
         for (let j = 0; j < i; j++) {
           const other = sorted[j];
           const otherShelf = shelfMap.get(other.id) || 0;
-          const otherCardY = other.y - otherShelf * 32;
-          const xDist = Math.abs(curr.x - other.x);
-          const yDist = Math.abs(currCardY - otherCardY);
-          // Realistic card tag width is ~260px, clearance height ~28px
-          if (xDist < 260 && yDist < 28) {
-            collides = true;
+          if (collidesAt(curr, shelf, other, otherShelf, SHELF_TRIGGER_Y_PX)) {
+            hit = true;
             break;
           }
         }
-        if (collides) {
-          shelf++;
-        }
+        if (!hit) break;
+        shelf++;
       }
+
+      // Lower at most one shelf per update, and only with comfortable
+      // clearance. Multi-step drops were the visible "bounce".
+      if (shelf > 0) {
+        let hit = false;
+        for (let j = 0; j < i; j++) {
+          const other = sorted[j];
+          const otherShelf = shelfMap.get(other.id) || 0;
+          if (collidesAt(curr, shelf - 1, other, otherShelf, SHELF_RELEASE_Y_PX)) {
+            hit = true;
+            break;
+          }
+        }
+        if (!hit) shelf--;
+      }
+
       shelfMap.set(curr.id, shelf);
     }
 
@@ -1408,7 +1446,7 @@ function MapView({
       const liveDist = getLiveDistanceKm(v);
       const pos = [Number(v.lon || 0), Number(v.lat || 0)];
       const shelf = shelfMap.get(v.id) || 0;
-      const shelfOffsetY = shelf * 30;
+      const shelfOffsetY = shelf * SHELF_STEP_PX;
       
       const isGap = Boolean(v.isSignalGap);
       const isParked = Boolean(v.isParked);
@@ -1454,7 +1492,7 @@ function MapView({
         el.innerHTML = `
           <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
             <!-- Complete Apple Capsule Tag: ID • Driver • Speed • Camp • Distance (Always Visible, Zero Overlap Shelves) -->
-            <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1);">
+            <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
               <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
                 style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
                 <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
@@ -1469,7 +1507,7 @@ function MapView({
                 <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
               </div>
               <!-- Vertical Hairline Leader Stem Connecting Elevated Card to Ambulance -->
-              <div class="marker-shelf-stem w-[1.5px] transition-all duration-250" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
+              <div class="marker-shelf-stem w-[1.5px] transition-all duration-500" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
             </div>
 
             <!-- 3D Isometric Ambulance (Always Visible, Zero Strobe/Blink, Hardware accelerated) -->
@@ -1512,6 +1550,7 @@ function MapView({
           prevBadgeColor: badgeColor,
           prevSelected: isSelected,
           prevDark: isDark,
+          prevShelf: shelf,
           prevShelfOffsetY: shelfOffsetY,
           currentPos: pos,
           startPos: pos,
@@ -1530,7 +1569,7 @@ function MapView({
           // Re-render only when switching dark/light theme
           markerObj.element.innerHTML = `
             <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
-              <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1);">
+              <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
                 <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
                   style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
                   <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
@@ -1544,7 +1583,7 @@ function MapView({
                   <span class="text-slate-400 dark:text-slate-600 font-normal">•</span>
                   <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
                 </div>
-                <div class="marker-shelf-stem w-[1.5px] transition-all duration-250" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
+                <div class="marker-shelf-stem w-[1.5px] transition-all duration-500" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
               </div>
               <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${markerObj.displayAngle || targetBearing}deg); will-change: transform; transition: none;">
                 <div class="selection-halo absolute w-14 h-14 rounded-full ring-2 ring-sky-400 dark:ring-cyan-400 shadow-[0_0_22px_rgba(56,189,248,0.7)] pointer-events-none transition-opacity duration-300 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}"></div>
@@ -1571,6 +1610,7 @@ function MapView({
           markerObj.prevDist = distStr;
           markerObj.prevStatusText = statusBadgeText;
           markerObj.prevStatusClass = statusBadgeClass;
+          markerObj.prevShelf = shelf;
           markerObj.prevShelfOffsetY = shelfOffsetY;
         } else {
           // In-Place Vertical Shelf Layout Update (Zero Overlap)
@@ -1585,6 +1625,7 @@ function MapView({
             }
             markerObj.prevShelfOffsetY = shelfOffsetY;
           }
+          markerObj.prevShelf = shelf;
 
           // In-Place Text Updates (100% Flicker-Free, 0ms overhead)
           if (markerObj.driverEl && markerObj.prevDriver !== driverName) {
