@@ -11,7 +11,8 @@
     "bundle:worker": "esbuild src/worker.js --bundle --format=esm --outfile=public/_worker.js",
     "preview": "vite preview",
     "test": "node scripts/verify_master_integration.mjs",
-    "test:kalman": "node scripts/verify_kalman.mjs"
+    "test:kalman": "node scripts/verify_kalman.mjs",
+    "test:map-matching": "node scripts/verify_map_matching.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

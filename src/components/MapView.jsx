@@ -6,6 +6,7 @@ import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
 import { getDeliveryRouteSplit, getAllRoadCorridors } from '../utils/roadDistance';
 import { getNearestRuralLocation } from '../utils/ruralLocator';
 import { getUniqueVehicleColor } from '../utils/colors';
+import { snapToRoad } from '../utils/mapMatching';
 import ruralVillages from '../data/ruralVillages.json';
 import { loadTieredGeoJson } from '../utils/tieredMapCache';
 
@@ -1367,6 +1368,15 @@ function MapView({
 
     let anyMoved = false;
 
+    // Snap display positions to the nearest corridor when the GPS fix is
+    // within 25 m. Raw coordinates remain untouched for distance/village
+    // calculations and for off-road stops.
+    const snappedPositions = new Map();
+    vehicles.forEach((v) => {
+      const snapped = snapToRoad(Number(v.lat || 0), Number(v.lon || 0));
+      snappedPositions.set(v.id, [snapped.lon, snapped.lat]);
+    });
+
     // Compute screen positions to detect horizontal card overlaps and assign
     // non-colliding vertical shelves. Project the marker's *current animated*
     // position, not the future target, or the shelf can flip mid-glide.
@@ -1395,7 +1405,7 @@ function MapView({
     } else {
       const screenPositions = [];
       vehicles.forEach((v) => {
-        const targetPos = [Number(v.lon || 0), Number(v.lat || 0)];
+        const targetPos = snappedPositions.get(v.id) || [Number(v.lon || 0), Number(v.lat || 0)];
         const markerObj = markersRef.current[v.id];
         const projectPos = markerObj?.currentPos || targetPos;
         let pt = { x: 0, y: 0 };
@@ -1534,7 +1544,7 @@ function MapView({
       const uniqueColors = getUniqueVehicleColor(v.id);
       const vColor = v.lineColor || uniqueColors.line;
       const liveDist = getLiveDistanceKm(v);
-      const pos = [Number(v.lon || 0), Number(v.lat || 0)];
+      const pos = snappedPositions.get(v.id) || [Number(v.lon || 0), Number(v.lat || 0)];
       const shelf = shelfMap.get(v.id) || 0;
       const shelfOffsetY = shelf * SHELF_STEP_PX;
       
