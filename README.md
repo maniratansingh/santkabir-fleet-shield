@@ -186,7 +186,16 @@ through the legacy Pages dashboard. `wrangler.toml` binds one SQLite-backed
 `PurvanchalFleetHub` Durable Object:
 
 - Dashboard clients connect to `wss://<host>/api/ws`.
+- Field trackers connect to `wss://<host>/api/ws?role=tracker` and send either a
+  JSON telemetry object or a compact array
+  `[id, lat, lon, speed, bearing, timestamp]`. Speed is in knots, matching the
+  Traccar/OsmAnd contract. The hub processes the packet with the shared
+  telemetry processor, acknowledges the tracker, and broadcasts a `delta` to
+  every dashboard.
 - The hub sends a snapshot on connect and a `delta` message when a vehicle moves.
+- Shared processing lives in `src/utils/telemetryProcessor.js`, with shared
+  geospatial helpers in `src/utils/geo.js`, `src/utils/village.js`, and
+  `src/utils/baseLocation.js`.
 - Idle sockets use the WebSocket Hibernation API, so they do not accrue
   duration charges while nothing is being sent.
 - HTTP telemetry is mirrored into the hub at most once every 30 seconds per
@@ -198,7 +207,8 @@ through the legacy Pages dashboard. `wrangler.toml` binds one SQLite-backed
 - The dashboard keeps a 10-second HTTP polling fallback for browsers that cannot
   establish a WebSocket. It does not poll while the socket is connected.
 - Verify the hub locally with `npx wrangler dev --port 8787 --local` and
-  `node scripts/verify_do_ws.mjs`.
+  `node scripts/verify_do_ws.mjs` (13 checks, including a tracker socket and a
+  compact-array packet).
 
 ---
 

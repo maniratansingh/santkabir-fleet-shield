@@ -36,7 +36,54 @@ await new Promise((resolve, reject) => {
 
 ws.send(JSON.stringify({ type: 'subscribe' }));
 await sleep(500);
-assert(messages.some((m) => m.type === 'snapshot'), 'WebSocket receives an initial snapshot');
+assert(messages.some((m) => m.type === 'snapshot'), 'Dashboard socket receives an initial snapshot');
+
+// Tracker socket: raw GPS packet in, processed delta out to dashboards.
+const trackerMessages = [];
+const tracker = new WebSocket(`${WS_URL}?role=tracker`);
+tracker.onmessage = (event) => {
+  try { trackerMessages.push(JSON.parse(event.data)); } catch (e) {}
+};
+await new Promise((resolve, reject) => {
+  tracker.onopen = resolve;
+  tracker.onerror = reject;
+  setTimeout(() => reject(new Error('Tracker WebSocket open timeout')), 5000);
+});
+await sleep(300);
+assert(
+  trackerMessages.some((m) => m.type === 'ready'),
+  'Tracker socket receives a ready handshake'
+);
+
+tracker.send(JSON.stringify({
+  id: 'WS-AMB-02',
+  lat: 26.8500,
+  lon: 82.8500,
+  speed: 12.5,
+  bearing: 90,
+  batt: 80,
+  charge: true,
+  timestamp: Date.now(),
+}));
+await sleep(1200);
+
+const trackerDelta = messages.find((m) => m.type === 'delta' && m.vehicle?.id === 'WS-AMB-02');
+assert(Boolean(trackerDelta), 'Tracker packet is broadcast to the dashboard socket');
+assert(trackerDelta?.vehicle?.speed === 23, 'Tracker knots are normalized to km/h');
+assert(trackerDelta?.vehicle?.lat === 26.85, 'Tracker delta preserves latitude');
+assert(
+  trackerMessages.some((m) => m.type === 'ack' && m.id === 'WS-AMB-02'),
+  'Tracker socket receives an acknowledgement'
+);
+
+// Compact array packet: [id, lat, lon, speed, bearing, timestamp]
+tracker.send(JSON.stringify(['WS-AMB-03', 26.8600, 82.8600, 10, 180, Date.now()]));
+await sleep(1000);
+assert(
+  messages.some((m) => m.type === 'delta' && m.vehicle?.id === 'WS-AMB-03'),
+  'Compact array tracker packet is accepted'
+);
+tracker.close();
 
 const trackRes = await fetch(
   `${BASE}/api/track?id=DO-AMB-01&lat=26.8467&lon=80.9462&speed=12.5&bearing=180&batt=90&charge=true`,
