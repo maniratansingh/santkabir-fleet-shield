@@ -599,6 +599,8 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
 }
 .marker-capsule-text {
   display: flex !important;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
 }
 .ambulance-rotator {
   display: flex !important;

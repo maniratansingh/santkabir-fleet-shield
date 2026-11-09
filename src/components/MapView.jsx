@@ -353,6 +353,7 @@ function MapView({
   const baseMarkerRef = useRef(null);
   const baseCountRef = useRef(null);
   const distanceMarkersRef = useRef({});
+  const snapStateRef = useRef(new Map());
   const currentStyleKeyRef = useRef(activeStyleKey);
   const vehiclesRef = useRef(vehicles);
   const prevSelectedIdRef = useRef(null);
@@ -1544,6 +1545,7 @@ function MapView({
     Object.keys(markersRef.current).forEach((id) => {
       if (!currentVehIds.has(id)) {
         try { markersRef.current[id].marker.remove(); } catch (e) {}
+        snapStateRef.current.delete(id);
         delete markersRef.current[id];
       }
     });
@@ -1555,7 +1557,24 @@ function MapView({
     // calculations and for off-road stops.
     const snappedPositions = new Map();
     vehicles.forEach((v) => {
-      const snapped = snapToRoad(Number(v.lat || 0), Number(v.lon || 0));
+      const lat = Number(v.lat || 0);
+      const lon = Number(v.lon || 0);
+      const previous = snapStateRef.current.get(v.id);
+      let snapped = snapToRoad(lat, lon);
+
+      // Hysteresis: do not flip to a different corridor for a tiny GPS move.
+      // Near intersections the nearest segment can alternate and make the
+      // marker visibly jump. Hold the previous snap until the vehicle has
+      // actually moved far enough to justify switching roads.
+      if (previous?.snapped && snapped.snapped && previous.corridor !== snapped.corridor) {
+        const dLat = (lat - previous.lat) * 111320;
+        const dLon = (lon - previous.lon) * 111320 * Math.cos((lat * Math.PI) / 180);
+        const movedM = Math.hypot(dLat, dLon);
+        if (movedM < 35) snapped = previous;
+      }
+
+      if (snapped.snapped) snapStateRef.current.set(v.id, snapped);
+      else snapStateRef.current.delete(v.id);
       snappedPositions.set(v.id, [snapped.lon, snapped.lat]);
     });
 
@@ -1623,6 +1642,7 @@ function MapView({
         );
       };
 
+      const now = performance.now();
       for (let i = 0; i < sorted.length; i++) {
         const curr = sorted[i];
         let shelf = curr.prevShelf;
@@ -1642,9 +1662,11 @@ function MapView({
           shelf++;
         }
 
-        // Lower at most one shelf per update, and only with comfortable
-        // clearance. Multi-step drops were the visible "bounce".
-        if (shelf > 0) {
+        // Lower at most one shelf per update, with a short cooldown so tags
+        // settle instead of oscillating between rows on consecutive ticks.
+        const markerState = markersRef.current[curr.id];
+        const canLower = now - (markerState?.lastShelfChangeAt || 0) > 1400;
+        if (shelf > 0 && canLower) {
           let hit = false;
           for (let j = 0; j < i; j++) {
             const other = sorted[j];
@@ -1657,6 +1679,9 @@ function MapView({
           if (!hit) shelf--;
         }
 
+        if (markerState && shelf !== curr.prevShelf) {
+          markerState.lastShelfChangeAt = now;
+        }
         shelfMap.set(curr.id, shelf);
       }
     }
@@ -1782,7 +1807,7 @@ function MapView({
         el.innerHTML = `
           <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
             <!-- Complete Apple Capsule Tag: ID • Driver • Speed • Camp • Distance (Always Visible, Zero Overlap Shelves) -->
-            <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
+            <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform;">
               <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[0.6875rem] font-bold font-mono pointer-events-auto"
                 style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
                 <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
@@ -1797,7 +1822,7 @@ function MapView({
                 <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
               </div>
               <!-- Vertical Hairline Leader Stem Connecting Elevated Card to Ambulance -->
-              <div class="marker-shelf-stem w-[1.5px] transition-all duration-500" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
+              <div class="marker-shelf-stem w-[1.5px] transition-all duration-[420ms]" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
             </div>
 
             <!-- 3D Isometric Ambulance (Always Visible, Zero Strobe/Blink, Hardware accelerated) -->
@@ -1848,6 +1873,7 @@ function MapView({
           prevDark: isDark,
           prevShelf: shelf,
           prevShelfOffsetY: shelfOffsetY,
+          lastShelfChangeAt: performance.now(),
           currentPos: pos,
           startPos: pos,
           targetPos: pos,
@@ -1866,7 +1892,7 @@ function MapView({
           // Re-render only when switching dark/light theme
           markerObj.element.innerHTML = `
             <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
-              <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
+              <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform;">
                 <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[0.6875rem] font-bold font-mono pointer-events-auto"
                   style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
                   <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
@@ -1880,7 +1906,7 @@ function MapView({
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                   <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
                 </div>
-                <div class="marker-shelf-stem w-[1.5px] transition-all duration-500" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
+                <div class="marker-shelf-stem w-[1.5px] transition-all duration-[420ms]" style="height: ${shelfOffsetY}px; background-color: ${badgeColor}; opacity: ${shelfOffsetY > 0 ? 0.8 : 0}; margin-top: 1px;"></div>
               </div>
               <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${markerObj.displayAngle || targetBearing}deg); will-change: transform; transition: none;">
                 <div class="selection-halo absolute w-14 h-14 max-sm:w-11 max-sm:h-11 rounded-full ring-2 ring-sky-400 dark:ring-cyan-400 shadow-[0_0_22px_rgba(56,189,248,0.7)] pointer-events-none transition-opacity duration-300 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}"></div>
