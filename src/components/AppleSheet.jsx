@@ -87,10 +87,10 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
           onSelectVehicle(v.id);
         }
       }}
-      className={`px-3 py-2.5 rounded-[14px] border transition-all cursor-pointer flex items-center justify-between group ${
+      className={`ui-press-row px-3 py-2.5 rounded-[14px] border cursor-pointer flex items-center justify-between group ${
         isSelected
-          ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-400 dark:border-sky-600 shadow-xs'
-          : 'bg-white/80 dark:bg-slate-900/60 border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
+          ? 'bg-sky-50 dark:bg-sky-950 border-sky-400 dark:border-sky-600 shadow-xs'
+          : 'bg-white dark:bg-[#0f1d31] border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
       }`}
     >
       {/* Left: identifier, speed and village */}
@@ -120,7 +120,7 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
       </div>
 
       {/* Right: quick actions */}
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0">
         <button
           type="button"
           onClick={(e) => {
@@ -128,7 +128,7 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
             openProvision(v.id);
           }}
           aria-label={`Provision ${v.id}`}
-          className="hidden sm:flex w-8 h-8 rounded-[10px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 items-center justify-center transition-colors cursor-pointer"
+          className="touch-target ui-press hidden sm:flex w-9 h-9 rounded-[10px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 items-center justify-center transition-colors cursor-pointer"
         >
           <QrCode className="w-3.5 h-3.5" />
         </button>
@@ -138,7 +138,7 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
             href={`tel:${v.driverPhone}`}
             onClick={(e) => e.stopPropagation()}
             aria-label={`Call ${v.driverName || v.id}`}
-            className="w-8 h-8 rounded-[10px] bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-colors"
+            className="touch-target ui-press w-9 h-9 rounded-[10px] bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-colors"
           >
             <Phone className="w-3.5 h-3.5" />
           </a>
@@ -150,7 +150,7 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
           aria-label={`Navigate to ${v.id} in Google Maps`}
-          className="w-8 h-8 rounded-[10px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors"
+          className="touch-target ui-press w-9 h-9 rounded-[10px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-colors"
         >
           <Navigation className="w-3.5 h-3.5" />
         </a>
@@ -216,7 +216,7 @@ function AppleSheet({
         {...handleProps}
         aria-label={detent === 'full' ? 'Collapse fleet panel' : 'Expand fleet panel'}
         aria-expanded={isExpanded}
-        className="w-full min-h-8 pt-2.5 pb-2.5 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing group"
+        className="w-full min-h-10 pt-3 pb-3 flex flex-col items-center justify-center cursor-grab active:cursor-grabbing group"
       >
         <span className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600 group-hover:bg-sky-500 transition-colors" />
       </button>
@@ -236,7 +236,7 @@ function AppleSheet({
           aria-label={selectedVehicle
             ? `${selectedVehicle.name}, driver ${selectedVehicle.driverName}, ${selectedVehicle.speed} kilometres per hour, view fleet list`
             : `Fleet overview, ${vehicles.length} ambulances, ${enRouteCount} en route, ${onSceneCount} on scene, ${atBaseCount} at base, view fleet list`}
-          className="px-4 pb-2 flex-1 flex items-center justify-between cursor-pointer select-none"
+          className="ui-press-row px-4 pb-2 flex-1 flex items-center justify-between cursor-pointer select-none"
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-full bg-slate-500/10 dark:bg-white/10 text-slate-700 dark:text-slate-200 flex items-center justify-center font-semibold type-footnote tnum shrink-0">
@@ -276,7 +276,7 @@ function AppleSheet({
                 <button
                   type="button"
                   onClick={() => onSelectVehicle(null)}
-                  className="flex items-center gap-1 type-footnote font-semibold text-sky-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                  className="touch-target ui-press flex items-center gap-1 type-footnote font-semibold text-sky-600 dark:text-cyan-400 hover:underline cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   All ambulances
@@ -285,7 +285,7 @@ function AppleSheet({
                   type="button"
                   onClick={() => onSelectVehicle(null)}
                   aria-label="Close vehicle details"
-                  className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
+                  className="touch-target ui-press p-1.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -478,7 +478,7 @@ function AppleSheet({
                 <button
                   type="button"
                   onClick={onLocateVehicle || onFocusRoute}
-                  className="flex flex-col items-center gap-1.5 text-center cursor-pointer group"
+                  className="ui-press flex flex-col items-center gap-1.5 text-center cursor-pointer group"
                   title="Zoom to vehicle GPS position"
                 >
                   <span className="w-9 h-9 rounded-full bg-white dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 group-hover:scale-105 transition-transform">
@@ -490,7 +490,7 @@ function AppleSheet({
                 <button
                   type="button"
                   onClick={onFitRoute || onFocusRoute}
-                  className="flex flex-col items-center gap-1.5 text-center cursor-pointer group"
+                  className="ui-press flex flex-col items-center gap-1.5 text-center cursor-pointer group"
                   title="Frame the full highway corridor to base"
                 >
                   <span className="w-9 h-9 rounded-full bg-white dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 group-hover:scale-105 transition-transform">
@@ -501,7 +501,7 @@ function AppleSheet({
 
                 <a
                   href={`tel:${selectedVehicle.driverPhone || '+919415140719'}`}
-                  className="flex flex-col items-center gap-1.5 text-center cursor-pointer group"
+                  className="ui-press flex flex-col items-center gap-1.5 text-center cursor-pointer group"
                 >
                   <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center group-hover:scale-105 transition-transform">
                     <Phone className="w-4 h-4" />
@@ -512,7 +512,7 @@ function AppleSheet({
                 <button
                   type="button"
                   onClick={() => openProvision(selectedVehicle.id)}
-                  className="flex flex-col items-center gap-1.5 text-center cursor-pointer group"
+                  className="ui-press flex flex-col items-center gap-1.5 text-center cursor-pointer group"
                   title="Generate Android app provisioning QR"
                 >
                   <span className="w-9 h-9 rounded-full bg-white dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 group-hover:scale-105 transition-transform">
@@ -543,7 +543,7 @@ function AppleSheet({
             /* VIEW B: FLEET LIST OVERVIEW */
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Filter tabs */}
-              <div className="flex items-center gap-1 p-1 rounded-[12px] bg-slate-500/10 mb-2">
+              <div className="flex items-center gap-1 p-1 rounded-[12px] bg-slate-100 dark:bg-slate-800 mb-2">
                 {[
                   { key: 'all', label: `All (${vehicles.length})` },
                   { key: 'enroute', label: 'En route' },
@@ -555,7 +555,7 @@ function AppleSheet({
                     type="button"
                     onClick={() => setFilter(tab.key)}
                     aria-pressed={filter === tab.key}
-                    className={`flex-1 min-h-[30px] py-1 type-footnote font-semibold rounded-[9px] transition-all cursor-pointer ${
+                    className={`ui-press flex-1 min-h-10 py-1 type-footnote font-semibold rounded-[9px] transition-colors cursor-pointer ${
                       filter === tab.key
                         ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'

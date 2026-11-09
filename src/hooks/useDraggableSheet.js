@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-const DEFAULT_DETENTS = { peek: 80, half: 560, full: 680 };
+const DEFAULT_DETENTS = { peek: 88, half: 560, full: 680 };
 const RESPONSE = 0.34;
 const DAMPING_RATIO = 1.0;
 const MOMENTUM_DECELERATION = 0.998;
@@ -11,7 +11,7 @@ function computeDetents() {
   const vh = window.innerHeight;
   const full = Math.min(680, Math.max(320, vh - 80));
   const half = Math.min(560, Math.max(220, full - 80));
-  return { peek: 80, half, full };
+  return { peek: 88, half, full };
 }
 
 function heightForDetent(detent, detents) {

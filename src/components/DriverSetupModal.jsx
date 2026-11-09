@@ -215,7 +215,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             type="button"
             onClick={onClose}
             aria-label="Close telemetry setup dialog"
-            className="p-2 rounded-[10px] text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
+            className="touch-target ui-press p-2 rounded-[10px] text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -228,7 +228,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             role="tab"
             aria-selected={selectedTab === 'provision'}
             onClick={() => setSelectedTab('provision')}
-            className={`flex-1 min-h-9 py-2 type-footnote font-semibold rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+            className={`ui-press flex-1 min-h-11 py-2 type-footnote font-semibold rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
               selectedTab === 'provision'
                 ? 'bg-sky-600 text-white shadow-sm'
                 : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 hover:bg-slate-500/15'
@@ -243,7 +243,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             role="tab"
             aria-selected={selectedTab === 'traccar'}
             onClick={() => setSelectedTab('traccar')}
-            className={`flex-1 min-h-9 py-2 type-footnote font-semibold rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+            className={`ui-press flex-1 min-h-11 py-2 type-footnote font-semibold rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
               selectedTab === 'traccar'
                 ? 'bg-sky-600 text-white shadow-sm'
                 : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 hover:bg-slate-500/15'
@@ -258,7 +258,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             role="tab"
             aria-selected={selectedTab === 'api'}
             onClick={() => setSelectedTab('api')}
-            className={`flex-1 min-h-9 py-2 type-footnote font-semibold rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+            className={`ui-press flex-1 min-h-11 py-2 type-footnote font-semibold rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
               selectedTab === 'api'
                 ? 'bg-sky-600 text-white shadow-sm'
                 : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 hover:bg-slate-500/15'

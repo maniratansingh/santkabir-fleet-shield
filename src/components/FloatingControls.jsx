@@ -59,13 +59,13 @@ export default function FloatingControls({
   return (
     <div className="fixed top-[calc(0.75rem+var(--safe-top))] right-[calc(0.75rem+var(--safe-right))] z-30 pointer-events-auto flex flex-col items-end gap-2 max-h-[calc(100vh-1.5rem)] overflow-y-auto max-sm:top-auto max-sm:bottom-[calc(6rem+var(--safe-bottom))] max-sm:right-2 max-sm:w-[calc(100vw-1rem)] max-sm:flex-row max-sm:flex-wrap max-sm:items-end max-sm:justify-end max-sm:gap-1 max-sm:max-h-none max-sm:overflow-visible">
       {/* Primary Floating Apple Dock */}
-      <div className="glass-panel p-1 rounded-2xl flex flex-col items-center gap-1 shadow-xl border border-slate-200/90 dark:border-white/10 max-sm:flex-row max-sm:flex-wrap max-sm:justify-end max-sm:gap-0.5">
+      <div className="glass-panel p-1.5 rounded-2xl flex flex-col items-center gap-1.5 shadow-xl border border-slate-200/90 dark:border-white/10 max-sm:flex-row max-sm:flex-wrap max-sm:justify-end max-sm:gap-0.5">
         {/* Zoom In */}
         <button
           onClick={onZoomIn}
           title="Zoom In (+)"
           aria-label="Zoom in"
-          className="w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          className="touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Plus className="w-4 h-4 text-slate-800 dark:text-white" />
         </button>
@@ -75,7 +75,7 @@ export default function FloatingControls({
           onClick={onZoomOut}
           title="Zoom Out (-)"
           aria-label="Zoom out"
-          className="w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          className="touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Minus className="w-4 h-4 text-slate-800 dark:text-white" />
         </button>
@@ -85,7 +85,7 @@ export default function FloatingControls({
           onClick={onFitAll}
           title="Fit All Ambulances (Fleet Overview)"
           aria-label="Fit all ambulances in view"
-          className="w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          className="touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Scan className="w-4 h-4 text-sky-600 dark:text-cyan-400" />
         </button>
@@ -98,7 +98,7 @@ export default function FloatingControls({
           onClick={onResetNorth}
           title="Reset Map to True North"
           aria-label="Reset map to true north"
-          className="w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer group active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          className="touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer group active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Compass className="w-5 h-5 text-sky-600 dark:text-cyan-400 group-hover:rotate-45 transition-transform" />
         </button>
@@ -108,7 +108,7 @@ export default function FloatingControls({
           onClick={onCenterBase}
           title="Focus Sant Kabir Hospital Base (Basti)"
           aria-label="Focus Sant Kabir Hospital base in Basti"
-          className="w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          className="touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Hospital className="w-4 h-4 text-rose-600 dark:text-rose-400" />
         </button>
@@ -119,7 +119,7 @@ export default function FloatingControls({
           title={showDistanceLines ? "Hide Distance Vectors from Base" : "Show Distance Vectors from Base"}
           aria-label={showDistanceLines ? "Hide distance vectors from base" : "Show distance vectors from base"}
           aria-pressed={showDistanceLines}
-          className={`w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+          className={`touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
             showDistanceLines
               ? 'bg-sky-600 text-white shadow-xs'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -136,7 +136,7 @@ export default function FloatingControls({
             aria-label="Open map style switcher"
             aria-expanded={isLayerMenuOpen}
             aria-haspopup="menu"
-            className={`w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+            className={`touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
               isLayerMenuOpen
                 ? 'bg-slate-200 dark:bg-slate-700 text-sky-600 dark:text-cyan-400'
                 : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -195,7 +195,7 @@ export default function FloatingControls({
             title={isDemoMode ? "Switch to Live Real GPS Only (Remove 10 Demo Cars)" : "Load 10 Demo Ambulances for UI Preview"}
             aria-label={isDemoMode ? "Switch to live GPS only" : "Load demo ambulances for UI preview"}
             aria-pressed={isDemoMode}
-            className={`w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+            className={`touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
               isDemoMode
                 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/40'
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -211,7 +211,7 @@ export default function FloatingControls({
           title={isAutoTour ? "Stop TV Wallboard Auto-Tour" : "Start TV Wallboard Auto-Tour (Continuous Kiosk Monitoring)"}
           aria-label={isAutoTour ? "Stop TV wallboard auto-tour" : "Start TV wallboard auto-tour"}
           aria-pressed={isAutoTour}
-          className={`w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+          className={`touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
             isAutoTour
               ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 ring-1 ring-inset ring-purple-500/40'
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -226,7 +226,7 @@ export default function FloatingControls({
           title="Toggle Fullscreen Wallboard"
           aria-label="Toggle fullscreen wallboard"
           aria-pressed={isFullscreen}
-          className="w-9 h-9 max-sm:w-8 max-sm:h-8 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          className="touch-target-sm ui-press w-10 h-10 max-sm:w-10 max-sm:h-10 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </button>

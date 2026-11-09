@@ -197,7 +197,7 @@ function DynamicIsland({
                   onClick={onOpenDriverModal}
                   aria-label="Open telemetry and tracker setup"
                   title="Live telemetry & tracker stream"
-                  className="p-2 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   <Radio className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
                 </button>
@@ -206,7 +206,7 @@ function DynamicIsland({
                   onClick={onToggleTheme}
                   aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
                   title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                  className="p-2 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   {theme === 'dark' ? (
                     <Sun className="w-3.5 h-3.5 text-amber-400" />
@@ -218,7 +218,7 @@ function DynamicIsland({
                   type="button"
                   onClick={() => setIsExpanded((prev) => !prev)}
                   aria-label={isExpanded ? 'Collapse fleet summary' : 'Expand fleet summary'}
-                  className="p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
+                  className="ui-press p-2 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors cursor-pointer"
                 >
                   <ChevronDown
                     className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
@@ -263,7 +263,7 @@ function DynamicIsland({
                   type="button"
                   onClick={() => setIsExpanded(false)}
                   aria-label="Close fleet summary"
-                  className="p-1.5 -mr-1 -mt-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
+                  className="touch-target ui-press p-2 -mr-1 -mt-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
