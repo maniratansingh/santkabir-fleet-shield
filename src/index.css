@@ -54,6 +54,32 @@ html:not(.dark) .glass-panel-glow {
   box-shadow: 0 0 25px rgba(14, 165, 233, 0.12), 0 12px 32px -4px rgba(15, 23, 42, 0.08);
 }
 
+/* Mobile marker tags: keep ID • speed • status, drop the long fields that
+   caused cards to overflow and collide on narrow screens. */
+@media (max-width: 640px) {
+  .marker-capsule-text .marker-driver,
+  .marker-capsule-text .marker-dist,
+  .marker-capsule-text .marker-speed,
+  .marker-capsule-text .marker-status,
+  .marker-capsule-text .marker-sep {
+    display: none;
+  }
+  .marker-capsule-text {
+    font-size: 9px;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}
+
+/* Overview zoom: compact tags. The full driver/distance string is too wide
+   when ten ambulances are clustered; it caused edge clipping and overlap.
+   Zoom in past the overview threshold to reveal the full tag. */
+.map-zoom-overview .marker-capsule-text .marker-driver,
+.map-zoom-overview .marker-capsule-text .marker-dist,
+.map-zoom-overview .marker-capsule-text .marker-sep {
+  display: none;
+}
+
 /* Steady Aura for Base Hospital & Sites (Zero Blink) */
 .radar-ring {
   box-shadow: 0 0 16px rgba(225, 29, 72, 0.35);
