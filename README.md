@@ -104,6 +104,7 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 - Full rules and promotion commands: [docs/BRANCHING.md](docs/BRANCHING.md).
 
 ### 8. Documentation
+- [docs/HANDOVER.md](docs/HANDOVER.md) — current state and next-session start guide.
 - [docs/FEATURES.md](docs/FEATURES.md) — feature reference and control map.
 - [docs/BRANCHING.md](docs/BRANCHING.md) — branch rules and promotion flow.
 - [docs/DATA_AND_ROUTING.md](docs/DATA_AND_ROUTING.md) — route pipeline, counts, OSRM policy and cache strategy.
