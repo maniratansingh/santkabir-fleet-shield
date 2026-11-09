@@ -513,7 +513,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-900 select-none">
+    <div className="relative w-screen h-screen overflow-hidden bg-slate-100 dark:bg-slate-900 select-none">
       {/* 1. Full-Bleed Edge-to-Edge Map Canvas */}
       <MapView
         vehicles={vehicles}

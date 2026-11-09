@@ -165,9 +165,15 @@ function AppleSheet({
 
   // Filtered vehicles (Only 2 filters: All & En Route)
   const filteredVehicles = vehicles.filter((v) => {
-    if (filter === 'moving') return v.status === 'moving' || v.status === 'returning';
+    if (filter === 'moving') return !v.isSignalGap && (v.status === 'moving' || v.status === 'returning');
     return true;
   });
+
+  // Match the header's status rule so the two surfaces cannot disagree.
+  const movingCount = vehicles.filter(
+    (v) => !v.isSignalGap && (v.status === 'moving' || v.status === 'returning')
+  ).length;
+  const stoppedCount = Math.max(0, vehicles.filter((v) => !v.isSignalGap).length - movingCount);
 
   // Determine height classes based on detent
   const getDetentHeightClass = () => {
@@ -200,14 +206,14 @@ function AppleSheet({
             </div>
             <div>
               <span className="text-xs font-bold text-slate-900 dark:text-white block leading-tight">
-                {selectedVehicle ? selectedVehicle.name : 'Sant Kabir Eye Hospital Fleet'}
+                {selectedVehicle ? selectedVehicle.name : 'Fleet Overview'}
               </span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400">
                 {selectedVehicle 
                   ? `Driver: ${selectedVehicle.driverName} • ${selectedVehicle.speed} km/h` 
                   : vehicles.length === 0
-                    ? 'Hospital Base Standby • Ready for GPS telemetry'
-                    : `${vehicles.filter(v => v.status === 'moving').length} en route • Tap to expand`}
+                    ? 'Hospital base standby • Ready for GPS telemetry'
+                    : `${vehicles.length} ambulances · ${movingCount} moving · ${stoppedCount} stopped`}
               </span>
             </div>
           </div>
@@ -271,18 +277,18 @@ function AppleSheet({
               {/* Provisioning QR Code Quick Action */}
               <button
                 onClick={() => openProvision(selectedVehicle.id)}
-                className="w-full my-1.5 py-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white text-xs font-bold shadow-md shadow-sky-500/20 flex items-center justify-between transition-transform active:scale-98 cursor-pointer group"
+                className="w-full my-1.5 py-2 px-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer group"
               >
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-xl bg-white/20 flex items-center justify-center">
-                    <QrCode className="w-4 h-4 text-white" />
+                  <div className="w-7 h-7 rounded-xl bg-sky-100 dark:bg-sky-950/60 flex items-center justify-center">
+                    <QrCode className="w-4 h-4 text-sky-600 dark:text-cyan-400" />
                   </div>
                   <div className="text-left">
                     <span className="block leading-none font-bold">Provision Android App</span>
-                    <span className="text-[10px] text-sky-100 font-normal">Generate 1-Scan QR for ML Kit</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">Generate 1-Scan QR for ML Kit</span>
                   </div>
                 </div>
-                <span className="text-[10px] font-mono bg-white/20 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+                <span className="text-[10px] font-mono bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
                   <span>Scan QR</span>
                   <span className="text-[9px]">↗</span>
                 </span>

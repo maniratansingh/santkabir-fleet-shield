@@ -343,6 +343,7 @@ function MapView({
   const mapRef = useRef(null);
   const markersRef = useRef({});
   const baseMarkerRef = useRef(null);
+  const baseCountRef = useRef(null);
   const distanceMarkersRef = useRef({});
   const currentStyleKeyRef = useRef(activeStyleKey);
   const vehiclesRef = useRef(vehicles);
@@ -1068,21 +1069,21 @@ function MapView({
           'line-color': ['get', 'glowColor'],
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            8, ['case', ['get', 'isSelected'], 7.0, ['get', 'hasSelection'], 2.5, 4.5],
-            11, ['case', ['get', 'isSelected'], 9.5, ['get', 'hasSelection'], 3.0, 6.0],
-            14, ['case', ['get', 'isSelected'], 13.0, ['get', 'hasSelection'], 4.0, 8.5],
-            16, ['case', ['get', 'isSelected'], 16.0, ['get', 'hasSelection'], 5.0, 11.5],
+            8, ['case', ['get', 'isSelected'], 7.0, ['get', 'hasSelection'], 1.8, 3.2],
+            11, ['case', ['get', 'isSelected'], 9.5, ['get', 'hasSelection'], 2.2, 4.2],
+            14, ['case', ['get', 'isSelected'], 13.0, ['get', 'hasSelection'], 3.0, 6.0],
+            16, ['case', ['get', 'isSelected'], 16.0, ['get', 'hasSelection'], 3.8, 8.0],
           ],
           'line-opacity': [
             'case',
-            ['get', 'isSelected'], 0.9,
-            ['get', 'hasSelection'], 0.25,
-            0.5,
+            ['get', 'isSelected'], 0.8,
+            ['get', 'hasSelection'], 0.12,
+            0.22,
           ],
           'line-blur': [
             'case',
-            ['get', 'isSelected'], 2.5,
-            1.2,
+            ['get', 'isSelected'], 2.0,
+            0.8,
           ],
         },
       });
@@ -1101,16 +1102,16 @@ function MapView({
           'line-color': ['get', 'lineColor'],
           'line-width': [
             'interpolate', ['linear'], ['zoom'],
-            8, ['case', ['get', 'isSelected'], 4.5, ['get', 'hasSelection'], 1.8, 3.0],
-            11, ['case', ['get', 'isSelected'], 6.0, ['get', 'hasSelection'], 2.4, 4.2],
-            14, ['case', ['get', 'isSelected'], 8.5, ['get', 'hasSelection'], 3.0, 6.0],
-            16, ['case', ['get', 'isSelected'], 11.0, ['get', 'hasSelection'], 4.0, 8.0],
+            8, ['case', ['get', 'isSelected'], 4.5, ['get', 'hasSelection'], 1.2, 2.2],
+            11, ['case', ['get', 'isSelected'], 6.0, ['get', 'hasSelection'], 1.6, 3.0],
+            14, ['case', ['get', 'isSelected'], 8.5, ['get', 'hasSelection'], 2.2, 4.2],
+            16, ['case', ['get', 'isSelected'], 11.0, ['get', 'hasSelection'], 3.0, 5.6],
           ],
           'line-opacity': [
             'case',
             ['get', 'isSelected'], 1.0,
-            ['get', 'hasSelection'], 0.45,
-            0.88,
+            ['get', 'hasSelection'], 0.3,
+            0.52,
           ],
         },
       });
@@ -1298,6 +1299,18 @@ function MapView({
   }, []);
 
   // Update Base Hospital Marker (Apple Maps Style Red Medical Landmark)
+  const updateBaseCount = () => {
+    const el = baseCountRef.current;
+    if (!el) return;
+    const count = (vehiclesRef.current || []).filter((v) => {
+      if (v.isSignalGap) return false;
+      const dist = Number(v.roadDistFromBaseKm ?? v.distFromBaseKm);
+      return Number.isFinite(dist) && dist <= 1.2 && (v.isParked || v.status === 'at_base' || v.status === 'standby');
+    }).length;
+    el.textContent = String(count);
+    el.style.display = count > 0 ? 'inline-flex' : 'none';
+  };
+
   const updateBaseMarker = (mapParam) => {
     const map = mapParam || mapRef.current;
     if (!map) return;
@@ -1331,10 +1344,10 @@ function MapView({
       <!-- Apple Frosted Label Pill -->
       <div class="mt-1 whitespace-nowrap px-2.5 py-0.5 rounded-full backdrop-blur-md ${
         isDark ? 'bg-slate-950/90 border border-white/10 text-white' : 'bg-white/95 border border-slate-200 text-slate-900 shadow-xs'
-      } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105">
+      } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105" title="Sant Kabir Eye Hospital (Basti Base)">
         <span class="w-1.5 h-1.5 rounded-full bg-rose-500" aria-hidden="true"></span>
-        <span class="sm:hidden">Basti Base</span>
-        <span class="hidden sm:inline">Sant Kabir Eye Hospital (Basti Base)</span>
+        <span>Basti Base</span>
+        <span class="base-count hidden items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-mono font-bold" aria-label="Ambulances at base"></span>
         <a href="${BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/6eur1NCPRzC93sDG9'}" target="_blank" rel="noopener noreferrer" class="text-rose-500 hover:text-rose-600 font-bold ml-0.5" title="Open in Google Maps" onclick="event.stopPropagation()">↗</a>
       </div>
     `;
@@ -1344,11 +1357,17 @@ function MapView({
       .addTo(map);
 
     baseMarkerRef.current = marker;
+    baseCountRef.current = el.querySelector('.base-count');
+    updateBaseCount();
   };
 
   useEffect(() => {
     updateBaseMarker();
   }, [theme]);
+
+  useEffect(() => {
+    updateBaseCount();
+  }, [vehicles]);
 
   // Update Vehicle Markers with Apple AirTag Platter Style (Zero-Blink & Butter Smooth Gliding)
   const updateVehicleMarkers = (mapParam) => {
@@ -1383,9 +1402,12 @@ function MapView({
     const SHELF_STEP_PX = 30;
     const SHELF_TRIGGER_Y_PX = 28;
     const SHELF_RELEASE_Y_PX = 52;
-    // Mobile tags hide driver/status/distance, so their real width is smaller.
-    const SHELF_CARD_WIDTH_PX =
-      typeof window !== 'undefined' && window.innerWidth < 640 ? 180 : 260;
+    // Overview tags shrink to the ID only, so their real width is much
+    // smaller. Using the detailed-zoom width here over-shelved the base
+    // cluster and pushed tags far from their ambulances.
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+    const isOverview = map.getZoom() < 11.2;
+    const SHELF_CARD_WIDTH_PX = isMobile ? 110 : (isOverview ? 140 : 260);
     const MAX_SHELVES = 4;
 
     // Never re-layout shelves while the camera is moving. Zooming or panning
@@ -1484,8 +1506,10 @@ function MapView({
 
       const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
       const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
-      const marginX = 8;
-      const topSafe = 70;
+      const marginX = 12;
+      // Keep pills out from under the right-hand control dock on desktop.
+      const rightInset = vw >= 640 ? 64 : 12;
+      const topSafe = 76;
       const bottomSafe = vh - 96;
 
       const prevX = markerObj.clampX || 0;
@@ -1522,7 +1546,7 @@ function MapView({
 
       let nextX = 0;
       if (unclampedLeft < marginX) nextX = marginX - unclampedLeft;
-      else if (unclampedRight > vw - marginX) nextX = (vw - marginX) - unclampedRight;
+      else if (unclampedRight > vw - rightInset) nextX = (vw - rightInset) - unclampedRight;
       nextX = Math.max(-420, Math.min(420, nextX));
       if (Math.abs(nextX - prevX) > 0.5) {
         markerObj.clampX = nextX;
@@ -1567,7 +1591,7 @@ function MapView({
         statusBadgeClass = 'bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/30';
       } else {
         statusBadgeText = liveLoc.badge;
-        statusBadgeClass = 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30';
+        statusBadgeClass = 'bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20';
       }
 
       const speedStr = isGap 
@@ -1594,9 +1618,9 @@ function MapView({
             <!-- Complete Apple Capsule Tag: ID • Driver • Speed • Camp • Distance (Always Visible, Zero Overlap Shelves) -->
             <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
               <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
-                style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
-                <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
-                <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
+                style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
+                <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
+                <span class="marker-id font-extrabold text-[11px] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                 <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
@@ -1672,9 +1696,9 @@ function MapView({
             <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
               <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
                 <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
-                  style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 4px 12px ${badgeColor}30;">
-                  <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 6px ${badgeColor};"></span>
-                  <span class="marker-id font-extrabold text-[10.5px]" style="color: ${badgeColor};">${v.id}</span>
+                  style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
+                  <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
+                  <span class="marker-id font-extrabold text-[11px] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                   <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
@@ -1857,7 +1881,11 @@ function MapView({
       aria-label="Interactive Fleet Telemetry Map"
     >
       {/* MapLibre WebGL Canvas Container */}
-      <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
+      <div
+        ref={mapContainer}
+        className="absolute inset-0 w-full h-full"
+        style={{ backgroundColor: theme === 'dark' ? '#0b1b33' : '#eef1f5' }}
+      />
     </div>
   );
 }

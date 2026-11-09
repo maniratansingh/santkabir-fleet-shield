@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sun, Moon, Radio, ChevronDown, CheckCircle2, Activity, X, Navigation, Ambulance } from 'lucide-react';
+import { Sun, Moon, Radio, ChevronDown, CheckCircle2, X } from 'lucide-react';
 import { BASE_HOSPITAL } from '../data/mockData';
 
 function DynamicIsland({
@@ -33,8 +33,14 @@ function DynamicIsland({
   }, []);
 
   // Aggregated Fleet Status with Signal Gap Tracking
-  const movingCount = vehicles.filter((v) => !v.isSignalGap && (v.status === 'moving' || v.status === 'returning')).length;
-  const inFieldCount = vehicles.filter((v) => !v.isSignalGap && v.status === 'in_field').length;
+  const activeVehicles = vehicles.filter((v) => !v.isSignalGap);
+  const movingCount = activeVehicles.filter((v) => v.status === 'moving' || v.status === 'returning').length;
+  const atBaseCount = vehicles.filter((v) => {
+    if (v.isSignalGap) return false;
+    const dist = Number(v.roadDistFromBaseKm ?? v.distFromBaseKm);
+    return Number.isFinite(dist) && dist <= 1.2 && (v.isParked || v.status === 'at_base' || v.status === 'standby');
+  }).length;
+  const stoppedCount = Math.max(0, activeVehicles.length - movingCount);
   const signalGapCount = vehicles.filter((v) => v.isSignalGap).length;
 
   return (
@@ -90,67 +96,49 @@ function DynamicIsland({
         /* Normal Compact Dynamic Island Capsule */
         <div 
           onClick={() => setIsExpanded(prev => !prev)}
-          className="glass-panel px-3.5 py-1.5 rounded-full flex items-center gap-2.5 sm:gap-3.5 shadow-xl border cursor-pointer select-none transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] border-slate-200/90 dark:border-white/10 whitespace-nowrap"
+          className="glass-panel pl-3 pr-2 py-1.5 rounded-full flex items-center gap-2.5 sm:gap-3 shadow-xl border cursor-pointer select-none transition-all duration-200 hover:scale-[1.01] active:scale-[0.99] border-slate-200/90 dark:border-white/10 whitespace-nowrap"
         >
-          {/* Developer Logo Avatar */}
-          <div className="flex items-center gap-2 shrink-0">
-            <img 
-              src="/avatar.png" 
-              alt="Mani Ratan Singh" 
-              className="w-7 h-7 rounded-full object-cover border border-slate-200 dark:border-white/10 shadow-xs shrink-0"
-              onError={(e) => { e.target.src = 'https://avatars.githubusercontent.com/u/85608407?v=4'; }}
-            />
-            <div className="hidden lg:flex flex-col">
-              <span className="text-xs font-bold tracking-tight text-slate-900 dark:text-white leading-none">
-                Sant Kabir Eye Hospital
-              </span>
-              <span className="text-[10px] text-sky-600 dark:text-cyan-400 font-semibold tracking-wider uppercase mt-0.5">
-                Fleet Command
-              </span>
-            </div>
-          </div>
+          {/* Live status dot + a single, unambiguous fleet sentence */}
+          <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
+            <span className={`relative inline-flex rounded-full h-2 w-2 shadow-[0_0_8px_rgba(16,185,129,0.6)] ${
+              vehicles.length === 0 ? 'bg-sky-500' : (signalGapCount > 0 ? 'bg-amber-500' : 'bg-emerald-500')
+            }`}></span>
+          </span>
 
-          {/* Divider */}
-          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block shrink-0" />
-
-          {/* Live Fleet Status Pill (Steady Aura, Zero Blink) */}
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
-              <span className={`relative inline-flex rounded-full h-2 w-2 shadow-[0_0_8px_rgba(16,185,129,0.6)] ${
-                vehicles.length === 0 ? 'bg-sky-500' : (signalGapCount > 0 ? 'bg-amber-500' : 'bg-emerald-500')
-              }`}></span>
+          <div className="flex flex-col justify-center leading-none">
+            <span className="text-[11px] font-bold tracking-tight text-slate-900 dark:text-white">
+              Sant Kabir Eye Hospital
             </span>
-            {vehicles.length === 0 ? (
-              <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 whitespace-nowrap">
-                Hospital Standby • Telemetry Ready
-              </span>
-            ) : (
-              <div className="flex items-center gap-1.5 whitespace-nowrap">
-                <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                  {movingCount} En Route
-                </span>
-                {signalGapCount > 0 && (
-                  <>
-                    <span className="text-slate-300 dark:text-slate-600">•</span>
-                    <span className="text-xs font-bold text-amber-500 dark:text-amber-400 flex items-center gap-1">
-                      <span>⏳</span>
-                      <span>{signalGapCount} Blind Spot</span>
-                    </span>
-                  </>
-                )}
-                <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">•</span>
-                <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hidden sm:inline">
-                  {vehicles.length} Active Fleet
-                </span>
-              </div>
-            )}
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-medium">
+              {vehicles.length === 0 ? (
+                'Standby · telemetry ready'
+              ) : (
+                <>
+                  <span className="text-slate-700 dark:text-slate-200 font-semibold">{movingCount} moving</span>
+                  <span className="mx-1 text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
+                  <span className="hidden sm:inline">{stoppedCount} stopped</span>
+                  {atBaseCount > 0 && (
+                    <>
+                      <span className="mx-1 text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
+                      <span className="hidden sm:inline">{atBaseCount} at base</span>
+                    </>
+                  )}
+                  {signalGapCount > 0 && (
+                    <>
+                      <span className="mx-1 text-slate-300 dark:text-slate-600">·</span>
+                      <span className="text-amber-600 dark:text-amber-400 font-semibold">{signalGapCount} no signal</span>
+                    </>
+                  )}
+                </>
+              )}
+            </span>
           </div>
 
           {/* Divider */}
-          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+          <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block shrink-0" />
 
           {/* Time */}
-          <div className="hidden sm:flex items-center font-mono text-xs font-semibold text-slate-600 dark:text-slate-300">
+          <div className="hidden sm:flex items-center font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
             {time}
           </div>
 
@@ -190,9 +178,17 @@ function DynamicIsland({
         <div className="mt-2 glass-panel p-4 rounded-3xl border border-slate-200/90 dark:border-white/10 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between pb-2 border-b border-slate-200/80 dark:border-slate-700/80">
             <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-sky-600 dark:text-cyan-400" />
+              <img
+                src="/avatar.png"
+                alt="Mani Ratan Singh"
+                className="w-6 h-6 rounded-full object-cover border border-slate-200 dark:border-white/10 shrink-0"
+                onError={(e) => { e.target.src = 'https://avatars.githubusercontent.com/u/85608407?v=4'; }}
+              />
               <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                 Hospital Outreach Fleet Summary
+              </span>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium hidden sm:inline">
+                Basti, UP
               </span>
             </div>
             <a 
@@ -208,16 +204,16 @@ function DynamicIsland({
 
           <div className="grid grid-cols-3 gap-2.5 my-3">
             <div className="p-2.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800/40">
-              <span className="text-[10px] text-emerald-700 dark:text-emerald-300 uppercase font-semibold block">En Route</span>
-              <span className="text-lg font-extrabold text-emerald-900 dark:text-emerald-200 font-mono">{movingCount} Active</span>
-            </div>
-            <div className="p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40">
-              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-semibold block">Active Fleet</span>
-              <span className="text-lg font-extrabold text-indigo-900 dark:text-indigo-200 font-mono">{vehicles.length} Ambulances</span>
+              <span className="text-[10px] text-emerald-700 dark:text-emerald-300 uppercase font-semibold block">Moving</span>
+              <span className="text-lg font-extrabold text-emerald-900 dark:text-emerald-200 font-mono">{movingCount}</span>
             </div>
             <div className="p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-              <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-semibold block">District</span>
-              <span className="text-sm font-bold text-slate-800 dark:text-white mt-1 block">Basti, UP</span>
+              <span className="text-[10px] text-slate-600 dark:text-slate-400 uppercase font-semibold block">At Base</span>
+              <span className="text-lg font-extrabold text-slate-800 dark:text-white font-mono">{atBaseCount}</span>
+            </div>
+            <div className="p-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40">
+              <span className="text-[10px] text-indigo-700 dark:text-indigo-300 uppercase font-semibold block">Fleet</span>
+              <span className="text-lg font-extrabold text-indigo-900 dark:text-indigo-200 font-mono">{vehicles.length}</span>
             </div>
           </div>
 

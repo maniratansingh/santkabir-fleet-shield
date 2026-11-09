@@ -22,36 +22,36 @@
 
 /* Dark Mode Glass */
 .dark .glass-panel {
-  background: rgba(11, 27, 51, 0.93);
+  background: rgba(9, 20, 38, 0.9);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(56, 189, 248, 0.28);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: 0 10px 30px 0 rgba(0, 0, 0, 0.38);
 }
 
 .dark .glass-panel-glow {
-  background: rgba(11, 27, 51, 0.97);
+  background: rgba(9, 20, 38, 0.96);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(14, 165, 233, 0.55);
-  box-shadow: 0 0 25px rgba(6, 182, 212, 0.2), 0 10px 35px 0 rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.14), 0 10px 30px 0 rgba(0, 0, 0, 0.42);
 }
 
 /* Light Mode Glass (Clean, Clinical, Crisp, Premium Medical) */
 html:not(.dark) .glass-panel {
-  background: rgba(255, 255, 255, 0.97);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(203, 213, 225, 0.95);
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  box-shadow: 0 6px 22px -4px rgba(15, 23, 42, 0.1), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
 }
 
 html:not(.dark) .glass-panel-glow {
-  background: rgba(255, 255, 255, 1);
+  background: rgba(255, 255, 255, 0.98);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(14, 165, 233, 0.55);
-  box-shadow: 0 0 25px rgba(14, 165, 233, 0.12), 0 12px 32px -4px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+  box-shadow: 0 0 20px rgba(14, 165, 233, 0.1), 0 12px 32px -4px rgba(15, 23, 42, 0.08);
 }
 
 /* Mobile marker tags: keep ID • speed • status, drop the long fields that
@@ -73,11 +73,24 @@ html:not(.dark) .glass-panel-glow {
 
 /* Overview zoom: compact tags. The full driver/distance string is too wide
    when ten ambulances are clustered; it caused edge clipping and overlap.
-   Zoom in past the overview threshold to reveal the full tag. */
+   At fleet zoom only the ID (and a selected vehicle's speed) stays visible. */
 .map-zoom-overview .marker-capsule-text .marker-driver,
+.map-zoom-overview .marker-capsule-text .marker-speed,
+.map-zoom-overview .marker-capsule-text .marker-status,
 .map-zoom-overview .marker-capsule-text .marker-dist,
 .map-zoom-overview .marker-capsule-text .marker-sep {
   display: none;
+}
+.map-zoom-overview .marker-outer-wrapper:hover .marker-capsule-text .marker-speed,
+.map-zoom-overview .marker-outer-wrapper.is-selected .marker-capsule-text .marker-speed {
+  display: inline;
+}
+@media (max-width: 640px) {
+  .map-zoom-overview .marker-outer-wrapper:hover .marker-capsule-text .marker-speed,
+  .map-zoom-overview .marker-outer-wrapper.is-selected .marker-capsule-text .marker-speed,
+  .map-zoom-overview .marker-outer-wrapper.is-selected .marker-capsule-text .marker-status {
+    display: none;
+  }
 }
 
 /* Steady Aura for Base Hospital & Sites (Zero Blink) */
@@ -116,15 +129,6 @@ html:not(.dark) ::-webkit-scrollbar-thumb {
 }
 html:not(.dark) ::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.6);
-}
-
-/* Custom Marker styles */
-.maplibre-marker {
-  cursor: pointer;
-}
-
-.maplibre-marker:hover {
-  z-index: 50 !important;
 }
 
 /* Custom Marker styles */
