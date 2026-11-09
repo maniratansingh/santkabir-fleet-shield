@@ -1706,7 +1706,11 @@ function MapView({
   }, [vehicles, selectedVehicleId, showDistanceLines, theme]);
 
   return (
-    <div className="relative flex-1 w-full h-full min-h-[400px] overflow-hidden">
+    <div
+      className="relative flex-1 w-full h-full min-h-[400px] overflow-hidden"
+      role="region"
+      aria-label="Interactive Fleet Telemetry Map"
+    >
       {/* MapLibre WebGL Canvas Container */}
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
     </div>

@@ -4,10 +4,21 @@
 // Production Clean: 0 Mock Data. Dynamic live telemetry only.
 
 // In-memory telemetry cache for active fleet ambulances
-import { ACTIVE_FLEET } from './data/activeFleet.js';
-import { simulateFleetAtTime } from './utils/fleetSimulation.js';
-
 const liveVehicles = new Map();
+
+// Constant-time comparison of two secrets (fixed-length SHA-256 digests)
+async function safeEqual(a, b) {
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(String(a))),
+    crypto.subtle.digest('SHA-256', enc.encode(String(b))),
+  ]);
+  const av = new Uint8Array(ha);
+  const bv = new Uint8Array(hb);
+  let diff = 0;
+  for (let i = 0; i < av.length; i++) diff |= av[i] ^ bv[i];
+  return diff === 0;
+}
 
 const BASE_LAT = 26.797313;
 const BASE_LON = 82.718401;
@@ -1475,7 +1486,7 @@ function calculateBearing(c1, c2) {
   return Math.round((brng + 360) % 360);
 }
 
-// Live simulation is handled dynamically by simulateFleetAtTime(ACTIVE_FLEET, now)
+// Live simulation is handled client-side in src/App.jsx
 
 
 export default {
@@ -1658,8 +1669,46 @@ export default {
       });
     }
 
-    // 2. Endpoint: /api/clear (Clears in-memory live telemetry cache)
+    // 2. Endpoint: /api/clear (Admin-only: clears in-memory live telemetry cache)
     if (url.pathname === '/api/clear' || url.pathname === '/api/clear/') {
+      if (request.method === 'OPTIONS') {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+          },
+        });
+      }
+
+      if (request.method !== 'POST' && request.method !== 'DELETE') {
+        return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+          status: 405,
+          headers: {
+            'Content-Type': 'application/json',
+            'Allow': 'POST, DELETE, OPTIONS',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+
+      // Fail closed if the deployment secret was never provisioned.
+      if (!env.ADMIN_SECRET_KEY) {
+        return new Response(JSON.stringify({ error: 'Admin endpoint not configured' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+
+      const suppliedKey = request.headers.get('X-Admin-Key') || '';
+      if (!(await safeEqual(suppliedKey, env.ADMIN_SECRET_KEY))) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+
       liveVehicles.clear();
       return new Response(JSON.stringify({
         success: true,

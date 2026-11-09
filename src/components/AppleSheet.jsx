@@ -539,7 +539,7 @@ function AppleSheet({
           {/* Clinical Developer Plaque by Mani Ratan Singh */}
           <div className="pt-2 mt-1 border-t border-slate-200/70 dark:border-slate-800/70 flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 shrink-0 select-none">
             <span className="flex items-center gap-1 font-mono text-[9px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden="true"></span>
               Sant Kabir Eye Hospital
             </span>
             <div className="flex items-center gap-1">

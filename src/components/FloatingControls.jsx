@@ -57,7 +57,8 @@ export default function FloatingControls({
         <button
           onClick={onZoomIn}
           title="Zoom In (+)"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
+          aria-label="Zoom in"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Plus className="w-4 h-4 text-slate-800 dark:text-white" />
         </button>
@@ -66,7 +67,8 @@ export default function FloatingControls({
         <button
           onClick={onZoomOut}
           title="Zoom Out (-)"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
+          aria-label="Zoom out"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Minus className="w-4 h-4 text-slate-800 dark:text-white" />
         </button>
@@ -75,7 +77,8 @@ export default function FloatingControls({
         <button
           onClick={onFitAll}
           title="Fit All Ambulances (Fleet Overview)"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
+          aria-label="Fit all ambulances in view"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Scan className="w-4 h-4 text-sky-600 dark:text-cyan-400" />
         </button>
@@ -87,7 +90,8 @@ export default function FloatingControls({
         <button
           onClick={onResetNorth}
           title="Reset Map to True North"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer group active:scale-95"
+          aria-label="Reset map to true north"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer group active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Compass className="w-5 h-5 text-sky-600 dark:text-cyan-400 group-hover:rotate-45 transition-transform" />
         </button>
@@ -96,7 +100,8 @@ export default function FloatingControls({
         <button
           onClick={onCenterBase}
           title="Focus Sant Kabir Hospital Base (Basti)"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95"
+          aria-label="Focus Sant Kabir Hospital base in Basti"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           <Hospital className="w-4 h-4 text-rose-600 dark:text-rose-400" />
         </button>
@@ -105,7 +110,9 @@ export default function FloatingControls({
         <button
           onClick={onToggleDistanceLines}
           title={showDistanceLines ? "Hide Distance Vectors from Base" : "Show Distance Vectors from Base"}
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
+          aria-label={showDistanceLines ? "Hide distance vectors from base" : "Show distance vectors from base"}
+          aria-pressed={showDistanceLines}
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
             showDistanceLines 
               ? 'bg-sky-600 text-white shadow-xs' 
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -119,7 +126,10 @@ export default function FloatingControls({
           <button
             onClick={() => setIsLayerMenuOpen(prev => !prev)}
             title="Map Style Switcher"
-            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
+            aria-label="Open map style switcher"
+            aria-expanded={isLayerMenuOpen}
+            aria-haspopup="menu"
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
               isLayerMenuOpen 
                 ? 'bg-slate-200 dark:bg-slate-700 text-sky-600 dark:text-cyan-400' 
                 : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -130,18 +140,24 @@ export default function FloatingControls({
 
           {/* Layer Flyout Menu */}
           {isLayerMenuOpen && (
-            <div className="absolute right-11 top-0 w-44 glass-panel p-1.5 rounded-2xl shadow-2xl border border-slate-200/90 dark:border-white/10 flex flex-col gap-1 animate-in fade-in slide-in-from-right-2 duration-150">
+            <div
+              role="menu"
+              aria-label="Map basemap"
+              className="absolute right-11 top-0 w-44 glass-panel p-1.5 rounded-2xl shadow-2xl border border-slate-200/90 dark:border-white/10 flex flex-col gap-1 animate-in fade-in slide-in-from-right-2 duration-150"
+            >
               <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 Map Basemap
               </span>
               {MAP_STYLES.map((style) => (
                 <button
                   key={style.key}
+                  role="menuitemradio"
+                  aria-checked={activeStyleKey === style.key}
                   onClick={() => {
                     onSelectStyle(style.key);
                     setIsLayerMenuOpen(false);
                   }}
-                  className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
+                  className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium flex items-center justify-between transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
                     activeStyleKey === style.key
                       ? 'bg-sky-600 text-white font-semibold'
                       : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -168,7 +184,9 @@ export default function FloatingControls({
           <button
             onClick={onToggleDemoMode}
             title={isDemoMode ? "Switch to Live Real GPS Only (Remove 10 Demo Cars)" : "Load 10 Demo Ambulances for UI Preview"}
-            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
+            aria-label={isDemoMode ? "Switch to live GPS only" : "Load demo ambulances for UI preview"}
+            aria-pressed={isDemoMode}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
               isDemoMode 
                 ? 'bg-amber-500 text-white shadow-xs' 
                 : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -182,7 +200,9 @@ export default function FloatingControls({
         <button
           onClick={onToggleAutoTour}
           title={isAutoTour ? "Stop TV Wallboard Auto-Tour" : "Start TV Wallboard Auto-Tour (Continuous Kiosk Monitoring)"}
-          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
+          aria-label={isAutoTour ? "Stop TV wallboard auto-tour" : "Start TV wallboard auto-tour"}
+          aria-pressed={isAutoTour}
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
             isAutoTour 
               ? 'bg-purple-600 text-white shadow-xs' 
               : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -195,7 +215,9 @@ export default function FloatingControls({
         <button
           onClick={toggleFullscreen}
           title="Toggle Fullscreen Wallboard"
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+          aria-label="Toggle fullscreen wallboard"
+          aria-pressed={isFullscreen}
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
         >
           {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </button>
