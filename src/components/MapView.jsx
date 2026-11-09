@@ -45,6 +45,7 @@ const MAP_STYLES = {
           source: 'esri-light-base',
           minzoom: 0,
           maxzoom: 22,
+          paint: { 'raster-fade-duration': 0 },
         },
         {
           id: 'esri-light-labels-layer',
@@ -52,6 +53,7 @@ const MAP_STYLES = {
           source: 'esri-light-labels',
           minzoom: 0,
           maxzoom: 22,
+          paint: { 'raster-fade-duration': 0 },
         },
       ],
     },
@@ -87,6 +89,7 @@ const MAP_STYLES = {
           source: 'esri-dark-base',
           minzoom: 0,
           maxzoom: 22,
+          paint: { 'raster-fade-duration': 0 },
         },
         {
           id: 'esri-dark-labels-layer',
@@ -94,6 +97,7 @@ const MAP_STYLES = {
           source: 'esri-dark-labels',
           minzoom: 0,
           maxzoom: 22,
+          paint: { 'raster-fade-duration': 0 },
         },
       ],
     },
@@ -129,6 +133,7 @@ const MAP_STYLES = {
           source: 'esri-imagery',
           minzoom: 0,
           maxzoom: 22,
+          paint: { 'raster-fade-duration': 0 },
         },
         {
           id: 'esri-boundaries-layer',
@@ -136,6 +141,7 @@ const MAP_STYLES = {
           source: 'esri-boundaries',
           minzoom: 0,
           maxzoom: 22,
+          paint: { 'raster-fade-duration': 0 },
         },
       ],
     },
@@ -163,6 +169,7 @@ const MAP_STYLES = {
           source: 'esri-streets',
           minzoom: 0,
           maxzoom: 22,
+          paint: { 'raster-fade-duration': 0 },
         },
       ],
     },
@@ -349,39 +356,67 @@ function MapView({
   const vehiclesRef = useRef(vehicles);
   const prevSelectedIdRef = useRef(null);
   const animFrameRef = useRef(null);
+  const pendingDistanceRefreshRef = useRef(false);
   const tier2DataRef = useRef(null);
   const tier3DataRef = useRef(null);
   const isFetchingTier2Ref = useRef(false);
   const isFetchingTier3Ref = useRef(false);
+
+  const loadTierIntoMap = (tierKey, path, dataRef, fetchingRef, sourceId) => {
+    if (dataRef.current || fetchingRef.current) return;
+    fetchingRef.current = true;
+    loadTieredGeoJson(tierKey, path).then((data) => {
+      fetchingRef.current = false;
+      if (!data) return;
+      dataRef.current = data;
+      const src = mapRef.current?.getSource(sourceId);
+      if (src && typeof src.setData === 'function') src.setData(data);
+    });
+  };
 
   const checkTieredZoom = () => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     const z = map.getZoom();
 
-    if (z >= 11.0 && !tier2DataRef.current && !isFetchingTier2Ref.current) {
-      isFetchingTier2Ref.current = true;
-      loadTieredGeoJson('tier2', '/data/tiered/purvanchal-tier2.geojson').then((data) => {
-        isFetchingTier2Ref.current = false;
-        if (data && mapRef.current) {
-          tier2DataRef.current = data;
-          const src = mapRef.current.getSource('purvanchal-tier2-source');
-          if (src) src.setData(data);
-        }
-      });
+    if (z >= 11.0) {
+      loadTierIntoMap(
+        'tier2',
+        '/data/tiered/purvanchal-tier2.geojson',
+        tier2DataRef,
+        isFetchingTier2Ref,
+        'purvanchal-tier2-source'
+      );
     }
 
-    if (z >= 13.5 && !tier3DataRef.current && !isFetchingTier3Ref.current) {
-      isFetchingTier3Ref.current = true;
-      loadTieredGeoJson('tier3', '/data/tiered/purvanchal-tier3.geojson').then((data) => {
-        isFetchingTier3Ref.current = false;
-        if (data && mapRef.current) {
-          tier3DataRef.current = data;
-          const src = mapRef.current.getSource('purvanchal-tier3-source');
-          if (src) src.setData(data);
-        }
-      });
+    if (z >= 13.5) {
+      loadTierIntoMap(
+        'tier3',
+        '/data/tiered/purvanchal-tier3.geojson',
+        tier3DataRef,
+        isFetchingTier3Ref,
+        'purvanchal-tier3-source'
+      );
     }
+  };
+
+  // Parse both tier files during a quiet moment so the first TV tour zoom does
+  // not pay a synchronous 1.4 MB GeoJSON cost right when it crosses 13.5.
+  const preloadTieredLayers = () => {
+    loadTierIntoMap(
+      'tier2',
+      '/data/tiered/purvanchal-tier2.geojson',
+      tier2DataRef,
+      isFetchingTier2Ref,
+      'purvanchal-tier2-source'
+    );
+    loadTierIntoMap(
+      'tier3',
+      '/data/tiered/purvanchal-tier3.geojson',
+      tier3DataRef,
+      isFetchingTier3Ref,
+      'purvanchal-tier3-source'
+    );
   };
 
   useEffect(() => {
@@ -463,7 +498,7 @@ function MapView({
     if (!currentVehicles || currentVehicles.length === 0) {
       map.flyTo({
         center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat],
-        zoom: isWideScreen ? 13.5 : 11.2,
+        zoom: isWideScreen ? 13.2 : 11.2,
         pitch: 20,
         bearing: 0,
         duration: options.duration !== undefined ? options.duration : 800,
@@ -542,7 +577,7 @@ function MapView({
 
     map.fitBounds(bounds, {
       padding,
-      maxZoom: isWideScreen ? 13.8 : 11.5,
+      maxZoom: isWideScreen ? 13.2 : 11.5,
       pitch: 22,
       bearing: 0,
       duration: options.duration !== undefined ? options.duration : 1000,
@@ -566,7 +601,7 @@ function MapView({
         left: isSheetMinimized ? 60 : (isDesktop ? 400 : 24),
         right: 40,
       },
-      zoom: isDesktop ? 13.8 : 12.2,
+      zoom: isDesktop ? 13.2 : 12.2,
       pitch: 28,
       bearing: 0,
       speed: 1.1,
@@ -1148,6 +1183,19 @@ function MapView({
   const updateDistanceVectors = (map) => {
     if (!map || !map.isStyleLoaded()) return;
 
+    // Rebuilding ten route GeoJSON sources during a flyTo competes with tile
+    // decode on the main thread. Defer to moveend instead of updating mid-air.
+    if (map.isMoving?.()) {
+      if (!pendingDistanceRefreshRef.current) {
+        pendingDistanceRefreshRef.current = true;
+        map.once('moveend', () => {
+          pendingDistanceRefreshRef.current = false;
+          updateDistanceVectors(mapRef.current);
+        });
+      }
+      return;
+    }
+
     const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
     const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
     const hasSelection = Boolean(selectedVehicleId);
@@ -1239,6 +1287,12 @@ function MapView({
     if (!mapContainer.current || mapRef.current) return;
 
     const initialStyleKey = theme === 'dark' ? 'dark' : 'light';
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const isLargeViewport =
+      typeof window !== 'undefined' && (window.innerWidth >= 1600 || window.innerHeight >= 1000);
+    const deviceMemory =
+      typeof navigator !== 'undefined' ? Number(navigator.deviceMemory) || 4 : 4;
+
     const map = new maplibregl.Map({
       container: mapContainer.current,
       style: MAP_STYLES[initialStyleKey].style,
@@ -1246,20 +1300,41 @@ function MapView({
       zoom: 10,
       pitch: 25,
       attributionControl: false,
+      // TV/large-screen tuning: cached raster tiles still cost decode + blend
+      // time on every zoom. Remove the 300 ms cross-fade, keep more decoded
+      // tiles in memory, and cap the render resolution on 4K panels.
+      fadeDuration: 0,
+      refreshExpiredTiles: false,
+      maxTileCacheSize: deviceMemory >= 4 ? 256 : 128,
+      pixelRatio: Math.min(dpr, isLargeViewport ? 1.5 : 2),
     });
 
     mapRef.current = map;
     if (typeof window !== 'undefined') window.__map = map;
 
+    // Glass panels use backdrop-filter. Re-blurring the moving map every frame
+    // is the single most expensive thing on a TV GPU, so drop the blur only
+    // while the camera is actually moving and restore it when it settles.
+    const setCameraMoving = (moving) => {
+      if (typeof document === 'undefined') return;
+      document.documentElement.classList.toggle('map-camera-moving', moving);
+    };
+    map.on('movestart', () => setCameraMoving(true));
+    map.on('moveend', () => setCameraMoving(false));
+
     const updateZoomLOD = () => {
       if (!mapContainer.current) return;
-      const z = map.getZoom();
-      if (z < 11.2) {
-        mapContainer.current.classList.add('map-zoom-overview');
-        mapContainer.current.classList.remove('map-zoom-detailed');
-      } else {
-        mapContainer.current.classList.add('map-zoom-detailed');
-        mapContainer.current.classList.remove('map-zoom-overview');
+      const overview = map.getZoom() < 11.2;
+      const el = mapContainer.current;
+      // Only touch the class list when the tier actually changes. The zoom
+      // event fires every frame of a flyTo, and needless class churn forces
+      // style recalculation for all marker tags.
+      if (overview && !el.classList.contains('map-zoom-overview')) {
+        el.classList.add('map-zoom-overview');
+        el.classList.remove('map-zoom-detailed');
+      } else if (!overview && !el.classList.contains('map-zoom-detailed')) {
+        el.classList.add('map-zoom-detailed');
+        el.classList.remove('map-zoom-overview');
       }
     };
 
@@ -1267,7 +1342,7 @@ function MapView({
       map.resize();
       updateZoomLOD();
       map.on('zoom', updateZoomLOD);
-      map.on('zoom', checkTieredZoom);
+      map.on('zoomend', checkTieredZoom);
       // Do not re-layout vehicle cards on camera moves. Marker positions are
       // handled by MapLibre; shelf layout is refreshed on the telemetry tick.
       addCustomLayers(map);
@@ -1280,9 +1355,21 @@ function MapView({
         map.resize();
         fitAll({ duration: 0 });
       }, 100);
+
+      // Parse the tier GeoJSON once the map is fully settled, never mid-flight.
+      map.once('idle', () => {
+        if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+          window.requestIdleCallback(preloadTieredLayers, { timeout: 3000 });
+        } else {
+          preloadTieredLayers();
+        }
+      });
     });
 
     return () => {
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.remove('map-camera-moving');
+      }
       Object.values(markersRef.current).forEach(m => { try { m.marker.remove(); } catch (e) {} });
       markersRef.current = {};
       Object.values(distanceMarkersRef.current).forEach(m => { try { m.marker.remove(); } catch (e) {} });
@@ -1845,7 +1932,10 @@ function MapView({
             anyMoved = true;
           }
         }
-        clampTagToViewport(markerObj, shelfOffsetY);
+        // Measuring every pill during a flyTo forces synchronous layout
+        // reads. Skip until the camera settles; the next telemetry tick
+        // clamps anything near an edge.
+        if (!cameraMoving) clampTagToViewport(markerObj, shelfOffsetY);
       }
     });
 

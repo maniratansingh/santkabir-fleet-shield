@@ -82,6 +82,13 @@ export default function App() {
     }
   }, [theme]);
 
+  // TV wallboard mode: auto-tour is a kiosk view. The map animates markers and
+  // tiles continuously, so blurred glass re-blurs every frame on TV GPUs.
+  // Use opaque panels instead while the kiosk tour is running.
+  useEffect(() => {
+    document.documentElement.classList.toggle('tv-wallboard', isAutoTour);
+  }, [isAutoTour]);
+
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
