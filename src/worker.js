@@ -3,8 +3,14 @@
 // Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
 // Production Clean: 0 Mock Data. Dynamic live telemetry only.
 
+import { createKinematicFilter } from './utils/kalman.js';
+
 // In-memory telemetry cache for active fleet ambulances
 const liveVehicles = new Map();
+
+// Per-vehicle GPS noise filters. Kept separate from the public record so the
+// raw covariance state is never serialized to the dashboard.
+const vehicleFilters = new Map();
 
 // Constant-time comparison of two secrets (fixed-length SHA-256 digests)
 async function safeEqual(a, b) {
@@ -1599,20 +1605,32 @@ export default {
       const vehId = String(id).trim().toUpperCase();
       const existing = liveVehicles.get(vehId) || {};
       const colors = getVehicleColors(vehId);
-      const cleanLat = Number(lat.toFixed(6));
-      const cleanLon = Number(lon.toFixed(6));
-      const distKm = calculateDistanceKm(BASE_LAT, BASE_LON, cleanLat, cleanLon);
+      const rawLat = Number(lat.toFixed(6));
+      const rawLon = Number(lon.toFixed(6));
+
+      // Smooth the raw GPS fix before it enters shared fleet state. The first
+      // fix for a vehicle is returned raw, so the initial position is exact.
+      let filter = vehicleFilters.get(vehId);
+      if (!filter) {
+        filter = createKinematicFilter();
+        vehicleFilters.set(vehId, filter);
+      }
+      const smoothed = filter.update(rawLat, rawLon, accuracy, timestamp);
+      const filteredLat = Number((Number.isFinite(smoothed.lat) ? smoothed.lat : rawLat).toFixed(6));
+      const filteredLon = Number((Number.isFinite(smoothed.lon) ? smoothed.lon : rawLon).toFixed(6));
+
+      const distKm = calculateDistanceKm(BASE_LAT, BASE_LON, filteredLat, filteredLon);
       const roadDistKm = Math.round(distKm * 1.15 * 10) / 10;
 
       // Keep last 30 coordinates for live highway trail breadcrumbs
       const prevTrail = Array.isArray(existing.trail) ? existing.trail : [];
-      const updatedTrail = [...prevTrail.slice(-29), [cleanLon, cleanLat]];
+      const updatedTrail = [...prevTrail.slice(-29), [filteredLon, filteredLat]];
 
-      const ruralLoc = resolveVillage(cleanLat, cleanLon);
+      const ruralLoc = resolveVillage(filteredLat, filteredLon);
 
       let computedBearing = Math.round(((bearing % 360) + 360) % 360);
-      if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== cleanLat || existing.lon !== cleanLon)) {
-        computedBearing = calculateBearing([existing.lon, existing.lat], [cleanLon, cleanLat]);
+      if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== filteredLat || existing.lon !== filteredLon)) {
+        computedBearing = calculateBearing([existing.lon, existing.lat], [filteredLon, filteredLat]);
       } else if (computedBearing === 0 && existing.bearing) {
         computedBearing = existing.bearing;
       }
@@ -1625,8 +1643,8 @@ export default {
         driverPhone: existing.driverPhone || '',
         plate: existing.plate || vehId,
         status: speedKmH > 3 ? 'moving' : (distKm < 0.25 ? 'at_base' : 'in_field'),
-        lat: cleanLat,
-        lon: cleanLon,
+        lat: filteredLat,
+        lon: filteredLon,
         speed: speedKmH,
         speedKnots: Number(rawSpeed.toFixed(2)),
         bearing: computedBearing,
@@ -1710,6 +1728,7 @@ export default {
       }
 
       liveVehicles.clear();
+      vehicleFilters.clear();
       return new Response(JSON.stringify({
         success: true,
         message: 'Live telemetry cache cleared',
@@ -1733,6 +1752,7 @@ export default {
         const lastSeen = vVal.updatedAt || vVal.lastSeen || 0;
         if (now - lastSeen > DECOMMISSION_TIMEOUT_MS) {
           liveVehicles.delete(vKey);
+          vehicleFilters.delete(vKey);
         }
       }
 

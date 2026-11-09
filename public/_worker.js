@@ -1,5 +1,202 @@
+// src/utils/kalman.js
+var METERS_PER_DEG_LAT = 111320;
+function mat4Mul(a, b) {
+  const out = new Array(16).fill(0);
+  for (let r = 0; r < 4; r++) {
+    for (let c = 0; c < 4; c++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) {
+        sum += a[r * 4 + k] * b[k * 4 + c];
+      }
+      out[r * 4 + c] = sum;
+    }
+  }
+  return out;
+}
+function mat4Transpose(a) {
+  return [
+    a[0],
+    a[4],
+    a[8],
+    a[12],
+    a[1],
+    a[5],
+    a[9],
+    a[13],
+    a[2],
+    a[6],
+    a[10],
+    a[14],
+    a[3],
+    a[7],
+    a[11],
+    a[15]
+  ];
+}
+function createKinematicFilter(options = {}) {
+  const processAccel = Number.isFinite(options.processAccel) ? options.processAccel : 0.05;
+  const minAccuracy = Number.isFinite(options.minAccuracy) ? options.minAccuracy : 3;
+  const maxAccuracy = Number.isFinite(options.maxAccuracy) ? options.maxAccuracy : 150;
+  let state = null;
+  let covariance = null;
+  let lastTimestamp = 0;
+  const reset = () => {
+    state = null;
+    covariance = null;
+    lastTimestamp = 0;
+  };
+  const initialize = (lat, lon, timestamp, rLat, rLon) => {
+    state = [lat, lon, 0, 0];
+    covariance = [
+      rLat,
+      0,
+      0,
+      0,
+      0,
+      rLon,
+      0,
+      0,
+      0,
+      0,
+      1e-7,
+      0,
+      0,
+      0,
+      0,
+      1e-7
+    ];
+    lastTimestamp = timestamp;
+    return { lat, lon, vLat: 0, vLon: 0, filtered: false };
+  };
+  const update = (lat, lon, accuracy = 10, timestamp = Date.now()) => {
+    const rawLat = Number(lat);
+    const rawLon = Number(lon);
+    if (!Number.isFinite(rawLat) || !Number.isFinite(rawLon)) {
+      return { lat: rawLat, lon: rawLon, vLat: 0, vLon: 0, filtered: false };
+    }
+    const acc = Math.min(maxAccuracy, Math.max(minAccuracy, Number(accuracy) || 10));
+    const t = Number.isFinite(timestamp) ? timestamp : Date.now();
+    const cosLat = Math.max(0.1, Math.cos(rawLat * Math.PI / 180));
+    const metersPerDegLon = METERS_PER_DEG_LAT * cosLat;
+    const rLat = (acc / METERS_PER_DEG_LAT) ** 2;
+    const rLon = (acc / metersPerDegLon) ** 2;
+    if (!state) return initialize(rawLat, rawLon, t, rLat, rLon);
+    let dt = (t - lastTimestamp) / 1e3;
+    if (!Number.isFinite(dt) || dt <= 0 || dt > 60) {
+      reset();
+      return initialize(rawLat, rawLon, t, rLat, rLon);
+    }
+    dt = Math.max(0.5, Math.min(60, dt));
+    const F = [
+      1,
+      0,
+      dt,
+      0,
+      0,
+      1,
+      0,
+      dt,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1
+    ];
+    const predicted = [
+      state[0] + state[2] * dt,
+      state[1] + state[3] * dt,
+      state[2],
+      state[3]
+    ];
+    const FP = mat4Mul(F, covariance);
+    const FPFt = mat4Mul(FP, mat4Transpose(F));
+    const qLat = (processAccel / METERS_PER_DEG_LAT) ** 2;
+    const qLon = (processAccel / metersPerDegLon) ** 2;
+    const dt2 = dt * dt;
+    const dt3 = dt2 * dt;
+    const dt4 = dt2 * dt2;
+    const Q = [
+      qLat * dt4 / 4,
+      0,
+      qLat * dt3 / 2,
+      0,
+      0,
+      qLon * dt4 / 4,
+      0,
+      qLon * dt3 / 2,
+      qLat * dt3 / 2,
+      0,
+      qLat * dt2,
+      0,
+      0,
+      qLon * dt3 / 2,
+      0,
+      qLon * dt2
+    ];
+    const P = FPFt.map((value, index) => value + Q[index]);
+    const s00 = P[0] + rLat;
+    const s01 = P[1];
+    const s10 = P[4];
+    const s11 = P[5] + rLon;
+    const det = s00 * s11 - s01 * s10;
+    if (!Number.isFinite(det) || Math.abs(det) < 1e-24) {
+      reset();
+      return initialize(rawLat, rawLon, t, rLat, rLon);
+    }
+    const inv00 = s11 / det;
+    const inv01 = -s01 / det;
+    const inv10 = -s10 / det;
+    const inv11 = s00 / det;
+    const pht = [
+      [P[0], P[1]],
+      [P[4], P[5]],
+      [P[8], P[9]],
+      [P[12], P[13]]
+    ];
+    const K = pht.map((row) => [
+      row[0] * inv00 + row[1] * inv10,
+      row[0] * inv01 + row[1] * inv11
+    ]);
+    const innovationLat = rawLat - predicted[0];
+    const innovationLon = rawLon - predicted[1];
+    const nextState = [
+      predicted[0] + K[0][0] * innovationLat + K[0][1] * innovationLon,
+      predicted[1] + K[1][0] * innovationLat + K[1][1] * innovationLon,
+      predicted[2] + K[2][0] * innovationLat + K[2][1] * innovationLon,
+      predicted[3] + K[3][0] * innovationLat + K[3][1] * innovationLon
+    ];
+    const hp0 = P.slice(0, 4);
+    const hp1 = P.slice(4, 8);
+    const nextCovariance = new Array(16);
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        nextCovariance[r * 4 + c] = P[r * 4 + c] - (K[r][0] * hp0[c] + K[r][1] * hp1[c]);
+      }
+    }
+    state = nextState;
+    covariance = nextCovariance;
+    lastTimestamp = t;
+    return {
+      lat: nextState[0],
+      lon: nextState[1],
+      vLat: nextState[2],
+      vLon: nextState[3],
+      filtered: true
+    };
+  };
+  return {
+    update,
+    reset,
+    getState: () => state ? { state: [...state], covariance: [...covariance] } : null
+  };
+}
+
 // src/worker.js
 var liveVehicles = /* @__PURE__ */ new Map();
+var vehicleFilters = /* @__PURE__ */ new Map();
 async function safeEqual(a, b) {
   const enc = new TextEncoder();
   const [ha, hb] = await Promise.all([
@@ -1559,16 +1756,24 @@ var worker_default = {
       const vehId = String(id).trim().toUpperCase();
       const existing = liveVehicles.get(vehId) || {};
       const colors = getVehicleColors(vehId);
-      const cleanLat = Number(lat.toFixed(6));
-      const cleanLon = Number(lon.toFixed(6));
-      const distKm = calculateDistanceKm(BASE_LAT, BASE_LON, cleanLat, cleanLon);
+      const rawLat = Number(lat.toFixed(6));
+      const rawLon = Number(lon.toFixed(6));
+      let filter = vehicleFilters.get(vehId);
+      if (!filter) {
+        filter = createKinematicFilter();
+        vehicleFilters.set(vehId, filter);
+      }
+      const smoothed = filter.update(rawLat, rawLon, accuracy, timestamp);
+      const filteredLat = Number((Number.isFinite(smoothed.lat) ? smoothed.lat : rawLat).toFixed(6));
+      const filteredLon = Number((Number.isFinite(smoothed.lon) ? smoothed.lon : rawLon).toFixed(6));
+      const distKm = calculateDistanceKm(BASE_LAT, BASE_LON, filteredLat, filteredLon);
       const roadDistKm = Math.round(distKm * 1.15 * 10) / 10;
       const prevTrail = Array.isArray(existing.trail) ? existing.trail : [];
-      const updatedTrail = [...prevTrail.slice(-29), [cleanLon, cleanLat]];
-      const ruralLoc = resolveVillage(cleanLat, cleanLon);
+      const updatedTrail = [...prevTrail.slice(-29), [filteredLon, filteredLat]];
+      const ruralLoc = resolveVillage(filteredLat, filteredLon);
       let computedBearing = Math.round((bearing % 360 + 360) % 360);
-      if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== cleanLat || existing.lon !== cleanLon)) {
-        computedBearing = calculateBearing([existing.lon, existing.lat], [cleanLon, cleanLat]);
+      if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== filteredLat || existing.lon !== filteredLon)) {
+        computedBearing = calculateBearing([existing.lon, existing.lat], [filteredLon, filteredLat]);
       } else if (computedBearing === 0 && existing.bearing) {
         computedBearing = existing.bearing;
       }
@@ -1580,8 +1785,8 @@ var worker_default = {
         driverPhone: existing.driverPhone || "",
         plate: existing.plate || vehId,
         status: speedKmH > 3 ? "moving" : distKm < 0.25 ? "at_base" : "in_field",
-        lat: cleanLat,
-        lon: cleanLon,
+        lat: filteredLat,
+        lon: filteredLon,
         speed: speedKmH,
         speedKnots: Number(rawSpeed.toFixed(2)),
         bearing: computedBearing,
@@ -1654,6 +1859,7 @@ var worker_default = {
         });
       }
       liveVehicles.clear();
+      vehicleFilters.clear();
       return new Response(JSON.stringify({
         success: true,
         message: "Live telemetry cache cleared",
@@ -1673,6 +1879,7 @@ var worker_default = {
         const lastSeen = vVal.updatedAt || vVal.lastSeen || 0;
         if (now - lastSeen > DECOMMISSION_TIMEOUT_MS) {
           liveVehicles.delete(vKey);
+          vehicleFilters.delete(vKey);
         }
       }
       const reportedList = Array.from(liveVehicles.values()).map((vVal) => {

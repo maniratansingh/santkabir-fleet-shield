@@ -10,7 +10,8 @@
     "build": "npm run bundle:worker && vite build",
     "bundle:worker": "esbuild src/worker.js --bundle --format=esm --outfile=public/_worker.js",
     "preview": "vite preview",
-    "test": "node scripts/verify_master_integration.mjs"
+    "test": "node scripts/verify_master_integration.mjs",
+    "test:kalman": "node scripts/verify_kalman.mjs"
   },
   "engines": {
     "node": ">=22.0.0"

@@ -410,6 +410,9 @@ function MapView({
       const progress = Math.min(1, Math.max(0, elapsed / m.animDuration));
       // Constant linear velocity for authentic, steady road gliding
       const t = progress;
+      // Bearing gets a gentle ease-out so heading changes settle instead of
+      // arriving at full angular speed. Position stays linear.
+      const angleT = 1 - Math.pow(1 - progress, 3);
 
       const curLon = m.startPos[0] + (m.targetPos[0] - m.startPos[0]) * t;
       const curLat = m.startPos[1] + (m.targetPos[1] - m.startPos[1]) * t;
@@ -418,7 +421,7 @@ function MapView({
 
       // Continuous unwrapped angle rotation (Zero 360° flip or spin jump)
       if (m.startAngle !== undefined && m.targetAngle !== undefined && m.startAngle !== m.targetAngle) {
-        const curAngle = m.startAngle + (m.targetAngle - m.startAngle) * t;
+        const curAngle = m.startAngle + (m.targetAngle - m.startAngle) * angleT;
         m.displayAngle = curAngle;
         if (m.rotatorEl) {
           m.rotatorEl.style.transform = `rotate(${curAngle.toFixed(2)}deg)`;
