@@ -597,6 +597,29 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
 .marker-compact-beacon {
   display: none !important;
 }
+
+/* Marker anchoring.
+   MapLibre centres the whole marker element on the GPS point. If the tag is
+   in normal flow, a taller tag or a shelf lift changes the element height and
+   therefore drags the ambulance icon away from its real position. Keep the
+   tag completely out of layout and anchor it above the icon instead. The
+   icon stays centred on the coordinate at every zoom level. */
+.maplibregl-marker .marker-outer-wrapper {
+  position: relative;
+}
+.marker-capsule-container {
+  position: absolute !important;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+.marker-capsule-container > .marker-capsule-text {
+  pointer-events: auto;
+}
 .marker-capsule-text {
   display: flex !important;
   transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -604,6 +627,60 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
 }
 .ambulance-rotator {
   display: flex !important;
+}
+
+/* Zoom-tiered vehicle size.
+   Scaling the SVG (not its width/height) keeps the layout box constant, so
+   MapLibre's anchor never moves while the camera zooms. Far-out views get a
+   small recognisable icon instead of a truck-sized marker on top of a
+   compressed district map. */
+.ambulance-rotator > svg {
+  transform-origin: 50% 50%;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+.map-zoom-far .ambulance-rotator > svg {
+  transform: scale(0.56);
+}
+.map-zoom-mid .ambulance-rotator > svg {
+  transform: scale(0.78);
+}
+.map-zoom-near .ambulance-rotator > svg {
+  transform: scale(1);
+}
+
+/* Keep the compact tag close to the smaller icon at low zoom. */
+.map-zoom-far .marker-capsule-container {
+  bottom: calc(100% - 12px);
+}
+.map-zoom-mid .marker-capsule-container {
+  bottom: calc(100% - 6px);
+}
+.map-zoom-far .marker-capsule-text {
+  font-size: 0.625rem;
+  padding: 0.1rem 0.45rem;
+  gap: 0.25rem;
+}
+.map-zoom-far .marker-capsule-text .marker-dot {
+  width: 0.3rem;
+  height: 0.3rem;
+}
+/* A suppressed cluster tag reappears on hover or selection. */
+.map-zoom-far .marker-outer-wrapper:hover .marker-capsule-text,
+.map-zoom-far .marker-outer-wrapper.is-selected .marker-capsule-text {
+  visibility: visible !important;
+}
+
+@media (max-width: 640px) {
+  .map-zoom-far .ambulance-rotator > svg {
+    transform: scale(0.5);
+  }
+  .map-zoom-mid .ambulance-rotator > svg {
+    transform: scale(0.7);
+  }
+  .map-zoom-near .ambulance-rotator > svg {
+    transform: scale(0.85);
+  }
 }
 
 

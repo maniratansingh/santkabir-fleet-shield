@@ -1331,10 +1331,22 @@ function MapView({
       if (updateMarkersRef.current) updateMarkersRef.current(map);
     });
 
+    let lastZoomTier = null;
     const updateZoomLOD = () => {
       if (!mapContainer.current) return;
-      const overview = map.getZoom() < 11.2;
+      const zoom = map.getZoom();
+      const overview = zoom < 11.2;
       const el = mapContainer.current;
+
+      // Three size tiers. The icon is scaled, never resized, so the marker
+      // anchor stays on the GPS point through the whole zoom animation.
+      const tier = zoom < 10.6 ? 'far' : zoom < 12.4 ? 'mid' : 'near';
+      if (tier !== lastZoomTier) {
+        el.classList.remove('map-zoom-far', 'map-zoom-mid', 'map-zoom-near');
+        el.classList.add(`map-zoom-${tier}`);
+        lastZoomTier = tier;
+      }
+
       // Only touch the class list when the tier actually changes. The zoom
       // event fires every frame of a flyTo, and needless class churn forces
       // style recalculation for all marker tags.
@@ -1581,16 +1593,24 @@ function MapView({
     // Compute screen positions to detect horizontal card overlaps and assign
     // non-colliding vertical shelves. Project the marker's *current animated*
     // position, not the future target, or the shelf can flip mid-glide.
-    const SHELF_STEP_PX = 30;
+    //
+    // Shelves exist to stop tags covering each other, but every shelf lifts a
+    // tag further from its ambulance. At fleet-overview zoom that lift was the
+    // main reason tags looked like they had "jumped" to another location, so
+    // shelves are disabled far out and kept shallow at medium zoom.
+    const zoomNow = map.getZoom();
+    const isFarZoom = zoomNow < 10.6;
+    const isMidZoom = zoomNow < 12.4;
+    const SHELF_STEP_PX = isFarZoom ? 22 : isMidZoom ? 26 : 30;
     const SHELF_TRIGGER_Y_PX = 28;
     const SHELF_RELEASE_Y_PX = 52;
     // Overview tags shrink to the ID only, so their real width is much
     // smaller. Using the detailed-zoom width here over-shelved the base
     // cluster and pushed tags far from their ambulances.
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-    const isOverview = map.getZoom() < 11.2;
+    const isOverview = zoomNow < 11.2;
     const SHELF_CARD_WIDTH_PX = isMobile ? 110 : (isOverview ? 140 : 260);
-    const MAX_SHELVES = 4;
+    const MAX_SHELVES = isFarZoom ? 0 : isMidZoom ? 2 : 4;
 
     // Never re-layout shelves while the camera is moving. Zooming or panning
     // changes every projected pixel at once; recomputing the shelf map here
@@ -1600,6 +1620,7 @@ function MapView({
     );
 
     const shelfMap = new Map();
+    const suppressTagIds = new Set();
 
     if (cameraMoving) {
       vehicles.forEach((v) => {
@@ -1632,6 +1653,30 @@ function MapView({
       const sorted = [...screenPositions].sort(
         (a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true })
       );
+
+      // At fleet-overview zoom tags sit directly above their icons (no
+      // shelves), so a dense cluster like the hospital base produces a pile
+      // of overlapping ID pills. Keep every icon, but show only the tags that
+      // do not collide. The selected vehicle always keeps its tag.
+      if (isFarZoom) {
+        const accepted = [];
+        const labelOrder = [...sorted].sort((a, b) => {
+          if (a.id === selectedVehicleId) return -1;
+          if (b.id === selectedVehicleId) return 1;
+          return String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
+        });
+        for (const p of labelOrder) {
+          if (p.id === selectedVehicleId) {
+            accepted.push(p);
+            continue;
+          }
+          const overlaps = accepted.some(
+            (q) => Math.abs(q.x - p.x) < 96 && Math.abs(q.y - p.y) < 26
+          );
+          if (overlaps) suppressTagIds.add(p.id);
+          else accepted.push(p);
+        }
+      }
 
       const collidesAt = (curr, shelf, other, otherShelf, yThreshold) => {
         const currCardY = curr.y - shelf * SHELF_STEP_PX;
@@ -1687,9 +1732,12 @@ function MapView({
     }
 
     // Keep tag pills inside the viewport without moving the stem or icon.
-    // Tags near an edge are nudged horizontally/vertically so they never
-    // get clipped by the screen or hidden under the top island / bottom sheet.
-    const clampTagToViewport = (markerObj, shelfOffsetY) => {
+    // The tag is absolutely positioned above the icon, so clamping it can
+    // never change the marker anchor. At overview zoom vertical clamping is
+    // capped tightly: a tag that is allowed to travel 100+ px looks like a
+    // vehicle in the wrong place.
+    const maxClampY = isOverview ? 48 : 140;
+    const clampTagToViewport = (markerObj) => {
       if (!markerObj?.capsuleText || !markerObj?.capsuleContainer) return;
 
       const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
@@ -1727,7 +1775,7 @@ function MapView({
           markerObj.clampX = 0;
           markerObj.clampY = 0;
           markerObj.capsuleText.style.transform = '';
-          markerObj.capsuleContainer.style.transform = `translateY(${-shelfOffsetY}px)`;
+          markerObj.capsuleContainer.style.transform = 'translateY(0px)';
         }
         return;
       }
@@ -1744,10 +1792,10 @@ function MapView({
       let nextY = 0;
       if (unclampedTop < topSafe) nextY = topSafe - unclampedTop;
       else if (unclampedBottom > bottomSafe) nextY = bottomSafe - unclampedBottom;
-      nextY = Math.max(-140, Math.min(140, nextY));
+      nextY = Math.max(-maxClampY, Math.min(maxClampY, nextY));
       if (Math.abs(nextY - prevY) > 0.5) {
         markerObj.clampY = nextY;
-        markerObj.capsuleContainer.style.transform = `translateY(${-shelfOffsetY + nextY}px)`;
+        markerObj.capsuleContainer.style.transform = `translateY(${nextY}px)`;
       }
     };
 
@@ -1807,7 +1855,7 @@ function MapView({
         el.innerHTML = `
           <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
             <!-- Complete Apple Capsule Tag: ID • Driver • Speed • Camp • Distance (Always Visible, Zero Overlap Shelves) -->
-            <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform;">
+            <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(0px); transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform;">
               <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[0.6875rem] font-bold font-mono pointer-events-auto"
                 style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
                 <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
@@ -1885,14 +1933,14 @@ function MapView({
           animDuration: 2000,
           isAnimating: false,
         };
-        clampTagToViewport(markersRef.current[v.id], shelfOffsetY);
+        clampTagToViewport(markersRef.current[v.id]);
       } else {
         // IN-PLACE MUTATION ONLY (NEVER REBUILD INNERHTML - ZERO FLICKER/BLINK)
         if (markerObj.prevDark !== isDark) {
           // Re-render only when switching dark/light theme
           markerObj.element.innerHTML = `
             <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
-              <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform;">
+              <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(0px); transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform;">
                 <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[0.6875rem] font-bold font-mono pointer-events-auto"
                   style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
                   <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
@@ -1940,7 +1988,7 @@ function MapView({
         } else {
           // In-Place Vertical Shelf Layout Update (Zero Overlap)
           if (markerObj.capsuleContainer && markerObj.prevShelfOffsetY !== shelfOffsetY) {
-            markerObj.capsuleContainer.style.transform = `translateY(${-shelfOffsetY + (markerObj.clampY || 0)}px)`;
+            markerObj.capsuleContainer.style.transform = `translateY(${markerObj.clampY || 0}px)`;
             if (markerObj.shelfStem) {
               markerObj.shelfStem.style.height = `${shelfOffsetY}px`;
               markerObj.shelfStem.style.opacity = shelfOffsetY > 0 ? '0.8' : '0';
@@ -2057,7 +2105,14 @@ function MapView({
           markerObj.element.style.display = hidden ? 'none' : '';
           markerObj.element.setAttribute('aria-hidden', hidden ? 'true' : 'false');
         }
-        if (!cameraMoving && !clusteredIds.has(v.id)) clampTagToViewport(markerObj, shelfOffsetY);
+        // Keep the icon visible but hide only the redundant pill so a dense
+        // far-zoom cluster does not turn into a stack of overlapping IDs.
+        if (markerObj.capsuleText) {
+          markerObj.capsuleText.style.visibility = suppressTagIds.has(v.id) ? 'hidden' : '';
+        }
+        if (!cameraMoving && !clusteredIds.has(v.id) && !suppressTagIds.has(v.id)) {
+          clampTagToViewport(markerObj);
+        }
       }
     });
 
