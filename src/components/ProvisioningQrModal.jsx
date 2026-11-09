@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import { 
   X, 
@@ -37,6 +37,7 @@ export default function ProvisioningQrModal({
   const [pingStatus, setPingStatus] = useState(null);
   const [pingDetails, setPingDetails] = useState(null);
   const [clearStatus, setClearStatus] = useState(false);
+  const dialogRef = useRef(null);
 
   // Sync initialVehicleId when opened
   useEffect(() => {
@@ -44,6 +45,40 @@ export default function ProvisioningQrModal({
       setVehicleId(initialVehicleId.toUpperCase().trim());
     }
   }, [initialVehicleId, isOpen]);
+
+  // Escape closes; Tab stays inside the dialog.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const node = dialogRef.current;
+    if (!node) return undefined;
+    const selector =
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusables = () =>
+      Array.from(node.querySelectorAll(selector)).filter((el) => el.offsetParent !== null);
+    focusables()[0]?.focus();
+
+    const onKey = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose?.();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    node.addEventListener('keydown', onKey);
+    return () => node.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   // Determine effective server URL strictly per Master Integration Specification:
   // "server": "https://fleet.mrps.in/api/track" (NO trailing slash)
@@ -203,80 +238,94 @@ export default function ProvisioningQrModal({
       onClick={onClose}
     >
       <div 
-        className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-white/10 overflow-hidden shadow-2xl flex flex-col max-h-[92vh] transition-all"
+        className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[24px] border border-slate-200 dark:border-white/10 overflow-hidden shadow-2xl flex flex-col max-h-[92vh] transition-all"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="provisioning-dialog-title"
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
       >
         
         {/* Header Bar */}
         <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/90 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-600 to-cyan-500 text-white flex items-center justify-center shadow-lg shadow-sky-500/25 shrink-0">
-              <QrCode className="w-6 h-6" />
+            <div className="w-11 h-11 rounded-[14px] bg-sky-600 text-white flex items-center justify-center shadow-sm shrink-0">
+              <QrCode className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white font-['Outfit']">
-                  Fleet Provisioning Center
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 id="provisioning-dialog-title" className="type-headline text-slate-900 dark:text-white">
+                  Fleet provisioning
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-sky-100 dark:bg-sky-950/80 text-sky-700 dark:text-cyan-400 border border-sky-200 dark:border-sky-800">
-                  ML Kit Engine
+                <span className="ui-chip ui-chip-accent">
+                  ML Kit
                 </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Sant Kabir Fleet Shield • Android App & Backend Integration
+              <p className="type-caption text-slate-500 dark:text-slate-400 mt-0.5">
+                Sant Kabir Fleet Shield · Android app & backend integration
               </p>
             </div>
           </div>
           <button 
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Close Modal"
+            aria-label="Close provisioning dialog"
+            className="p-2 rounded-[10px] text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tab Navigation Pill Bar */}
-        <div className="px-4 sm:px-5 pt-3 pb-1 border-b border-slate-100 dark:border-slate-800/60 bg-white dark:bg-slate-900 flex items-center gap-1.5 shrink-0">
+        {/* Tabs */}
+        <div className="px-4 sm:px-5 pt-3 pb-1 border-b border-slate-100 dark:border-slate-800/60 bg-white dark:bg-slate-900 flex items-center gap-1.5 shrink-0" role="tablist" aria-label="Provisioning sections">
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'qr'}
             onClick={() => setActiveTab('qr')}
-            className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`flex-1 min-h-9 py-2 px-2.5 type-footnote font-semibold rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'qr'
-                ? 'bg-sky-600 text-white shadow-sm shadow-sky-500/20'
-                : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                ? 'bg-sky-600 text-white shadow-sm'
+                : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 hover:bg-slate-500/15'
             }`}
           >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>1-Scan Provisioning QR</span>
+            <Smartphone className="w-3.5 h-3.5 max-sm:hidden" />
+            <span>QR provisioning</span>
           </button>
 
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'test'}
             onClick={() => setActiveTab('test')}
-            className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`flex-1 min-h-9 py-2 px-2.5 type-footnote font-semibold rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'test'
-                ? 'bg-sky-600 text-white shadow-sm shadow-sky-500/20'
-                : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                ? 'bg-sky-600 text-white shadow-sm'
+                : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 hover:bg-slate-500/15'
             }`}
           >
-            <Zap className="w-3.5 h-3.5" />
-            <span>Test Ingestion Ping</span>
+            <Zap className="w-3.5 h-3.5 max-sm:hidden" />
+            <span>Test ingestion</span>
           </button>
 
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'specs'}
             onClick={() => setActiveTab('specs')}
-            className={`flex-1 py-2 px-3 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`flex-1 min-h-9 py-2 px-2.5 type-footnote font-semibold rounded-[10px] flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'specs'
-                ? 'bg-sky-600 text-white shadow-sm shadow-sky-500/20'
-                : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                ? 'bg-sky-600 text-white shadow-sm'
+                : 'bg-slate-500/10 text-slate-600 dark:text-slate-400 hover:bg-slate-500/15'
             }`}
           >
-            <Terminal className="w-3.5 h-3.5" />
-            <span>Protocol Specs</span>
+            <Terminal className="w-3.5 h-3.5 max-sm:hidden" />
+            <span>Protocol</span>
           </button>
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto text-sm flex-1">
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto text-sm flex-1 select-text">
 
           {/* TAB 1: QR CODE PROVISIONING */}
           {activeTab === 'qr' && (
@@ -288,10 +337,10 @@ export default function ProvisioningQrModal({
                 {/* Vehicle ID Input */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <label className="ui-section-label">
                       Vehicle Identifier (<code className="lowercase text-sky-600 dark:text-cyan-400">id</code>)
                     </label>
-                    <span className="text-[10px] text-slate-400 font-mono">
+                    <span className="type-caption text-slate-500 dark:text-slate-400 font-mono">
                       Database Device Key
                     </span>
                   </div>
@@ -318,7 +367,7 @@ export default function ProvisioningQrModal({
                 {/* Quick-Select Suggestion Chips */}
                 {allSuggested.length > 0 && (
                   <div className="pt-0.5">
-                    <span className="text-[10px] font-semibold text-slate-400 block mb-1.5">
+                    <span className="ui-section-label block mb-1.5">
                       Quick Select Vehicle Designation:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
@@ -346,7 +395,7 @@ export default function ProvisioningQrModal({
                       <Server className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
                       <span>Target Ingestion Server Endpoint</span>
                     </label>
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-semibold">
+                    <span className="type-caption text-emerald-600 dark:text-emerald-400 font-mono font-semibold">
                       No Trailing Slash
                     </span>
                   </div>
@@ -396,7 +445,7 @@ export default function ProvisioningQrModal({
                     />
                   )}
 
-                  <div className="mt-1.5 text-[10.5px] font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1 truncate">
+                  <div className="mt-1.5 type-caption font-mono text-slate-500 dark:text-slate-400 flex items-center gap-1 truncate">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
                     <span className="truncate">{effectiveServer}</span>
                   </div>
@@ -405,7 +454,7 @@ export default function ProvisioningQrModal({
               </div>
 
               {/* High-Contrast Optical Scanner Platter */}
-              <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-b from-slate-50 to-white dark:from-slate-900/90 dark:to-slate-950 border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center shadow-inner">
+              <div className="p-4 sm:p-5 rounded-[18px] bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center">
                 
                 {/* QR Code Presentation Box with High-Tech Corner Guides */}
                 <div className="relative p-3.5 bg-white rounded-2xl shadow-lg border border-slate-200 dark:border-slate-300">
@@ -529,7 +578,7 @@ export default function ProvisioningQrModal({
                 {/* Ping Result Readout Box */}
                 {pingDetails && (
                   <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1 border border-slate-800">
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase">
+                    <div className="ui-section-label flex items-center justify-between">
                       <span>Server Ingestion Feedback</span>
                       <span className="text-emerald-400">{pingDetails.elapsed} ms</span>
                     </div>
@@ -538,7 +587,7 @@ export default function ProvisioningQrModal({
                         <div>✅ Server Status: <strong>HTTP 200 OK</strong></div>
                         <div>📍 Coords Ingested: {pingDetails.lat}° N, {pingDetails.lon}° E</div>
                         <div>⚡ Speed: {pingDetails.speedKmH} km/h (converted from knots)</div>
-                        <div className="text-[10px] text-emerald-400 mt-1">
+                        <div className="type-caption text-emerald-400 mt-1">
                           Vehicle successfully registered in active fleet cache!
                         </div>
                       </div>
@@ -553,7 +602,7 @@ export default function ProvisioningQrModal({
 
               {/* Copyable Curl Terminal Command */}
               <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1">
-                <div className="text-[10px] text-slate-400 uppercase font-sans font-bold flex items-center justify-between">
+                <div className="ui-section-label flex items-center justify-between">
                   <span>Exact Traccar OsmAnd Curl Command</span>
                   <button
                     onClick={() => {
@@ -601,7 +650,7 @@ export default function ProvisioningQrModal({
               
               {/* Pure JSON Schema */}
               <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1">
-                <div className="text-[10px] text-slate-400 uppercase font-sans font-bold flex items-center justify-between">
+                <div className="ui-section-label flex items-center justify-between">
                   <span>1. QR Code JSON Contract</span>
                   <span className="text-emerald-400">Pure JSON Body</span>
                 </div>
@@ -655,7 +704,7 @@ export default function ProvisioningQrModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 shrink-0">
+        <div className="p-3.5 sm:p-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-950 flex items-center justify-between type-caption text-slate-500 dark:text-slate-400 shrink-0">
           <div className="flex items-center gap-1.5 font-medium">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
             <span>Sant Kabir Eye Hospital Fleet Shield</span>

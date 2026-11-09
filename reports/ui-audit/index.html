@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fleet Shield — UI audit before / after</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --accent: #007aff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 40px 28px 64px;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      letter-spacing: -0.006em;
+    }
+    main { max-width: 1280px; margin: 0 auto; }
+    h1 { font-size: 28px; line-height: 1.15; letter-spacing: -0.03em; margin: 0 0 8px; }
+    .lede { color: var(--muted); margin: 0 0 28px; max-width: 760px; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+      margin-bottom: 36px;
+    }
+    .summary div {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+    }
+    .summary strong { display: block; font-size: 13px; margin-bottom: 2px; }
+    .summary span { color: var(--muted); font-size: 12px; }
+    h2 { font-size: 17px; letter-spacing: -0.015em; margin: 40px 0 12px; }
+    .pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    figure {
+      margin: 0;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px -18px rgba(15, 23, 42, 0.35);
+    }
+    figure img { display: block; width: 100%; height: auto; }
+    figcaption {
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+    }
+    figcaption b { color: var(--ink); font-weight: 650; }
+    .full { margin-top: 12px; }
+    @media (max-width: 860px) {
+      body { padding: 24px 14px 40px; }
+      .pair { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Fleet Shield — UI audit, before and after</h1>
+    <p class="lede">
+      Apple-inspired refinement of the Sant Kabir Eye Hospital wallboard. The before captures use commit
+      <code>3d8c97c</code>; the after captures use the current working tree at 1434 × 1336 in demo mode.
+    </p>
+
+    <div class="summary">
+      <div><strong>Type system</strong><span>11–22px ramp, tabular numerals, one UI face</span></div>
+      <div><strong>Surfaces</strong><span>One card, control and panel radius; one shadow scale</span></div>
+      <div><strong>Hierarchy</strong><span>Summary popover instead of a full fleet roster</span></div>
+      <div><strong>Accessibility</strong><span>Lighthouse 1.0 / 1.0 / 1.0</span></div>
+    </div>
+
+    <h2>1 · Fleet overview</h2>
+    <div class="pair">
+      <figure>
+        <img src="before-01-dark-overview.jpeg" alt="Before: dark fleet overview" />
+        <figcaption><b>Before</b> — duplicate counts, mixed sentence case, smaller metadata</figcaption>
+      </figure>
+      <figure>
+        <img src="after-06-dark-overview-final.jpeg" alt="After: dark fleet overview" />
+        <figcaption><b>After</b> — one status sentence, compact attribution, consistent type</figcaption>
+      </figure>
+    </div>
+
+    <h2>2 · Expanded fleet summary</h2>
+    <div class="pair">
+      <figure>
+        <img src="before-02-expanded-island.jpeg" alt="Before: expanded fleet roster" />
+        <figcaption><b>Before</b> — duplicated the whole fleet sheet, 10 rows, six type sizes</figcaption>
+      </figure>
+      <figure>
+        <img src="after-02-expanded-island.jpeg" alt="After: compact fleet summary popover" />
+        <figcaption><b>After</b> — compact summary, connection state, link to the fleet list</figcaption>
+      </figure>
+    </div>
+
+    <h2>3 · Fleet list</h2>
+    <div class="pair">
+      <figure>
+        <img src="before-03-light-fleet-list.jpeg" alt="Before: fleet list rows" />
+        <figcaption><b>Before</b> — truncated metadata, tiny actions, crowded three-accent rows</figcaption>
+      </figure>
+      <figure>
+        <img src="after-03-light-fleet-list.jpeg" alt="After: fleet list rows" />
+        <figcaption><b>After</b> — full labels, 32px actions, neutral hierarchy</figcaption>
+      </figure>
+    </div>
+
+    <h2>4 · Vehicle detail</h2>
+    <div class="pair">
+      <figure>
+        <img src="before-04-light-vehicle-detail.jpeg" alt="Before: vehicle detail sheet" />
+        <figcaption><b>Before</b> — red hero icon regardless of fleet colour, 420px sheet cut the map actions</figcaption>
+      </figure>
+      <figure>
+        <img src="after-04-light-vehicle-detail.jpeg" alt="After: vehicle detail sheet" />
+        <figcaption><b>After</b> — fleet-colour hero, 560px sheet, single accent for navigation</figcaption>
+      </figure>
+    </div>
+
+    <h2>5 · Provisioning dialog</h2>
+    <div class="pair">
+      <figure>
+        <img src="before-05-light-provisioning.jpeg" alt="Before: provisioning dialog" />
+        <figcaption><b>Before</b> — wrapped tab label, display font mixed with Inter</figcaption>
+      </figure>
+      <figure>
+        <img src="after-05-light-provisioning.jpeg" alt="After: provisioning dialog" />
+        <figcaption><b>After</b> — equal tabs, one typeface, inset surfaces, focus trap</figcaption>
+      </figure>
+    </div>
+  </main>
+</body>
+</html>

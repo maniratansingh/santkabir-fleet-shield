@@ -43,6 +43,7 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
+  const [connectionState, setConnectionState] = useState('connecting'); // connecting | live | polling | offline | demo
   const fleetStoreRef = useRef(new Map(
     typeof window !== 'undefined' && (new URLSearchParams(window.location.search).has('dev') || new URLSearchParams(window.location.search).has('demo'))
       ? simulateFleetAtTime(ACTIVE_FLEET, Date.now()).map(v => [v.id, v])
@@ -77,6 +78,9 @@ export default function App() {
       root.classList.remove('dark');
     }
     localStorage.setItem('sk_theme', theme);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', theme === 'dark' ? '#060d17' : '#f1f5f9');
     if (activeStyleKey === 'light' || activeStyleKey === 'dark') {
       setActiveStyleKey(theme === 'dark' ? 'dark' : 'light');
     }
@@ -132,7 +136,7 @@ export default function App() {
         setSelectedVehicleId(null);
         setFitTrigger(prev => prev + 1);
         setDetent('peek');
-        showToast('📺 TV Auto-Tour: Hospital Base Standby (0 reporting)', 'info');
+        showToast('TV auto-tour: hospital base standby', 'info');
         timeoutId = setTimeout(runTourStep, 8000);
         return;
       }
@@ -177,6 +181,7 @@ export default function App() {
   // Unified Telemetry Sync & Continuous High-Fidelity Road Cruising Engine
   useEffect(() => {
     let isSubscribed = true;
+    setConnectionState(isDemoMode ? 'demo' : 'connecting');
 
     const syncFleet = async () => {
       const now = Date.now();
@@ -193,9 +198,15 @@ export default function App() {
           if (Array.isArray(list) && list.length > 0) {
             serverVehicles = list;
           }
+          if (!isDemoMode) {
+            setConnectionState(wsConnectedRef.current ? 'live' : 'polling');
+          }
+        } else if (!isDemoMode && !wsConnectedRef.current) {
+          setConnectionState('offline');
         }
       } catch (err) {
         // Backend API offline
+        if (!isDemoMode && !wsConnectedRef.current) setConnectionState('offline');
       }
 
       if (!isSubscribed) return;
@@ -368,6 +379,7 @@ export default function App() {
       socket.onopen = () => {
         attempt = 0;
         wsConnectedRef.current = true;
+        if (!isDemoMode) setConnectionState('live');
         try { socket.send(JSON.stringify({ type: 'subscribe' })); } catch (e) {}
         heartbeatTimer = setInterval(() => {
           try { socket.send('ping'); } catch (e) {}
@@ -377,6 +389,7 @@ export default function App() {
       socket.onerror = () => {};
       socket.onclose = () => {
         wsConnectedRef.current = false;
+        if (!isDemoMode) setConnectionState('polling');
         if (heartbeatTimer) {
           clearInterval(heartbeatTimer);
           heartbeatTimer = null;
@@ -437,24 +450,24 @@ export default function App() {
     setSelectedVehicleId(null);
     setActionTrigger({ type: 'fitAll', timestamp: Date.now() });
     const count = vehiclesRef.current?.length || 0;
-    showToast(count > 0 ? `Overview: ${count} Ambulances & Base Hospital` : 'Overview: Hospital Base Standby', 'info');
+    showToast(count > 0 ? `Overview: ${count} ambulances & base hospital` : 'Overview: hospital base standby', 'info');
   }, []);
 
   const handleResetNorth = useCallback(() => {
     setActionTrigger({ type: 'resetNorth', timestamp: Date.now() });
-    showToast('Compass oriented to True North (0°)', 'info');
+    showToast('Compass reset to true north', 'info');
   }, []);
 
   const handleCenterBase = useCallback(() => {
     setSelectedVehicleId(null);
     setActionTrigger({ type: 'centerBase', timestamp: Date.now() });
-    showToast('Camera centered on Sant Kabir Hospital Base (Basti)', 'info');
+    showToast('Centered on Sant Kabir Hospital base', 'info');
   }, []);
 
   const handleToggleAutoTour = useCallback(() => {
     setIsAutoTour(prev => {
       const next = !prev;
-      showToast(next ? '📺 TV Wallboard Auto-Tour Started' : 'TV Auto-Tour Stopped', 'info');
+      showToast(next ? 'TV wallboard auto-tour started' : 'TV auto-tour stopped', 'info');
       return next;
     });
   }, []);
@@ -466,11 +479,11 @@ export default function App() {
         const demoFleet = simulateFleetAtTime(ACTIVE_FLEET, Date.now());
         fleetStoreRef.current = new Map(demoFleet.map(v => [v.id, v]));
         setVehicles(demoFleet);
-        showToast('⚡ Demo Mode: Loaded 10 Active Purvanchal Ambulances', 'info');
+        showToast('Demo mode: 10 ambulances loaded', 'info');
       } else {
         fleetStoreRef.current.clear();
         setVehicles([]);
-        showToast('🧹 Clean Live Mode: Empty Blank Sheet (Real Telemetry Only)', 'info');
+        showToast('Live mode: waiting for real telemetry', 'info');
       }
       return next;
     });
@@ -499,14 +512,14 @@ export default function App() {
   const handleLocateVehicle = useCallback(() => {
     if (selectedVehicleId) {
       setActionTrigger({ type: 'locateVehicle', vehicleId: selectedVehicleId, timestamp: Date.now() });
-      showToast('Camera focused on Vehicle GPS position', 'info');
+      showToast('Camera focused on vehicle', 'info');
     }
   }, [selectedVehicleId]);
 
   const handleFitRoute = useCallback(() => {
     if (selectedVehicleId) {
       setActionTrigger({ type: 'fitRoute', vehicleId: selectedVehicleId, timestamp: Date.now() });
-      showToast('Framing Full UP Highway Corridor to Base Hospital', 'info');
+      showToast('Framing corridor to base', 'info');
     }
   }, [selectedVehicleId]);
 
@@ -516,7 +529,7 @@ export default function App() {
 
   const handleFocusDistance = useCallback(() => {
     setShowDistanceLines(true);
-    showToast('Road Highway Distances Highlighted', 'info');
+    showToast('Distance vectors shown', 'info');
   }, []);
 
   return (
@@ -542,7 +555,12 @@ export default function App() {
         vehicles={vehicles}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onOpenDriverModal={() => handleOpenProvisionModal('AMB-01')}
+        onOpenDriverModal={() => setIsDriverModalOpen(true)}
+        onOpenFleet={() => {
+          setSelectedVehicleId(null);
+          setDetent('half');
+        }}
+        connectionState={connectionState}
       />
 
       {/* 3. Top-Right Floating Controls Stack */}
@@ -574,11 +592,16 @@ export default function App() {
         onOpenProvisionModal={handleOpenProvisionModal}
         detent={detent}
         onChangeDetent={setDetent}
+        connectionState={connectionState}
       />
 
       {/* 5. Dynamic Island Toast Notifications */}
       {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 glass-panel px-4 py-2 rounded-full border border-sky-400/60 dark:border-cyan-400/60 flex items-center gap-2.5 shadow-2xl animate-in slide-in-from-top duration-300 max-w-[90vw]">
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-[4.5rem] left-1/2 -translate-x-1/2 z-50 glass-panel px-4 py-2 rounded-full border border-slate-200/90 dark:border-white/10 flex items-center gap-2.5 shadow-xl animate-in slide-in-from-top duration-300 max-w-[90vw]"
+        >
           {toast.type === 'alert' ? (
             <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
           ) : (
@@ -586,8 +609,10 @@ export default function App() {
           )}
           <span className="text-xs font-semibold text-slate-900 dark:text-white">{toast.message}</span>
           <button 
+            type="button"
             onClick={() => setToast(null)}
-            className="p-0.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+            aria-label="Dismiss notification"
+            className="p-2 -mr-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
           </button>

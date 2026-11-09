@@ -348,6 +348,7 @@ function MapView({
 }) {
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
+  const [mapReady, setMapReady] = useState(false);
   const markersRef = useRef({});
   const baseMarkerRef = useRef(null);
   const baseCountRef = useRef(null);
@@ -357,6 +358,7 @@ function MapView({
   const prevSelectedIdRef = useRef(null);
   const animFrameRef = useRef(null);
   const pendingDistanceRefreshRef = useRef(false);
+  const updateMarkersRef = useRef(null);
   const tier2DataRef = useRef(null);
   const tier3DataRef = useRef(null);
   const isFetchingTier2Ref = useRef(false);
@@ -1299,7 +1301,7 @@ function MapView({
       center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat], // Sant Kabir Eye Hospital Base (Basti, UP)
       zoom: 10,
       pitch: 25,
-      attributionControl: false,
+      attributionControl: { compact: true },
       // TV/large-screen tuning: cached raster tiles still cost decode + blend
       // time on every zoom. Remove the 300 ms cross-fade, keep more decoded
       // tiles in memory, and cap the render resolution on 4K panels.
@@ -1321,6 +1323,12 @@ function MapView({
     };
     map.on('movestart', () => setCameraMoving(true));
     map.on('moveend', () => setCameraMoving(false));
+    // Re-run shelf layout once the camera settles. Zooming to a vehicle can
+    // leave two tags on top of each other because layout is intentionally
+    // skipped while the camera is moving.
+    map.on('moveend', () => {
+      if (updateMarkersRef.current) updateMarkersRef.current(map);
+    });
 
     const updateZoomLOD = () => {
       if (!mapContainer.current) return;
@@ -1338,9 +1346,21 @@ function MapView({
       }
     };
 
+    // Never leave the board behind a spinner if a tile source is slow.
+    const readyFallback = setTimeout(() => setMapReady(true), 8000);
+    map.on('error', () => setMapReady(true));
+
     map.on('load', () => {
+      clearTimeout(readyFallback);
+      setMapReady(true);
       map.resize();
       updateZoomLOD();
+      // Keep attribution available but collapsed to the compact ⓘ.
+      const attribEl = map.getContainer().querySelector('.maplibregl-ctrl-attrib');
+      if (attribEl) {
+        attribEl.removeAttribute('open');
+        attribEl.classList.remove('maplibregl-compact-show');
+      }
       map.on('zoom', updateZoomLOD);
       map.on('zoomend', checkTieredZoom);
       // Do not re-layout vehicle cards on camera moves. Marker positions are
@@ -1367,6 +1387,7 @@ function MapView({
     });
 
     return () => {
+      clearTimeout(readyFallback);
       if (typeof document !== 'undefined') {
         document.documentElement.classList.remove('map-camera-moving');
       }
@@ -1409,12 +1430,22 @@ function MapView({
     const isDark = theme === 'dark';
     const el = document.createElement('div');
     el.className = 'relative flex flex-col items-center justify-center cursor-pointer group select-none';
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('aria-label', 'Basti Base, Sant Kabir Eye Hospital — focus map');
     el.onclick = () => {
       map.flyTo({
         center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat],
         zoom: 14,
         speed: 1.2,
       });
+    };
+    el.onkeydown = (e) => {
+      if (e.target !== el) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        map.flyTo({ center: [BASE_HOSPITAL.lon, BASE_HOSPITAL.lat], zoom: 14, speed: 1.2 });
+      }
     };
 
     el.innerHTML = `
@@ -1431,11 +1462,11 @@ function MapView({
       <!-- Apple Frosted Label Pill -->
       <div class="mt-1 whitespace-nowrap px-2.5 py-0.5 rounded-full backdrop-blur-md ${
         isDark ? 'bg-slate-950/90 border border-white/10 text-white' : 'bg-white/95 border border-slate-200 text-slate-900 shadow-xs'
-      } text-[10px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105" title="Sant Kabir Eye Hospital (Basti Base)">
+      } text-[11px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105" title="Sant Kabir Eye Hospital (Basti Base)">
         <span class="w-1.5 h-1.5 rounded-full bg-rose-500" aria-hidden="true"></span>
         <span>Basti Base</span>
-        <span class="base-count hidden items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-mono font-bold" aria-label="Ambulances at base"></span>
-        <a href="${BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/6eur1NCPRzC93sDG9'}" target="_blank" rel="noopener noreferrer" class="text-rose-500 hover:text-rose-600 font-bold ml-0.5" title="Open in Google Maps" onclick="event.stopPropagation()">↗</a>
+        <span class="base-count hidden items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold" aria-label="Ambulances at base"></span>
+        <a href="${BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/6eur1NCPRzC93sDG9'}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-6 h-6 rounded-full text-rose-500 hover:bg-rose-500/10 font-bold" aria-label="Open base in Google Maps" onclick="event.stopPropagation()">↗</a>
       </div>
     `;
 
@@ -1699,12 +1730,15 @@ function MapView({
         }
         const el = document.createElement('div');
         el.className = 'select-none pointer-events-auto will-change-transform';
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('aria-label', `Ambulance ${v.id}, ${speedStr}, ${statusBadgeText}`);
         
         el.innerHTML = `
           <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
             <!-- Complete Apple Capsule Tag: ID • Driver • Speed • Camp • Distance (Always Visible, Zero Overlap Shelves) -->
             <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
-              <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
+              <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[11px] font-bold font-mono pointer-events-auto"
                 style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
                 <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
                 <span class="marker-id font-extrabold text-[11px] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
@@ -1713,7 +1747,7 @@ function MapView({
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                 <span class="marker-speed">${speedStr}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
-                <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+                <span class="marker-status px-1.5 py-0.2 rounded-md text-[10px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                 <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
               </div>
@@ -1732,6 +1766,12 @@ function MapView({
         el.onclick = (e) => {
           e.stopPropagation();
           onSelectVehicle(v.id);
+        };
+        el.onkeydown = (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelectVehicle(v.id);
+          }
         };
 
         const marker = new maplibregl.Marker({ element: el })
@@ -1782,7 +1822,7 @@ function MapView({
           markerObj.element.innerHTML = `
             <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
               <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
-                <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[10px] font-bold font-mono pointer-events-auto"
+                <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[11px] font-bold font-mono pointer-events-auto"
                   style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
                   <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
                   <span class="marker-id font-extrabold text-[11px] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
@@ -1791,7 +1831,7 @@ function MapView({
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                   <span class="marker-speed">${speedStr}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
-                  <span class="marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+                  <span class="marker-status px-1.5 py-0.2 rounded-md text-[10px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                   <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
                 </div>
@@ -1859,8 +1899,14 @@ function MapView({
             markerObj.prevStatusText = statusBadgeText;
           }
           if (markerObj.statusEl && markerObj.prevStatusClass !== statusBadgeClass) {
-            markerObj.statusEl.className = `marker-status px-1.5 py-0.2 rounded-md text-[9px] font-bold ${statusBadgeClass}`;
+            markerObj.statusEl.className = `marker-status px-1.5 py-0.2 rounded-md text-[10px] font-bold ${statusBadgeClass}`;
             markerObj.prevStatusClass = statusBadgeClass;
+          }
+          if (markerObj.element) {
+            markerObj.element.setAttribute(
+              'aria-label',
+              `Ambulance ${v.id}, ${speedStr}, ${statusBadgeText}`
+            );
           }
 
           // Toggle Selection styling cleanly without touching text DOM
@@ -1957,6 +2003,9 @@ function MapView({
     }
   }, [vehicles, selectedVehicleId, theme]);
 
+  // Keep the latest marker updater available to the map's moveend handler.
+  updateMarkersRef.current = updateVehicleMarkers;
+
   // Update distance vectors when vehicles change
   useEffect(() => {
     if (mapRef.current) {
@@ -1969,6 +2018,7 @@ function MapView({
       className="relative flex-1 w-full h-full min-h-[400px] overflow-hidden"
       role="region"
       aria-label="Interactive Fleet Telemetry Map"
+      aria-busy={!mapReady}
     >
       {/* MapLibre WebGL Canvas Container */}
       <div
@@ -1976,6 +2026,23 @@ function MapView({
         className="absolute inset-0 w-full h-full"
         style={{ backgroundColor: theme === 'dark' ? '#0b1b33' : '#eef1f5' }}
       />
+
+      {/* First-load state */}
+      {!mapReady && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-100 dark:bg-slate-900 pointer-events-none"
+        >
+          <div className="relative w-10 h-10" aria-hidden="true">
+            <span className="absolute inset-0 rounded-full border-2 border-slate-300/80 dark:border-slate-700" />
+            <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-sky-500 animate-spin" />
+          </div>
+          <span className="type-footnote font-medium text-slate-500 dark:text-slate-400">
+            Loading map and fleet…
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -50,7 +50,7 @@ export default function FloatingControls({
   ];
 
   return (
-    <div className="fixed top-3 right-3 z-30 pointer-events-auto flex flex-col items-end gap-2 max-h-[calc(100vh-1.5rem)] overflow-y-auto max-sm:top-auto max-sm:bottom-24 max-sm:right-2 max-sm:w-[calc(100vw-1rem)] max-sm:flex-row max-sm:flex-wrap max-sm:items-end max-sm:justify-end max-sm:gap-1 max-sm:max-h-none max-sm:overflow-visible">
+    <div className="fixed top-[calc(0.75rem+var(--safe-top))] right-[calc(0.75rem+var(--safe-right))] z-30 pointer-events-auto flex flex-col items-end gap-2 max-h-[calc(100vh-1.5rem)] overflow-y-auto max-sm:top-auto max-sm:bottom-[calc(6rem+var(--safe-bottom))] max-sm:right-2 max-sm:w-[calc(100vw-1rem)] max-sm:flex-row max-sm:flex-wrap max-sm:items-end max-sm:justify-end max-sm:gap-1 max-sm:max-h-none max-sm:overflow-visible">
       {/* Primary Floating Apple Dock */}
       <div className="glass-panel p-1 rounded-2xl flex flex-col items-center gap-1 shadow-xl border border-slate-200/90 dark:border-white/10 max-sm:flex-row max-sm:flex-wrap max-sm:justify-end max-sm:gap-0.5">
         {/* Zoom In */}
@@ -145,7 +145,7 @@ export default function FloatingControls({
               aria-label="Map basemap"
               className="absolute right-11 top-0 w-44 glass-panel p-1.5 rounded-2xl shadow-2xl border border-slate-200/90 dark:border-white/10 flex flex-col gap-1 animate-in fade-in slide-in-from-right-2 duration-150 max-sm:right-0 max-sm:top-auto max-sm:bottom-12"
             >
-              <span className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <span className="px-2 py-1 ui-section-label">
                 Map Basemap
               </span>
               {MAP_STYLES.map((style) => (
@@ -165,7 +165,7 @@ export default function FloatingControls({
                 >
                   <div>
                     <div className="leading-tight">{style.name}</div>
-                    <div className={`text-[10px] ${activeStyleKey === style.key ? 'text-sky-100' : 'text-slate-400'}`}>
+                    <div className={`type-caption ${activeStyleKey === style.key ? 'text-sky-100' : 'text-slate-500 dark:text-slate-400'}`}>
                       {style.desc}
                     </div>
                   </div>
