@@ -9,6 +9,7 @@ import {
   List,
 } from 'lucide-react';
 import { BASE_HOSPITAL } from '../data/mockData';
+import { countFleetStates } from '../utils/fleetStatus';
 
 const CONNECTION_META = {
   live: { label: 'Live telemetry', detail: 'WebSocket', dot: 'bg-emerald-500' },
@@ -50,21 +51,11 @@ function DynamicIsland({
     return () => clearInterval(timer);
   }, []);
 
-  const activeVehicles = vehicles.filter((v) => !v.isSignalGap);
-  const movingCount = activeVehicles.filter(
-    (v) => v.status === 'moving' || v.status === 'returning'
-  ).length;
-  const atBaseCount = vehicles.filter((v) => {
-    if (v.isSignalGap) return false;
-    const dist = Number(v.roadDistFromBaseKm ?? v.distFromBaseKm);
-    return (
-      Number.isFinite(dist) &&
-      dist <= 1.2 &&
-      (v.isParked || v.status === 'at_base' || v.status === 'standby')
-    );
-  }).length;
-  const stoppedCount = Math.max(0, activeVehicles.length - movingCount);
-  const signalGapCount = vehicles.filter((v) => v.isSignalGap).length;
+  const counts = countFleetStates(vehicles);
+  const enRouteCount = counts.enRoute;
+  const onSceneCount = counts.on_scene;
+  const atBaseCount = counts.at_base;
+  const signalGapCount = counts.no_signal;
 
   const connection = CONNECTION_META[connectionState] || CONNECTION_META.connecting;
   const fleetDot =
@@ -165,10 +156,14 @@ function DynamicIsland({
                     ) : (
                       <>
                         <span className="text-slate-700 dark:text-slate-200 font-semibold">
-                          {movingCount} moving
+                          {enRouteCount} en route
                         </span>
-                        <span className="mx-1 text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
-                        <span className="hidden sm:inline">{stoppedCount} stopped</span>
+                        {onSceneCount > 0 && (
+                          <>
+                            <span className="mx-1 text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
+                            <span className="hidden sm:inline">{onSceneCount} on scene</span>
+                          </>
+                        )}
                         {atBaseCount > 0 && (
                           <>
                             <span className="mx-1 text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
@@ -271,9 +266,10 @@ function DynamicIsland({
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 mt-3">
+              <div className="grid grid-cols-2 gap-2 mt-3">
                 {[
-                  { label: 'Moving', value: movingCount, dot: 'bg-emerald-500' },
+                  { label: 'En route', value: enRouteCount, dot: 'bg-emerald-500' },
+                  { label: 'On scene', value: onSceneCount, dot: 'bg-slate-400' },
                   { label: 'At base', value: atBaseCount, dot: 'bg-rose-500' },
                   { label: 'Fleet', value: vehicles.length, dot: 'bg-sky-500' },
                 ].map((stat) => (

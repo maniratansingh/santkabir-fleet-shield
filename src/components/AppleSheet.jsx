@@ -20,7 +20,24 @@ import {
 import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
 import { getNearestRuralLocation } from '../utils/ruralLocator';
 import { getUniqueVehicleColor } from '../utils/colors';
+import { getFleetState, countFleetStates, sortVehiclesByPriority } from '../utils/fleetStatus';
 import ProvisioningQrModal from './ProvisioningQrModal';
+
+const STATE_TEXT = {
+  no_signal: 'text-amber-600 dark:text-amber-400',
+  moving: 'text-emerald-600 dark:text-emerald-400',
+  on_scene: 'text-slate-500 dark:text-slate-400',
+  returning: 'text-sky-600 dark:text-sky-400',
+  at_base: 'text-rose-600 dark:text-rose-400',
+};
+
+const STATE_DOT = {
+  no_signal: 'bg-amber-500',
+  moving: 'bg-emerald-500',
+  on_scene: 'bg-slate-400',
+  returning: 'bg-sky-500',
+  at_base: 'bg-rose-500',
+};
 
 function getVehicleDistance(v) {
   if (!v) return 0;
@@ -51,16 +68,17 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
   const uniqueColors = getUniqueVehicleColor(v.id);
   const vColor = v.lineColor || uniqueColors.line;
   const distKm = v.roadDistFromBaseKm || getVehicleDistance(v);
+  const state = getFleetState(v);
   const locationLabel = (v.lat && v.lon)
     ? getNearestRuralLocation(Number(v.lat), Number(v.lon)).badge
-    : (v.villageBadge || 'Purvanchal Region');
+    : (v.villageBadge || 'Purvanchal region');
 
   return (
     <div
       role="button"
       tabIndex={0}
       aria-pressed={isSelected}
-      aria-label={`${v.id}, ${v.speed > 0 ? `${v.speed} kilometres per hour` : 'stopped'}, ${locationLabel}, ${distKm} kilometres from base`}
+      aria-label={`${v.id}, ${state.label}, ${v.speed > 0 ? `${v.speed} kilometres per hour` : 'stationary'}, ${locationLabel}, ${distKm} kilometres from base`}
       onClick={() => onSelectVehicle(v.id)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -84,8 +102,11 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
           <span className="type-footnote font-mono font-bold text-slate-900 dark:text-white shrink-0 tnum">
             {v.id}
           </span>
+          <span className={`type-caption font-semibold shrink-0 ${STATE_TEXT[state.key]}`}>
+            {state.label}
+          </span>
           <span className="type-caption font-mono text-slate-500 dark:text-slate-400 truncate tnum">
-            {v.speed > 0 ? `${v.speed} km/h` : 'Stopped'}
+            {v.speed > 0 ? `${v.speed} km/h` : '—'}
           </span>
         </div>
 
@@ -152,7 +173,7 @@ function AppleSheet({
   onChangeDetent,
   connectionState = 'connecting',
 }) {
-  const [filter, setFilter] = useState('all'); // 'all', 'moving'
+  const [filter, setFilter] = useState('all'); // all | enroute | onscene | nosignal
   const [qrModalVehicleId, setQrModalVehicleId] = useState(null);
 
   const openProvision = (id) => {
@@ -161,6 +182,7 @@ function AppleSheet({
   };
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
+  const selectedState = selectedVehicle ? getFleetState(selectedVehicle) : null;
 
   // Cycling detents
   const cycleDetent = () => {
@@ -169,17 +191,21 @@ function AppleSheet({
     else onChangeDetent('peek');
   };
 
-  // Filtered vehicles (Only 2 filters: All & En Route)
+  // Operational counts shared with the header.
+  const counts = countFleetStates(vehicles);
+  const enRouteCount = counts.enRoute;
+  const onSceneCount = counts.on_scene;
+  const atBaseCount = counts.at_base;
+  const signalGapCount = counts.no_signal;
+
   const filteredVehicles = vehicles.filter((v) => {
-    if (filter === 'moving') return !v.isSignalGap && (v.status === 'moving' || v.status === 'returning');
+    const state = getFleetState(v);
+    if (filter === 'enroute') return state.key === 'moving' || state.key === 'returning';
+    if (filter === 'onscene') return state.key === 'on_scene';
+    if (filter === 'nosignal') return state.key === 'no_signal';
     return true;
   });
-
-  // Match the header's status rule so the two surfaces cannot disagree.
-  const movingCount = vehicles.filter(
-    (v) => !v.isSignalGap && (v.status === 'moving' || v.status === 'returning')
-  ).length;
-  const stoppedCount = Math.max(0, vehicles.filter((v) => !v.isSignalGap).length - movingCount);
+  const sortedVehicles = sortVehiclesByPriority(filteredVehicles);
 
   // Determine height classes based on detent
   const getDetentHeightClass = () => {
@@ -216,7 +242,7 @@ function AppleSheet({
           }}
           aria-label={selectedVehicle
             ? `${selectedVehicle.name}, driver ${selectedVehicle.driverName}, ${selectedVehicle.speed} kilometres per hour, view fleet list`
-            : `Fleet overview, ${vehicles.length} ambulances, ${movingCount} moving, ${stoppedCount} stopped, view fleet list`}
+            : `Fleet overview, ${vehicles.length} ambulances, ${enRouteCount} en route, ${onSceneCount} on scene, ${atBaseCount} at base, view fleet list`}
           className="px-4 pb-2 flex-1 flex items-center justify-between cursor-pointer select-none"
         >
           <div className="flex items-center gap-2.5 min-w-0">
@@ -236,7 +262,7 @@ function AppleSheet({
                       : connectionState === 'connecting'
                         ? 'Connecting to fleet…'
                         : 'Hospital base standby · Ready for GPS telemetry'
-                    : `${vehicles.length} ambulances · ${movingCount} moving · ${stoppedCount} stopped`}
+                    : `${enRouteCount} en route${onSceneCount > 0 ? ` · ${onSceneCount} on scene` : ''}${atBaseCount > 0 ? ` · ${atBaseCount} at base` : ''}`}
               </span>
             </div>
           </div>
@@ -285,10 +311,15 @@ function AppleSheet({
                     <h3 className="type-headline text-slate-900 dark:text-white truncate font-mono tnum">
                       {selectedVehicle.id}
                     </h3>
-                    {/* Battery */}
-                    <div className="ui-chip tnum">
-                      <Battery className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                      <span>{selectedVehicle.battery ?? selectedVehicle.batt ?? 100}%</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`inline-flex items-center gap-1 type-caption font-semibold ${STATE_TEXT[selectedState.key]}`}>
+                        <span className={`ui-status-dot ${STATE_DOT[selectedState.key]}`} aria-hidden="true" />
+                        {selectedState.label}
+                      </span>
+                      <div className="ui-chip tnum">
+                        <Battery className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                        <span>{selectedVehicle.battery ?? selectedVehicle.batt ?? 100}%</span>
+                      </div>
                     </div>
                   </div>
                   <div className="type-footnote text-slate-500 dark:text-slate-400 mt-1 truncate">
@@ -522,7 +553,9 @@ function AppleSheet({
               <div className="flex items-center gap-1 p-1 rounded-[12px] bg-slate-500/10 mb-2">
                 {[
                   { key: 'all', label: `All (${vehicles.length})` },
-                  { key: 'moving', label: 'En route' },
+                  { key: 'enroute', label: 'En route' },
+                  { key: 'onscene', label: 'On scene' },
+                  { key: 'nosignal', label: 'No signal' },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -543,36 +576,57 @@ function AppleSheet({
               {/* Vehicle list */}
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
                 {filteredVehicles.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center py-8 px-4 text-center">
-                    <div className="w-12 h-12 rounded-[14px] bg-slate-500/10 text-slate-500 dark:text-slate-300 flex items-center justify-center mb-3">
-                      <Ambulance className="w-6 h-6" />
-                    </div>
-                    <span className="type-subhead text-slate-800 dark:text-slate-100">
-                      {connectionState === 'offline'
-                        ? 'Telemetry offline'
-                        : connectionState === 'connecting'
-                          ? 'Connecting…'
-                          : 'Hospital base standby'}
-                    </span>
-                    <span className="type-footnote text-slate-500 dark:text-slate-400 mt-1 max-w-[250px] leading-relaxed">
-                      {connectionState === 'offline'
-                        ? 'The fleet backend is unreachable. The board retries automatically and will populate as soon as telemetry returns.'
-                        : connectionState === 'connecting'
-                          ? 'Checking the fleet backend and live telemetry. This usually takes a few seconds.'
-                          : 'No active ambulances are reporting. Live telemetry appears automatically as GPS packets arrive.'}
-                    </span>
+                  vehicles.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center py-8 px-4 text-center">
+                      <div className="w-12 h-12 rounded-[14px] bg-slate-500/10 text-slate-500 dark:text-slate-300 flex items-center justify-center mb-3">
+                        <Ambulance className="w-6 h-6" />
+                      </div>
+                      <span className="type-subhead text-slate-800 dark:text-slate-100">
+                        {connectionState === 'offline'
+                          ? 'Telemetry offline'
+                          : connectionState === 'connecting'
+                            ? 'Connecting…'
+                            : 'Hospital base standby'}
+                      </span>
+                      <span className="type-footnote text-slate-500 dark:text-slate-400 mt-1 max-w-[250px] leading-relaxed">
+                        {connectionState === 'offline'
+                          ? 'The fleet backend is unreachable. The board retries automatically and will populate as soon as telemetry returns.'
+                          : connectionState === 'connecting'
+                            ? 'Checking the fleet backend and live telemetry. This usually takes a few seconds.'
+                            : 'No active ambulances are reporting. Live telemetry appears automatically as GPS packets arrive.'}
+                      </span>
 
-                    <button
-                      type="button"
-                      onClick={() => openProvision('AMB-01')}
-                      className="ui-btn ui-btn-primary mt-3"
-                    >
-                      <QrCode className="w-4 h-4" />
-                      <span>Provision ambulance</span>
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => openProvision('AMB-01')}
+                        className="ui-btn ui-btn-primary mt-3"
+                      >
+                        <QrCode className="w-4 h-4" />
+                        <span>Provision ambulance</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center py-8 px-4 text-center">
+                      <div className="w-12 h-12 rounded-[14px] bg-slate-500/10 text-slate-500 dark:text-slate-300 flex items-center justify-center mb-3">
+                        <Ambulance className="w-6 h-6" />
+                      </div>
+                      <span className="type-subhead text-slate-800 dark:text-slate-100">
+                        No ambulances in this filter
+                      </span>
+                      <span className="type-footnote text-slate-500 dark:text-slate-400 mt-1 max-w-[250px] leading-relaxed">
+                        Try another operational state, or return to the full fleet.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setFilter('all')}
+                        className="ui-btn ui-btn-secondary mt-3"
+                      >
+                        Show all ambulances
+                      </button>
+                    </div>
+                  )
                 ) : (
-                  filteredVehicles.map((v) => (
+                  sortedVehicles.map((v) => (
                     <AmbulanceRow
                       key={v.id}
                       v={v}

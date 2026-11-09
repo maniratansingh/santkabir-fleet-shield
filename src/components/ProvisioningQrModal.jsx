@@ -238,7 +238,7 @@ export default function ProvisioningQrModal({
       onClick={onClose}
     >
       <div 
-        className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-[24px] border border-slate-200 dark:border-white/10 overflow-hidden shadow-2xl flex flex-col max-h-[92vh] transition-all"
+        className="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-[24px] border border-slate-200 dark:border-white/10 overflow-hidden shadow-2xl flex flex-col max-h-[92vh] transition-all"
         role="dialog"
         aria-modal="true"
         aria-labelledby="provisioning-dialog-title"
@@ -331,6 +331,7 @@ export default function ProvisioningQrModal({
           {activeTab === 'qr' && (
             <div className="space-y-4 animate-in fade-in duration-150">
               
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_320px] md:items-start">
               {/* Vehicle ID & Server Config Bar */}
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-3">
                 
@@ -507,6 +508,7 @@ export default function ProvisioningQrModal({
                     <span>{copied ? 'Copied JSON!' : 'Copy JSON'}</span>
                   </button>
                 </div>
+              </div>
               </div>
 
               {/* 4-Step Visual Administrator Walkthrough */}

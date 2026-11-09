@@ -1407,16 +1407,53 @@ function MapView({
   }, []);
 
   // Update Base Hospital Marker (Apple Maps Style Red Medical Landmark)
-  const updateBaseCount = () => {
+  const BASE_CLUSTER_RADIUS_KM = 0.15;
+  const BASE_CLUSTER_MAX_ZOOM = 13.5;
+
+  const isNearBase = (v) => {
+    const lat = Number(v?.lat);
+    const lon = Number(v?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+    return (
+      calculateDistanceKm(BASE_HOSPITAL.lat, BASE_HOSPITAL.lon, lat, lon) <=
+      BASE_CLUSTER_RADIUS_KM
+    );
+  };
+
+  const updateBaseBadge = () => {
     const el = baseCountRef.current;
     if (!el) return;
-    const count = (vehiclesRef.current || []).filter((v) => {
+    const map = mapRef.current;
+    const zoom = map?.getZoom() ?? 0;
+    const list = vehiclesRef.current || [];
+
+    if (zoom < BASE_CLUSTER_MAX_ZOOM) {
+      const count = list.filter(
+        (v) => v.id !== selectedVehicleId && isNearBase(v)
+      ).length;
+      el.textContent = String(count);
+      el.style.display = count > 0 ? 'inline-flex' : 'none';
+      el.setAttribute(
+        'aria-label',
+        count > 0 ? `${count} vehicles near base. Zoom in to separate.` : ''
+      );
+      el.title = count > 0 ? `${count} vehicles near base` : '';
+      return;
+    }
+
+    const count = list.filter((v) => {
       if (v.isSignalGap) return false;
       const dist = Number(v.roadDistFromBaseKm ?? v.distFromBaseKm);
-      return Number.isFinite(dist) && dist <= 1.2 && (v.isParked || v.status === 'at_base' || v.status === 'standby');
+      return (
+        Number.isFinite(dist) &&
+        dist <= 1.2 &&
+        (v.isParked || v.status === 'at_base' || v.status === 'standby')
+      );
     }).length;
     el.textContent = String(count);
     el.style.display = count > 0 ? 'inline-flex' : 'none';
+    el.setAttribute('aria-label', count > 0 ? `${count} at base` : '');
+    el.title = count > 0 ? `${count} at base` : '';
   };
 
   const updateBaseMarker = (mapParam) => {
@@ -1476,7 +1513,7 @@ function MapView({
 
     baseMarkerRef.current = marker;
     baseCountRef.current = el.querySelector('.base-count');
-    updateBaseCount();
+    updateBaseBadge();
   };
 
   useEffect(() => {
@@ -1484,8 +1521,8 @@ function MapView({
   }, [theme]);
 
   useEffect(() => {
-    updateBaseCount();
-  }, [vehicles]);
+    updateBaseBadge();
+  }, [vehicles, selectedVehicleId]);
 
   // Update Vehicle Markers with Apple AirTag Platter Style (Zero-Blink & Butter Smooth Gliding)
   const updateVehicleMarkers = (mapParam) => {
@@ -1494,6 +1531,14 @@ function MapView({
 
     const isDark = theme === 'dark';
     const currentVehIds = new Set(vehicles.map(v => v.id));
+    const clusterActive = map.getZoom() < BASE_CLUSTER_MAX_ZOOM;
+    const clusteredIds = new Set();
+    if (clusterActive) {
+      vehicles.forEach((v) => {
+        if (v.id === selectedVehicleId) return;
+        if (isNearBase(v)) clusteredIds.add(v.id);
+      });
+    }
 
     // Remove pruned markers cleanly
     Object.keys(markersRef.current).forEach((id) => {
@@ -1981,9 +2026,16 @@ function MapView({
         // Measuring every pill during a flyTo forces synchronous layout
         // reads. Skip until the camera settles; the next telemetry tick
         // clamps anything near an edge.
-        if (!cameraMoving) clampTagToViewport(markerObj, shelfOffsetY);
+        if (markerObj.element) {
+          const hidden = clusteredIds.has(v.id);
+          markerObj.element.style.display = hidden ? 'none' : '';
+          markerObj.element.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+        }
+        if (!cameraMoving && !clusteredIds.has(v.id)) clampTagToViewport(markerObj, shelfOffsetY);
       }
     });
+
+    updateBaseBadge();
 
     if (anyMoved) {
       scheduleMarkerAnimation();
@@ -2024,7 +2076,7 @@ function MapView({
       <div
         ref={mapContainer}
         className="absolute inset-0 w-full h-full"
-        style={{ backgroundColor: theme === 'dark' ? '#0b1b33' : '#eef1f5' }}
+        style={{ backgroundColor: theme === 'dark' ? '#3d4248' : '#eef1f5' }}
       />
 
       {/* First-load state */}
