@@ -85,14 +85,15 @@ assert(
 );
 tracker.close();
 
+const httpVehicleId = `DO-AMB-${Date.now()}`;
 const trackRes = await fetch(
-  `${BASE}/api/track?id=DO-AMB-01&lat=26.8467&lon=80.9462&speed=12.5&bearing=180&batt=90&charge=true`,
+  `${BASE}/api/track?id=${httpVehicleId}&lat=26.8467&lon=80.9462&speed=12.5&bearing=180&batt=90&charge=true`,
   { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
 );
 assert(trackRes.status === 200, 'HTTP telemetry ingestion returns 200');
 
 await sleep(1800);
-const delta = messages.find((m) => m.type === 'delta' && m.vehicle?.id === 'DO-AMB-01');
+const delta = messages.find((m) => m.type === 'delta' && m.vehicle?.id === httpVehicleId);
 assert(Boolean(delta), 'Durable Object broadcasts the telemetry delta over WebSocket');
 assert(delta?.vehicle?.lat === 26.8467, 'Delta preserves the latitude');
 assert(delta?.vehicle?.lon === 80.9462, 'Delta preserves the longitude');
@@ -100,7 +101,7 @@ assert(delta?.vehicle?.lon === 80.9462, 'Delta preserves the longitude');
 const vehiclesRes = await fetch(`${BASE}/api/vehicles`);
 const vehiclesJson = await vehiclesRes.json();
 assert(vehiclesJson.count >= 1, 'HTTP fleet endpoint still reports the vehicle');
-assert(vehiclesJson.vehicles.some((v) => v.id === 'DO-AMB-01'), 'DO-AMB-01 appears in the fleet');
+assert(vehiclesJson.vehicles.some((v) => v.id === httpVehicleId), 'HTTP vehicle appears in the fleet');
 
 ws.close();
 console.log(`\n🎉 DO/WS VERIFICATION: ${passed}/${total} PASSED`);
