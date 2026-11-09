@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { BASE_HOSPITAL } from '../data/mockData';
 import { countFleetStates } from '../utils/fleetStatus';
+import { useSpringPresence } from '../hooks/useSpringPresence';
 
 const CONNECTION_META = {
   live: { label: 'Live telemetry', detail: 'WebSocket', dot: 'bg-emerald-500' },
@@ -32,6 +33,7 @@ function DynamicIsland({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [time, setTime] = useState('');
+  const popover = useSpringPresence(isExpanded, { fromScale: 0.94, fromY: -8, transformOrigin: 'top center' });
 
   // Live IST clock
   useEffect(() => {
@@ -226,10 +228,11 @@ function DynamicIsland({
             </div>
           )}
 
-          {isExpanded && (
+          {popover.mounted && (
             <div
               id="fleet-summary-popover"
-              className="mt-2 w-[min(92vw,380px)] glass-panel p-3.5 rounded-[24px] border border-slate-200/90 dark:border-white/10 shadow-xl animate-in fade-in slide-in-from-top-2"
+              className="mt-2 w-[min(92vw,380px)] glass-panel p-3.5 rounded-[24px] border border-slate-200/90 dark:border-white/10 shadow-xl"
+              style={popover.style}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">

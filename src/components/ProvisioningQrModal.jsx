@@ -21,6 +21,7 @@ import {
   Zap,
   Globe
 } from 'lucide-react';
+import { useSpringPresence } from '../hooks/useSpringPresence';
 
 export default function ProvisioningQrModal({ 
   isOpen, 
@@ -38,6 +39,7 @@ export default function ProvisioningQrModal({
   const [pingDetails, setPingDetails] = useState(null);
   const [clearStatus, setClearStatus] = useState(false);
   const dialogRef = useRef(null);
+  const presence = useSpringPresence(isOpen, { fromScale: 0.96, fromY: 0, transformOrigin: 'center' });
 
   // Sync initialVehicleId when opened
   useEffect(() => {
@@ -122,7 +124,7 @@ export default function ProvisioningQrModal({
       .catch(err => console.error('Failed to generate QR Code:', err));
   }, [rawCompactJson, isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen && !presence.mounted) return null;
 
   const handleCopyJson = () => {
     navigator.clipboard.writeText(rawCompactJson);
@@ -234,11 +236,13 @@ export default function ProvisioningQrModal({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md select-none animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 backdrop-blur-md select-none"
+      style={{ backgroundColor: `rgba(2, 6, 23, ${0.8 * presence.progress})` }}
       onClick={onClose}
     >
       <div 
-        className="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-[24px] border border-slate-200 dark:border-white/10 overflow-hidden shadow-2xl flex flex-col max-h-[92vh] transition-all"
+        className="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-[24px] border border-slate-200 dark:border-white/10 overflow-hidden shadow-2xl flex flex-col max-h-[92vh]"
+        style={presence.style}
         role="dialog"
         aria-modal="true"
         aria-labelledby="provisioning-dialog-title"

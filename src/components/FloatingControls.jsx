@@ -13,6 +13,7 @@ import {
   Minus,
   Scan
 } from 'lucide-react';
+import { useSpringPresence } from '../hooks/useSpringPresence';
 
 export default function FloatingControls({
   activeStyleKey = 'light',
@@ -31,6 +32,12 @@ export default function FloatingControls({
 }) {
   const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const flyout = useSpringPresence(isLayerMenuOpen, {
+    fromScale: 0.94,
+    fromX: 8,
+    fromY: 0,
+    transformOrigin: 'top right',
+  });
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -139,11 +146,12 @@ export default function FloatingControls({
           </button>
 
           {/* Layer Flyout Menu */}
-          {isLayerMenuOpen && (
+          {flyout.mounted && (
             <div
               role="menu"
               aria-label="Map basemap"
-              className="absolute right-11 top-0 w-44 glass-panel p-1.5 rounded-2xl shadow-2xl border border-slate-200/90 dark:border-white/10 flex flex-col gap-1 animate-in fade-in slide-in-from-right-2 duration-150 max-sm:right-0 max-sm:top-auto max-sm:bottom-12"
+              className="absolute right-11 top-0 w-44 glass-panel p-1.5 rounded-2xl shadow-2xl border border-slate-200/90 dark:border-white/10 flex flex-col gap-1 max-sm:right-0 max-sm:top-auto max-sm:bottom-12"
+              style={flyout.style}
             >
               <span className="px-2 py-1 ui-section-label">
                 Map Basemap
