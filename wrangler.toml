@@ -6,4 +6,12 @@ compatibility_date = "2026-10-01"
 directory = "./dist"
 binding = "ASSETS"
 
+[[durable_objects.bindings]]
+name = "FLEET_HUB"
+class_name = "PurvanchalFleetHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PurvanchalFleetHub"]
+
 # Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
