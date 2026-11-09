@@ -353,7 +353,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             </div>
 
             {/* Strict Schema JSON Preview */}
-            <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1">
+            <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[0.6875rem] space-y-1">
               <div className="ui-section-label flex items-center justify-between">
                 <span>Exact Provisioning Schema (Section 1)</span>
                 <span className="text-emerald-400">Pure JSON</span>
@@ -399,7 +399,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                     <span>{copied ? 'Copied' : 'Copy'}</span>
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                <p className="text-[0.6875rem] text-slate-500 dark:text-slate-400">
                   Standard Cloudflare HTTPS. No port <code>:5055</code> required.
                 </p>
               </div>
@@ -411,7 +411,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                     <Send className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
                     Test OsmAnd POST Request
                   </h6>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[0.6875rem] text-slate-500">
                     Fire telemetry for <strong>{effectiveId}</strong> with speed in knots
                   </p>
                 </div>
@@ -443,7 +443,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
               </div>
 
               {/* Copyable Curl */}
-              <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1">
+              <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[0.6875rem] space-y-1">
                 <div className="ui-section-label flex items-center justify-between">
                   <span>Exact OsmAnd HTTP POST (Query Params)</span>
                   <button
@@ -453,7 +453,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                     Copy Curl
                   </button>
                 </div>
-                <div className="overflow-x-auto whitespace-pre p-2 bg-slate-950 rounded-lg text-emerald-400 text-[10px]">
+                <div className="overflow-x-auto whitespace-pre p-2 bg-slate-950 rounded-lg text-emerald-400 text-[0.625rem]">
                   {curlOsmAnd}
                 </div>
               </div>
@@ -488,7 +488,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
               </div>
 
               {/* JSON Payload Snippet */}
-              <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1">
+              <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[0.6875rem] space-y-1">
                 <div className="ui-section-label flex items-center justify-between">
                   <span>POST JSON Body (Curl)</span>
                   <button
@@ -498,7 +498,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                     Copy Curl
                   </button>
                 </div>
-                <div className="overflow-x-auto whitespace-pre p-2 bg-slate-950 rounded-lg text-emerald-400 text-[10px]">
+                <div className="overflow-x-auto whitespace-pre p-2 bg-slate-950 rounded-lg text-emerald-400 text-[0.625rem]">
                   {curlApiJson}
                 </div>
               </div>
@@ -509,7 +509,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                   <Info className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
                   Telemetry Fields Reference
                 </h5>
-                <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1 list-disc pl-4 font-mono text-[11px]">
+                <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1 list-disc pl-4 font-mono text-[0.6875rem]">
                   <li><code>id</code> (string): Unique identifier (e.g. "VEHICLE-102")</li>
                   <li><code>timestamp</code> (long): Epoch time in seconds (UTC)</li>
                   <li><code>lat</code> (double): Latitude (-90 to 90)</li>

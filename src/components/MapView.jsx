@@ -1499,10 +1499,10 @@ function MapView({
       <!-- Apple Frosted Label Pill -->
       <div class="mt-1 whitespace-nowrap px-2.5 py-0.5 rounded-full backdrop-blur-md ${
         isDark ? 'bg-slate-950/90 border border-white/10 text-white' : 'bg-white/95 border border-slate-200 text-slate-900 shadow-xs'
-      } text-[11px] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105" title="Sant Kabir Eye Hospital (Basti Base)">
+      } text-[0.6875rem] font-bold flex items-center gap-1.5 transition-all group-hover:scale-105" title="Sant Kabir Eye Hospital (Basti Base)">
         <span class="w-1.5 h-1.5 rounded-full bg-rose-500" aria-hidden="true"></span>
         <span>Basti Base</span>
-        <span class="base-count hidden items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold" aria-label="Ambulances at base"></span>
+        <span class="base-count hidden items-center justify-center min-w-4 h-4 px-1 rounded-full bg-rose-500 text-white text-[0.625rem] font-mono font-bold" aria-label="Ambulances at base"></span>
         <a href="${BASE_HOSPITAL.googleMapsUrl || 'https://maps.app.goo.gl/6eur1NCPRzC93sDG9'}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-6 h-6 rounded-full text-rose-500 hover:bg-rose-500/10 font-bold" aria-label="Open base in Google Maps" onclick="event.stopPropagation()">↗</a>
       </div>
     `;
@@ -1783,16 +1783,16 @@ function MapView({
           <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
             <!-- Complete Apple Capsule Tag: ID • Driver • Speed • Camp • Distance (Always Visible, Zero Overlap Shelves) -->
             <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
-              <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[11px] font-bold font-mono pointer-events-auto"
+              <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[0.6875rem] font-bold font-mono pointer-events-auto"
                 style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
                 <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
-                <span class="marker-id font-extrabold text-[11px] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
+                <span class="marker-id font-extrabold text-[0.6875rem] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                 <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                 <span class="marker-speed">${speedStr}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
-                <span class="marker-status px-1.5 py-0.2 rounded-md text-[10px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+                <span class="marker-status px-1.5 py-0.2 rounded-md text-[0.625rem] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                 <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
               </div>
@@ -1867,16 +1867,16 @@ function MapView({
           markerObj.element.innerHTML = `
             <div class="marker-outer-wrapper relative flex flex-col items-center group cursor-pointer ${isSelected ? 'scale-110 z-50 is-selected' : 'hover:scale-105 z-20'}" style="transition: transform 150ms ease-out; z-index: ${isSelected ? 50 : 20 + shelf};">
               <div class="marker-capsule-container flex flex-col items-center" style="transform: translateY(-${shelfOffsetY}px); transition: transform 600ms cubic-bezier(0.22, 1, 0.36, 1);">
-                <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[11px] font-bold font-mono pointer-events-auto"
+                <div class="marker-capsule-text px-2.5 py-0.5 rounded-full border shadow-md flex items-center gap-1.5 whitespace-nowrap text-[0.6875rem] font-bold font-mono pointer-events-auto"
                   style="background: ${isDark ? 'rgba(15, 23, 42, 0.95)' : 'rgba(255, 255, 255, 0.97)'}; border-color: ${badgeColor}55; color: ${isDark ? '#F8FAFC' : '#0F172A'}; box-shadow: 0 3px 10px ${badgeColor}22;">
                   <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
-                  <span class="marker-id font-extrabold text-[11px] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
+                  <span class="marker-id font-extrabold text-[0.6875rem] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                   <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                   <span class="marker-speed">${speedStr}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
-                  <span class="marker-status px-1.5 py-0.2 rounded-md text-[10px] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
+                  <span class="marker-status px-1.5 py-0.2 rounded-md text-[0.625rem] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                   <span class="marker-dist text-slate-500 dark:text-slate-400 font-semibold">${distStr}</span>
                 </div>
@@ -1944,7 +1944,7 @@ function MapView({
             markerObj.prevStatusText = statusBadgeText;
           }
           if (markerObj.statusEl && markerObj.prevStatusClass !== statusBadgeClass) {
-            markerObj.statusEl.className = `marker-status px-1.5 py-0.2 rounded-md text-[10px] font-bold ${statusBadgeClass}`;
+            markerObj.statusEl.className = `marker-status px-1.5 py-0.2 rounded-md text-[0.625rem] font-bold ${statusBadgeClass}`;
             markerObj.prevStatusClass = statusBadgeClass;
           }
           if (markerObj.element) {

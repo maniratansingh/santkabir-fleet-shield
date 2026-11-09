@@ -396,7 +396,7 @@ export default function ProvisioningQrModal({
                 {/* Target Ingestion Server Mode Switcher */}
                 <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800/70">
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <label className="text-[0.6875rem] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                       <Server className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
                       <span>Target Ingestion Server Endpoint</span>
                     </label>
@@ -408,7 +408,7 @@ export default function ProvisioningQrModal({
                   <div className="grid grid-cols-3 gap-1.5">
                     <button
                       onClick={() => setServerMode('production')}
-                      className={`py-1.5 px-2 text-[11px] font-bold rounded-xl border transition-all cursor-pointer ${
+                      className={`py-1.5 px-2 text-[0.6875rem] font-bold rounded-xl border transition-all cursor-pointer ${
                         serverMode === 'production'
                           ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
                           : 'bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300'
@@ -419,7 +419,7 @@ export default function ProvisioningQrModal({
 
                     <button
                       onClick={() => setServerMode('local')}
-                      className={`py-1.5 px-2 text-[11px] font-bold rounded-xl border transition-all cursor-pointer ${
+                      className={`py-1.5 px-2 text-[0.6875rem] font-bold rounded-xl border transition-all cursor-pointer ${
                         serverMode === 'local'
                           ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
                           : 'bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300'
@@ -430,7 +430,7 @@ export default function ProvisioningQrModal({
 
                     <button
                       onClick={() => setServerMode('custom')}
-                      className={`py-1.5 px-2 text-[11px] font-bold rounded-xl border transition-all cursor-pointer ${
+                      className={`py-1.5 px-2 text-[0.6875rem] font-bold rounded-xl border transition-all cursor-pointer ${
                         serverMode === 'custom'
                           ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
                           : 'bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300'
@@ -550,7 +550,7 @@ export default function ProvisioningQrModal({
                     <h5 className="text-xs font-bold text-slate-900 dark:text-white">
                       Live Telemetry Packet Ping
                     </h5>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[0.6875rem] text-slate-500">
                       Sending telemetry for: <strong className="text-sky-600 dark:text-cyan-400 font-mono">{cleanVehicleId}</strong>
                     </p>
                   </div>
@@ -583,7 +583,7 @@ export default function ProvisioningQrModal({
 
                 {/* Ping Result Readout Box */}
                 {pingDetails && (
-                  <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1 border border-slate-800">
+                  <div className="p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-[0.6875rem] space-y-1 border border-slate-800">
                     <div className="ui-section-label flex items-center justify-between">
                       <span>Server Ingestion Feedback</span>
                       <span className="text-emerald-400">{pingDetails.elapsed} ms</span>
@@ -607,7 +607,7 @@ export default function ProvisioningQrModal({
               </div>
 
               {/* Copyable Curl Terminal Command */}
-              <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1">
+              <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[0.6875rem] space-y-1">
                 <div className="ui-section-label flex items-center justify-between">
                   <span>Exact Traccar OsmAnd Curl Command</span>
                   <button
@@ -621,7 +621,7 @@ export default function ProvisioningQrModal({
                     {copied ? 'Copied!' : 'Copy Curl'}
                   </button>
                 </div>
-                <div className="overflow-x-auto whitespace-pre p-2.5 bg-slate-950 rounded-xl text-emerald-400 text-[10px] border border-slate-800">
+                <div className="overflow-x-auto whitespace-pre p-2.5 bg-slate-950 rounded-xl text-emerald-400 text-[0.625rem] border border-slate-800">
                   {curlExample}
                 </div>
               </div>
@@ -633,7 +633,7 @@ export default function ProvisioningQrModal({
                     <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                     <span>Clear Fleet Telemetry Cache</span>
                   </h6>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[0.6875rem] text-slate-500">
                     Wipes in-memory vehicle packets and returns map to 0 standby ambulances
                   </p>
                 </div>
@@ -655,7 +655,7 @@ export default function ProvisioningQrModal({
             <div className="space-y-4 animate-in fade-in duration-150">
               
               {/* Pure JSON Schema */}
-              <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[11px] space-y-1">
+              <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[0.6875rem] space-y-1">
                 <div className="ui-section-label flex items-center justify-between">
                   <span>1. QR Code JSON Contract</span>
                   <span className="text-emerald-400">Pure JSON Body</span>
@@ -671,7 +671,7 @@ export default function ProvisioningQrModal({
                   <Info className="w-4 h-4 text-sky-600 dark:text-cyan-400" />
                   <span>2. OsmAnd URL Query Parameter Dictionary:</span>
                 </h5>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-mono text-[0.6875rem] text-slate-600 dark:text-slate-400">
                   <div className="p-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
                     <strong className="text-sky-600 dark:text-cyan-400">id</strong>: Unique identifier
                   </div>
