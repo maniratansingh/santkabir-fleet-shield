@@ -75,14 +75,15 @@
     <h1>Fleet Shield — UI audit, before and after</h1>
     <p class="lede">
       Apple-inspired refinement of the Sant Kabir Eye Hospital wallboard. The before captures use commit
-      <code>3d8c97c</code>; the after captures use the current working tree at 1434 × 1336 in demo mode.
+      <code>3d8c97c</code>. The after captures were refreshed from the current build on 10 November 2026
+      at 1440 × 900 CSS px in demo mode.
     </p>
 
     <div class="summary">
-      <div><strong>Type system</strong><span>11–22px ramp, tabular numerals, one UI face</span></div>
+      <div><strong>Type system</strong><span>rem ramp, tabular numerals, one UI face</span></div>
       <div><strong>Surfaces</strong><span>One card, control and panel radius; one shadow scale</span></div>
       <div><strong>Hierarchy</strong><span>Summary popover instead of a full fleet roster</span></div>
-      <div><strong>Accessibility</strong><span>Lighthouse 1.0 / 1.0 / 1.0</span></div>
+      <div><strong>Accessibility</strong><span>reduced motion, reduced transparency, high contrast, 44px touch targets</span></div>
     </div>
 
     <h2>1 · Fleet overview</h2>
@@ -117,7 +118,7 @@
       </figure>
       <figure>
         <img src="after-03-light-fleet-list.jpeg" alt="After: fleet list rows" />
-        <figcaption><b>After</b> — full labels, 32px actions, neutral hierarchy</figcaption>
+        <figcaption><b>After</b> — full labels, 36px actions with 44px coarse-pointer targets, neutral hierarchy</figcaption>
       </figure>
     </div>
 
@@ -157,8 +158,8 @@
     <figure class="full">
       <img src="after-08-base-anchored-routes.jpeg" alt="After: routes leave the hospital along road geometry" />
       <figcaption>
-        <b>After</b> — every route now leaves Basti on road geometry. The first segment is 80–360 m
-        instead of 15–35 km, and returning vehicles no longer loop out to a distant corridor endpoint.
+        <b>After</b> — every route now starts at Sant Kabir Eye Hospital, Basti
+        (worst measured start: 0.014 km). Returning vehicles no longer loop out to a distant hub.
       </figcaption>
     </figure>
 

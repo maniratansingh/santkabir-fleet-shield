@@ -25,7 +25,11 @@ as a destination, but generated routes must not start there.
 | Rural place gazetteer | `src/data/ruralVillages.json` | 195 places |
 | Tier labels and geometry | `src/data/tiered/*` | 2 tiers |
 
-All route arrays start within 0.01 km of Basti after the last regeneration.
+All route arrays start within 0.02 km of Basti after the last regeneration
+(worst measured start: 0.014 km). `npm run test:routes` allows up to 0.75 km
+so GPS rounding in generated data does not fail the guard.
+
+Last verified: 10 November 2026.
 
 ## Route generation
 

@@ -18,8 +18,11 @@
 - **Routes**: 195 base-anchored village routes, plus 17/15/11 fleet route arrays. Generated offline with OSRM; no runtime OSRM dependency.
 - **Route guard**: `npm run test:routes` fails if any route starts more than 0.75 km from Basti.
 - **Gazetteer**: 195 local named places. Camp labels are not inferred from proximity.
-- **TV mode**: close-up zoom 13.2, continuous overview step.
-- **Branches**: `main` production, `testing` QA, `experimental` sandbox. See `docs/BRANCHING.md`.
+- **TV mode**: close-up zoom 13.2 on desktop (12.2 on mobile, pitch 28); overview uses a fitted bounds view capped at 12.8 / 10.8 with pitch 22.
+- **Markers**: icon anchored on the GPS point, three zoom tiers (56% / 78% / 100%), tag shelves disabled at overview zoom.
+- **Fleet sheet**: draggable spring sheet with detents at 88, 560 and 680 px.
+- **Accessibility**: rem type ramp, reduced-motion, reduced-transparency and high-contrast support, 44 px coarse-pointer targets.
+- **Branches**: `experimental` is the active work branch; `testing` is the QA gate; `main` is production. Never edit `testing` or `main` directly. See `docs/BRANCHING.md`.
 
 ---
 
@@ -70,37 +73,43 @@ Worker itself no longer keeps an in-memory fleet map.
 
 ## 3. Core Architectural Subsystems
 
-### 3.1. 15-Minute Rural Signal Gap Grace Period & 3-Stage Lifecycle
-To prevent vehicles from "vanishing and reappearing preposterously" when passing through rural network blackouts, the edge worker implements a three-stage telemetry lifecycle:
+### 3.1. Rural Signal Gap Lifecycle
+To keep vehicles visible through rural network blackouts, the edge worker applies a four-stage age model:
 
 ```
-[ Stage 1: LIVE ] ────────► [ Stage 2: SIGNAL BLIND SPOT ] ────────► [ Stage 3: DECOMMISSIONED ]
-   Age: < 60 seconds              Age: 60 sec – 15 minutes               Age: > 35 minutes
-   Speed: Live (e.g. 48 km/h)     Stays pinned at Last Known Location    Gently removed from memory
-   Badge: Camp / Highway          Badge: "⏳ Signal Gap (Xm ago)"         Clean 2-way sync
-   Color: Unique Vehicle HSL      Color: Calm Amber (#F59E0B)            Hospital Standby fallback
+[ LIVE ]              [ SIGNAL GAP ]           [ PARKED ]             [ DECOMMISSIONED ]
+Age < 60 s            Age 60 s – 15 min        Age 15 – 35 min        Age > 35 min
+Live speed            Pinned at last fix       Pinned at last fix     Removed from state
+Camp / highway        Amber gap badge          Standby / parked       Clean two-way sync
+Unique vehicle HSL    "Signal gap (Xm)"        At-base handling       Hospital standby
 ```
 
 - **In [`src/worker.js`](src/worker.js)**:
-  - Age $\le 60\text{s}$: `isLive: true`, `networkState: 'live'`.
-  - $60\text{s} < \text{Age} \le 15\text{min}$: `isSignalGap: true`, `gapMinutes: Math.floor(age/60)`, `networkState: 'gap'`.
-  - $\text{Age} > 35\text{min}$: Automatically purged from `liveVehicles` map.
-  - `/api/clear`: Flushes in-memory store immediately on command.
+  - Age < 60 s: `isLive: true`, `networkState: 'live'`.
+  - 60 s ≤ age ≤ 15 min: `isSignalGap: true`, `gapMinutes: Math.floor(age / 60)`, `networkState: 'gap'`.
+  - 15 min < age ≤ 35 min: `isParked: true`, `networkState: 'parked'`.
+  - Age > 35 min: the vehicle is purged from the hub state.
+  - `/api/clear`: flushes live state immediately.
 
-### 3.2. Two-Way Live Sync (Zero Manual Refresh)
-In [`src/App.jsx`](src/App.jsx), the frontend maintains a persistent `fleetStoreRef` that syncs bidirectionally with the server every 2 seconds:
-- **Instant Addition**: New ambulances appear on screen within 2 seconds.
-- **Instant Pruning**: When vehicles reach 35 minutes of inactivity or `/api/clear` is triggered, deleted IDs are removed from local memory without requiring a page reload.
-- **Hospital Standby Fallback**: If 0 ambulances are reporting, the camera automatically glides back to center on the base hospital.
+### 3.2. Live Sync (Zero Manual Refresh)
+The dashboard keeps a persistent fleet store and updates it from the hub:
 
-### 3.3. Anti-Blink SVG & Persistent DOM Marker Engine
-In traditional React map applications, re-rendering markers on each state tick causes the browser to discard and re-parse SVGs, resulting in visible white flashes:
+- Dashboard clients connect to `wss://<host>/api/ws`, receive a full snapshot on connect, then vehicle deltas.
+- A 10-second HTTP fallback polls `/api/vehicles` only while the WebSocket is disconnected. Demo mode refreshes every 2 seconds.
+- New vehicles appear without a reload.
+- Vehicles purged after 35 minutes of inactivity, or by `/api/clear`, are removed from local state.
+- If no vehicles are reporting, the camera returns to the base hospital.
+
+### 3.3. Anti-Blink SVG & Persistent DOM Markers
+Re-rendering markers on every telemetry tick causes flicker and wasted SVG work:
+
 - **In [`src/components/MapView.jsx`](src/components/MapView.jsx)**:
-  - Marker DOM elements are created **once** and preserved in `markersRef.current`.
-  - When TV mode cycles focus or when telemetry updates arrive, the DOM node is **never wiped via `innerHTML`**.
-  - Selection states (`selection-halo`, scaling) are toggled using CSS classes and opacity transitions.
-  - SVG gradient and filter IDs use deterministic identifiers (`ambWindshield_${vId}`) rather than `Math.random()`, eliminating SVG re-rasterization flashes entirely.
-  - Marker element position updates use CSS transitions (`transition-all duration-700 ease-out`), ensuring that when a car reconnects to 4G after an 8-minute gap, it **smoothly glides** to its new location rather than jumping abruptly.
+  - Marker DOM elements are created once and kept in `markersRef.current`.
+  - Telemetry updates mutate text and attributes in place; the node is not rebuilt with `innerHTML` except when the theme changes.
+  - Selection styling is toggled with CSS classes and opacity.
+  - SVG gradient IDs use deterministic names (`ambWindshield_${vId}`), so the browser does not re-rasterize the icon.
+  - Position is interpolated with `requestAnimationFrame`. The duration is matched to the telemetry interval (400–2600 ms), so a vehicle reconnecting after a gap glides to its new fix.
+  - A jump over 3 km is treated as a new fix and snapped, not flown across the map.
 
 ### 3.4. 195-Place Purvanchal Rural Gazetteer
 - **In [`src/data/ruralVillages.json`](src/data/ruralVillages.json)**:
@@ -117,13 +126,12 @@ In traditional React map applications, re-rendering markers on each state tick c
   - For vehicles beyond 12 (up to 100+ concurrent units), employs the **Golden Ratio Conjugate** ($\phi \approx 0.618033988749895$) in HSL color space.
   - Generates mathematically guaranteed non-colliding route line colors (`88%` saturation, `50%` lightness) and ambient glow halos (`92%` saturation, `68%` lightness).
 
-### 3.6. Smart TV Wallboard Kiosk Mode & Cinematic Tour Cadence
-- **Parabolic Auto-Tour Alternating Loop in [`src/App.jsx`](src/App.jsx)**:
-  - **Ambulance Close-Up Tracking Shot (8.5s)**: Glides dynamically to active ambulances at high zoom ($z = 13.2$, $28^\circ$ pitch) with full road lifeline and speed display. Vehicles in temporary signal gaps are allocated 5.0 seconds.
-  - **Regional Fleet Overview (6.0s)**: Smoothly transitions outward ($z \approx 10.2$, $0^\circ$ pitch) to frame all active ambulances across Purvanchal districts before progressing to the next unit.
-  - **TV-Optimized Centered Framing**: When the bottom Apple Sheet is in default `peek` capsule mode, camera padding dynamically centers vehicle markers on 16:9 large-screen TV displays.
-- **North-Up Upright Camera**:
-  - `focusVehicle` maintains upright North-up orientation (`bearing: 0`, `pitch: 28`), preventing disorienting camera spins when switching between cars heading in opposite directions.
+### 3.6. TV Wallboard Kiosk Mode
+- **Auto-tour loop in [`src/App.jsx`](src/App.jsx)**:
+  - **Close-up (8.5 s)**: flies to a vehicle at zoom 13.2 on desktop or 12.2 on mobile, pitch 28, bearing 0. Signal-gap vehicles get 5 s.
+  - **Fleet overview (6 s)**: fits all reporting vehicles and the base. `fitBounds` is capped at zoom 12.8 on desktop and 10.8 on mobile, pitch 22, bearing 0.
+  - **Sheet-aware padding**: when the sheet is in its peek state, camera padding keeps vehicle markers centred on wide displays.
+- **North-up camera**: `focusVehicle` keeps `bearing: 0` and `pitch: 28`, so switching between vehicles heading in opposite directions does not spin the map.
 
 ### 3.7. Zero-Cache Header Enforcement
 To guarantee that 24/7 TV wallboards never load stale JavaScript bundles or cached HTML:
@@ -140,12 +148,22 @@ To guarantee that 24/7 TV wallboards never load stale JavaScript bundles or cach
 - **In [`index.html`](index.html)**:
   - Browser-level `<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />` enforcement.
 
-### 3.8. Non-Overlapping Vertical Clearance Shelves & SVG Leader Lines
-When multiple ambulances cluster around nearby villages or highway junctions (e.g. Walterganj, Captain Ganj, Saunghat), naive map markers overlap and obscure telemetry tags:
-- **2D Screen Coordinate Collision Detection**: In [`src/components/MapView.jsx`](src/components/MapView.jsx), vehicle pixel coordinates (`map.project([lon, lat])`) are evaluated in real time.
-- **Vertical Shelf Allocation**: For any vehicles within $360\text{px}$ horizontal distance, the system pushes subsequent cards onto collision-free vertical shelves with $32\text{px}$ spacing ($Y$-offsets of $-42\text{px}, -76\text{px}, -110\text{px}$, etc.).
-- **Dynamic Leader Stem Lines**: An SVG leader overlay renders crisp, anti-aliased stem lines with dual-stroke contrast halos matching each ambulance's assigned color, connecting the elevated tag back to the vehicle's exact GPS center.
-- **100% Information Retention**: All 10 ambulance tags retain full visibility (ID, driver name, speed, rural vicinity, and distance to base) with zero clutter.
+### 3.8. Marker Anchoring, Zoom Tiers & Tag Shelves
+Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would otherwise cover each other's tags:
+
+- **GPS anchoring**: MapLibre centres the marker element on the vehicle coordinate. The ambulance icon fills that box, and the tag is absolutely positioned above it. A tag that grows, shrinks, shelves or clamps therefore cannot move the icon off the GPS point.
+- **Zoom tiers**: the SVG is scaled, not resized, so the layout box and anchor stay constant:
+  - below zoom 10.6: 56%
+  - zoom 10.6–12.4: 78%
+  - above zoom 12.4: 100%
+- **Tag detail**: full ID, driver, speed, place and distance at close zoom. Below zoom 11.2 the tag collapses to the ID and dot.
+- **Shelf allocation**: screen positions come from `map.project([lon, lat])`. Shelves are assigned in stable ID order, not screen X order, so nearby vehicles do not swap places as they jitter.
+  - card width: 260 px detailed, 140 px overview, 110 px mobile
+  - shelf step: 30 px close, 26 px mid, 22 px far
+  - max shelves: 4 close, 2 mid, 0 far
+- **Leader stem**: a CSS stem connects the tag to the icon. Its height follows the shelf offset, and the tag container only carries the edge-clamp transform.
+- **Edge clamping**: horizontal clamping keeps tags inside the viewport. Vertical clamping is capped at 48 px at overview and 140 px at close zoom.
+- **Dense clusters**: at far zoom, overlapping ID pills are hidden while every ambulance icon remains visible. The selected or hovered vehicle always shows its tag.
 
 ### 3.9. Dynamic Backward-Only Road Lifelines
 - **Strict Backward-Only Topology**: In [`src/utils/roadDistance.js`](src/utils/roadDistance.js), forward route projections into unknown future destinations are eliminated. The road ribbon exclusively tracks backward from the current live vehicle GPS position to the Base Hospital in Basti (`26.797313°N, 82.718401°E`).
@@ -214,14 +232,15 @@ When multiple ambulances cluster around nearby villages or highway junctions (e.
 
 ## 5. Performance Benchmarks
 
-In automated 5-minute heavy stress testing against the Cloudflare Workers edge:
+In a 5-minute stress test on 18 October 2026 against `https://fleet.mrps.in`, with 60 vehicles and 25 wallboard clients:
 - **Total Requests**: 52,744
 - **Success Rate**: 100.00% (0 errors, 0 dropped frames)
 - **Throughput**: 174.6 Requests / Second
 - **P50 Latency**: 97 ms
 - **P95 Latency**: 134 ms
-- **P99 Latency**: 180 ms
-- **Client Bundle Size**: sub-70 kB gzipped (built with Vite in 306 ms)
+- **P99 Latency**: 282 ms
+- **Max Latency**: 1,453 ms
+- **Average Latency**: 106 ms
 
 ---
 

@@ -19,7 +19,7 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
   <img src="docs/assets/screenshots/fleet-overview-dark.jpg" alt="Sant Kabir Fleet Shield dark wallboard" width="100%" />
 </p>
 
-<p align="center"><em>Live TV wallboard — base-anchored routes, compact fleet tags, and one clear status line.</em></p>
+<p align="center"><em>Fleet overview — base-anchored routes, compact tags at overview zoom, and the fleet sheet in its peek state.</em></p>
 
 ## 🌟 Current Architecture & Capabilities
 
@@ -52,7 +52,7 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 - `src/utils/baseLocation.js` is the single shared base coordinate.
 - `npm run test:routes` verifies that every village and fleet route starts within 0.75 km of Basti.
 
-### 2. Cloudflare Workers + Durable Object
+### 2. Cloudflare Worker + Durable Object
 - The app deploys as a **Worker with static assets** (`wrangler deploy`), not the legacy Pages dashboard.
 - `PurvanchalFleetHub` is a single SQLite-backed Durable Object and the live source of truth.
 - Dashboard clients connect to `wss://<host>/api/ws`; trackers use `wss://<host>/api/ws?role=tracker`.
@@ -60,12 +60,12 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 - The hub stores a fleet snapshot in its own SQLite every 60 seconds.
 
 ### 3. Telemetry and free-tier limits
-- WebSocket should be the primary tracker path. After the upgrade, messages do not count as new Worker requests.
+- WebSocket is the primary tracker path. After the upgrade, messages do not count as new Worker requests.
 - HTTP telemetry still works, but every request counts against the Workers Free request quota.
 - 25 vehicles at 5-second HTTP = **432,000 requests/day**, which exceeds the free 100k/day allowance.
 - WebSocket messages are billed to the Durable Object at roughly 20:1; 432,000 messages/day ≈ **21,600 billed DO requests/day**.
 - HTTP telemetry is mirrored into the hub at most once every 30 seconds per vehicle. That throttle does not reduce the incoming Worker request count.
-- The dashboard uses a **10-second HTTP polling fallback** only when the WebSocket is not connected.
+- The dashboard uses a **10-second HTTP polling fallback** only when the WebSocket is not connected. In demo mode it refreshes every 2 seconds.
 
 ### 4. Precomputed, base-anchored routes
 - `src/data/allVillagesRoadRoutes.json` contains **195 routes**, all starting at Basti.
@@ -83,24 +83,33 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
 - The UI resolves the **current place name** from GPS; it does not schedule or predict camps.
 - The demo data does not assign a camp based on proximity.
 
-### 6. UI and wallboard
-- Apple-inspired type, spacing, surfaces and controls.
-- Persistent DOM markers, zero-blink SVG vehicles, 30px vertical clearance shelves.
-- Fleet states: **Moving, On scene, Returning, At base, No signal**.
-- TV auto-tour uses a **13.2** close-up zoom and a continuous overview step.
-- Compact summary popover links to the full fleet sheet instead of duplicating the roster.
-- Dark and light themes; map attribution is available in compact form.
+### 6. Wallboard
+- **Map:** MapLibre GL. Basemaps: Light Gray, Dark Gray, Satellite, Highways & Streets.
+- **Markers:** persistent DOM markers with SVG ambulances. The node is updated in place, so telemetry ticks do not rebuild the SVG or cause a blink.
+- **Zoom tiers:** the icon is scaled to 56% below zoom 10.6, 78% from 10.6 to 12.4, and 100% above 12.4. The icon stays centred on the GPS point; the tag floats above it and never changes the marker's anchor.
+- **Tags:** full detail at close zoom, ID only below zoom 11.2. Shelves are 0 at far zoom, 2 at mid zoom and 4 at close zoom. Vertical clamping is capped at 48 px at overview, and overlapping ID pills are suppressed at far zoom. The selected or hovered vehicle always keeps its tag.
+- **Motion:** marker positions glide with `requestAnimationFrame`; the duration is matched to the telemetry interval (400–2600 ms). Jumps over 3 km snap instead of flying across the map. Tag clamp transitions run at 220 ms and shelf transitions at 420 ms.
+- **Fleet sheet:** draggable spring sheet with detents at 88, 560 and 680 px, momentum projection, rubber-banding and interruptible drag.
+- **Fleet states:** Moving, On scene, Returning, At base, No signal. Filters: All, En route, On scene, No signal.
+- **TV auto-tour:** close-up at zoom 13.2 on desktop and 12.2 on mobile (pitch 28); overview fit capped at 12.8 / 10.8 (pitch 22). 8.5 seconds per moving vehicle, 5 seconds for a signal-gap vehicle, 6 seconds for the overview.
+- **Accessibility:** rem type ramp, optical sizing, `prefers-reduced-motion`, `prefers-reduced-transparency`, `prefers-contrast`, 44 px coarse-pointer hit areas and press states.
+- **Themes:** dark and light, with compact map attribution.
 
 ### 7. Branch model
-- **`main`** — stable production.
-- **`testing`** — integration and verification work.
-- **`experimental`** — new and unusual ideas; not production.
+- **`main`** — production. Only receives verified merges from `testing`.
+- **`testing`** — QA gate. Only receives verified merges from `experimental`.
+- **`experimental`** — active work. Features, fixes, documentation and screenshots start here. Not deployed.
+- Do not edit `testing` or `main` directly, and do not merge `experimental` into `main`.
 - Old merged branches are archived as tags.
-- See [docs/BRANCHING.md](docs/BRANCHING.md).
+- Full rules and promotion commands: [docs/BRANCHING.md](docs/BRANCHING.md).
 
-### 8. Accurate data and routing notes
-- See [docs/DATA_AND_ROUTING.md](docs/DATA_AND_ROUTING.md) for the route pipeline, counts, OSRM policy and cache strategy.
-- See [docs/TESTING.md](docs/TESTING.md) for the test suites and release checks.
+### 8. Documentation
+- [docs/FEATURES.md](docs/FEATURES.md) — feature reference and control map.
+- [docs/BRANCHING.md](docs/BRANCHING.md) — branch rules and promotion flow.
+- [docs/DATA_AND_ROUTING.md](docs/DATA_AND_ROUTING.md) — route pipeline, counts, OSRM policy and cache strategy.
+- [docs/TESTING.md](docs/TESTING.md) — test suites and release checks.
+- [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) — current visual gallery.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture and technical detail.
 
 ---
 
@@ -111,38 +120,49 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
     <td width="50%">
       <img src="docs/assets/screenshots/fleet-list-dark.jpg" alt="Operational fleet list" />
       <br /><strong>Operational fleet list</strong><br />
-      Priority sorting, four state filters, and real vehicle states.
+      Priority sorting, four filters and live vehicle states.
     </td>
     <td width="50%">
       <img src="docs/assets/screenshots/vehicle-detail-light.jpg" alt="Vehicle detail sheet" />
       <br /><strong>Vehicle detail</strong><br />
-      Fleet-colour identity, driver contact, live position and navigation.
+      Driver contact, coordinates, Maps links, distance and speed.
     </td>
   </tr>
   <tr>
     <td width="50%">
       <img src="docs/assets/screenshots/provisioning-light.jpg" alt="Provisioning dialog" />
       <br /><strong>Provisioning</strong><br />
-      Two-column QR setup with a single-scan Android flow.
+      Vehicle picker, server selection and a one-scan QR code.
+    </td>
+    <td width="50%">
+      <img src="docs/assets/screenshots/telemetry-light.jpg" alt="Telemetry and tracker setup" />
+      <br /><strong>Telemetry setup</strong><br />
+      Android QR, OsmAnd and REST API tabs with the exact schema.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/assets/screenshots/marker-closeup-dark.jpg" alt="Ambulance marker close-up" />
+      <br /><strong>Marker close-up</strong><br />
+      The tag sits above the icon; the icon stays on the GPS point.
     </td>
     <td width="50%">
       <img src="docs/assets/screenshots/route-anchoring.jpg" alt="Base-anchored routes" />
       <br /><strong>Route anchoring</strong><br />
-      Every route starts at Sant Kabir Eye Hospital, Basti.
+      Every visible corridor converges on Sant Kabir Eye Hospital, Basti.
     </td>
   </tr>
 </table>
 
-[Open the full screenshot gallery](docs/SCREENSHOTS.md)
-
----
+[Open the full gallery](docs/SCREENSHOTS.md) — includes the light overview, fleet summary and mobile views.
 
 ## 🛰️ Edge Telemetry API Specification
 
 ### 1. Telemetry Ingestion Endpoint
-- **URL**: `/api/location`
+- **URL**: `/api/track` (Traccar OsmAnd) or `/api/location`
 - **Methods**: `POST` (JSON/FormData) or `GET` (Query parameters)
 - **CORS**: `Access-Control-Allow-Origin: *`
+- **Speed**: OsmAnd packets send knots; JSON packets may send km/h. The processor normalizes both.
 
 #### Query / JSON Parameters:
 | Field | Type | Description |

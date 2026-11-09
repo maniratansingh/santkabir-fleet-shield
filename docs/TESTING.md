@@ -2,11 +2,13 @@
 
 ## Branch
 
-All integration and verification work belongs on the `testing` branch.
+New work starts on `experimental`. `testing` is the QA gate and `main` is
+production.
 
 - `testing` is not deployed.
+- It only moves by merging a verified `experimental`.
+- Do not experiment or make direct edits on `testing` or `main`.
 - Run the full suite before merging `testing` into `main`.
-- Do not experiment directly on `main`.
 
 ## Commands
 
@@ -52,7 +54,8 @@ The route anchor guard checks 195 village routes, 17 initial-fleet routes,
    - vehicle detail
    - provisioning dialog
    - telemetry dialog
-   - mobile widths
+   - desktop and mobile widths
+   - overview zoom: icons small, tags attached, no detached labels
 8. Confirm no browser console errors.
 9. Merge `testing` into `main`.
 
