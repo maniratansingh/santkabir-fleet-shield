@@ -6,3 +6,5 @@ dist/
 .wrangler/
 cloudflare-live-deploy/
 *.zip
+
+.admin-secret
