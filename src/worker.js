@@ -473,8 +473,9 @@ export default {
 // fleet mirror and all hibernating WebSocket connections. Dashboards receive a
 // snapshot on connect and deltas on movement.
 export class PurvanchalFleetHub {
-  constructor(state, env) {
-    this.state = state;
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.state = ctx;
     this.env = env;
     this.vehicles = new Map();
     this.filters = new Map();
@@ -523,7 +524,7 @@ export class PurvanchalFleetHub {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       const role = url.searchParams.get('role') === 'tracker' ? 'tracker' : 'dashboard';
-      this.state.acceptWebSocket(server);
+      this.ctx.acceptWebSocket(server);
       try { server.serializeAttachment({ role }); } catch (e) {}
 
       try {

@@ -2340,8 +2340,9 @@ var worker_default = {
   }
 };
 var PurvanchalFleetHub = class {
-  constructor(state, env) {
-    this.state = state;
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.state = ctx;
     this.env = env;
     this.vehicles = /* @__PURE__ */ new Map();
     this.filters = /* @__PURE__ */ new Map();
@@ -2384,7 +2385,7 @@ var PurvanchalFleetHub = class {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       const role = url.searchParams.get("role") === "tracker" ? "tracker" : "dashboard";
-      this.state.acceptWebSocket(server);
+      this.ctx.acceptWebSocket(server);
       try {
         server.serializeAttachment({ role });
       } catch (e) {

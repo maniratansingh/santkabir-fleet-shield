@@ -1,6 +1,6 @@
-name = "broad-glitter-5601"
+name = "purvanchal-fleet-hub"
 main = "src/worker.js"
-compatibility_date = "2026-10-01"
+compatibility_date = "2026-11-10"
 
 [assets]
 directory = "./dist"
@@ -15,3 +15,6 @@ tag = "v1"
 new_sqlite_classes = ["PurvanchalFleetHub"]
 
 # Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
+
+[observability]
+enabled = true
