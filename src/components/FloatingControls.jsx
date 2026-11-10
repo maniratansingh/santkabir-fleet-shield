@@ -57,7 +57,7 @@ export default function FloatingControls({
   ];
 
   return (
-    <div className="fixed top-[calc(0.75rem+var(--safe-top))] right-[calc(0.75rem+var(--safe-right))] z-30 pointer-events-auto flex flex-col items-end gap-2 max-h-[calc(100vh-1.5rem)] overflow-y-auto max-sm:top-auto max-sm:bottom-[calc(6rem+var(--safe-bottom))] max-sm:right-2 max-sm:w-[calc(100vw-1rem)] max-sm:flex-row max-sm:flex-wrap max-sm:items-end max-sm:justify-end max-sm:gap-1 max-sm:max-h-none max-sm:overflow-visible">
+    <div className="fixed top-[calc(0.75rem+var(--safe-top))] right-[calc(0.75rem+var(--safe-right))] z-30 pointer-events-auto flex flex-col items-end gap-2 max-h-[calc(100vh-1.5rem)] overflow-y-auto max-sm:hidden">
       {/* Primary Floating Apple Dock */}
       <div className="glass-panel p-1.5 rounded-2xl flex flex-col items-center gap-1.5 shadow-xl border border-slate-200/90 dark:border-white/10 max-sm:flex-row max-sm:flex-wrap max-sm:justify-end max-sm:gap-0.5">
         {/* Zoom In */}

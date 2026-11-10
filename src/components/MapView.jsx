@@ -1212,7 +1212,7 @@ function MapView({
             hasSelection: hasSelection,
           },
         };
-      });
+      }).filter((f) => f.geometry.coordinates.length > 1);
 
     // Elevate selected vehicle route to the end so it renders on top in WebGL
     incomingFeatures.sort((a, b) => (a.properties.isSelected ? 1 : 0) - (b.properties.isSelected ? 1 : 0));

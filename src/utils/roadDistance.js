@@ -270,9 +270,21 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     }
   }
 
-  // Fallback to primary corridor if somehow still null
+  // No precomputed coverage: return no trail rather than drawing a straight
+  // connector across the map.
   if (!roadCoords || roadCoords.length < 2) {
-    roadCoords = allVillagesRoadRoutes['Harraiya Gram']?.coordinates || roadRoutesData['CAMP-HARRAIYA']?.coordinates || [baseCoord, vehRawCoord];
+    return {
+      roadPath: [],
+      fullRoute: [],
+      upcomingRoute: [],
+      completedTrail: [],
+      roadDistFromBaseKm: 0,
+      snappedCoord: vehRawCoord,
+      bearing: 0,
+      midPoint: vehRawCoord,
+      corridorName: 'No precomputed route',
+      offRoadKm: null,
+    };
   }
 
   // Project the hospital and the vehicle onto the chosen route geometry.
@@ -327,10 +339,8 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     }
   }
 
-  roadPath = dedupePath(roadPath);
-  if (roadPath.length && haversineKm(roadPath[roadPath.length - 1], vehRawCoord) > 0.015) {
-    roadPath.push(vehRawCoord);
-  }
+  // Option A: stop at the last road point. Never draw a straight connector
+  // from the road to the vehicle. The marker stays at its real GPS position.
   roadPath = dedupePath(roadPath);
 
   const roadDistFromBase = pathLengthKm(roadPath);
@@ -350,6 +360,7 @@ export function getDeliveryRouteSplit(vehicle, camps = []) {
     bearing,
     midPoint,
     corridorName: matchedCorridorName,
+    offRoadKm: Math.round(vehProj.dist * 10) / 10,
   };
 }
 

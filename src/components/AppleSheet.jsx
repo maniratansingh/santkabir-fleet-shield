@@ -172,10 +172,17 @@ function AppleSheet({
   onOpenProvisionModal,
   detent = 'peek', // 'peek', 'half', 'full'
   onChangeDetent,
+  filter: controlledFilter,
+  onChangeFilter,
   connectionState = 'connecting',
 }) {
-  const [filter, setFilter] = useState('all'); // all | enroute | onscene | nosignal
+  const [internalFilter, setInternalFilter] = useState('all'); // all | enroute | onscene | nosignal
   const [qrModalVehicleId, setQrModalVehicleId] = useState(null);
+  const filter = controlledFilter ?? internalFilter;
+  const setFilter = (next) => {
+    setInternalFilter(next);
+    onChangeFilter?.(next);
+  };
 
   const openProvision = (id) => {
     if (onOpenProvisionModal) onOpenProvisionModal(id);
@@ -209,7 +216,7 @@ function AppleSheet({
 
   return (
     <div
-      className={`fixed bottom-[calc(0.75rem+var(--safe-bottom))] left-[calc(0.75rem+var(--safe-left))] z-30 pointer-events-auto w-[92vw] sm:w-[380px] glass-panel rounded-[24px] shadow-xl border border-slate-200/90 dark:border-white/10 flex flex-col overflow-hidden ${isDragging ? 'select-none' : ''}`}
+      className={`fixed bottom-[calc(0.75rem+var(--safe-bottom))] max-sm:bottom-[calc(4.75rem+var(--safe-bottom))] left-[calc(0.75rem+var(--safe-left))] z-30 pointer-events-auto w-[92vw] sm:w-[380px] glass-panel rounded-[24px] shadow-xl border border-slate-200/90 dark:border-white/10 flex flex-col overflow-hidden ${isDragging ? 'select-none' : ''}`}
       style={{ height }}
     >
       {/* Drag handle */}

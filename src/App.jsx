@@ -5,6 +5,7 @@ import FloatingControls from './components/FloatingControls';
 import AppleSheet from './components/AppleSheet';
 import DriverSetupModal from './components/DriverSetupModal';
 import ProvisioningQrModal from './components/ProvisioningQrModal';
+import MobileNav from './components/MobileNav';
 import { BASE_HOSPITAL } from './data/mockData';
 import { ACTIVE_FLEET } from './data/activeFleet';
 import { simulateFleetAtTime } from './utils/fleetSimulation';
@@ -47,6 +48,7 @@ export default function App() {
   const [provisionModalVehicleId, setProvisionModalVehicleId] = useState(null);
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
   const [detent, setDetent] = useState('peek'); // Default minimized to peek capsule
+  const [fleetFilter, setFleetFilter] = useState('all');
   const [isAutoTour, setIsAutoTour] = useState(true); // Default TV Wallboard Auto-Tour ON
   const [fitTrigger, setFitTrigger] = useState(0);
   const [actionTrigger, setActionTrigger] = useState(null);
@@ -524,6 +526,22 @@ export default function App() {
     setProvisionModalVehicleId(id || 'AMB-01');
   }, []);
 
+  const handleOpenMap = useCallback(() => {
+    setDetent('peek');
+  }, []);
+
+  const handleOpenFleet = useCallback(() => {
+    setSelectedVehicleId(null);
+    setFleetFilter('all');
+    setDetent('half');
+  }, []);
+
+  const handleOpenAlerts = useCallback(() => {
+    setSelectedVehicleId(null);
+    setFleetFilter('nosignal');
+    setDetent('half');
+  }, []);
+
   // Apple Sheet Action Handlers
   const handleLocateVehicle = useCallback(() => {
     if (selectedVehicleId) {
@@ -572,10 +590,7 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenDriverModal={() => setIsDriverModalOpen(true)}
-        onOpenFleet={() => {
-          setSelectedVehicleId(null);
-          setDetent('half');
-        }}
+        onOpenFleet={handleOpenFleet}
         connectionState={connectionState}
       />
 
@@ -596,6 +611,25 @@ export default function App() {
         onToggleDemoMode={handleToggleDemoMode}
       />
 
+      {/* Mobile-only bottom navigation and More sheet */}
+      <MobileNav
+        vehicleCount={vehicles.length}
+        onOpenMap={handleOpenMap}
+        onOpenFleet={handleOpenFleet}
+        onOpenAlerts={handleOpenAlerts}
+        onFitAll={handleFitAll}
+        onCenterBase={handleCenterBase}
+        onResetNorth={handleResetNorth}
+        showDistanceLines={showDistanceLines}
+        onToggleDistanceLines={handleToggleDistanceLines}
+        activeStyleKey={activeStyleKey}
+        onSelectStyle={setActiveStyleKey}
+        isDemoMode={isDemoMode}
+        onToggleDemoMode={handleToggleDemoMode}
+        isAutoTour={isAutoTour}
+        onToggleAutoTour={handleToggleAutoTour}
+      />
+
       {/* 4. Bottom-Left Floating Apple Sheet */}
       <AppleSheet
         vehicles={vehicles}
@@ -608,6 +642,8 @@ export default function App() {
         onOpenProvisionModal={handleOpenProvisionModal}
         detent={detent}
         onChangeDetent={setDetent}
+        filter={fleetFilter}
+        onChangeFilter={setFleetFilter}
         connectionState={connectionState}
       />
 
