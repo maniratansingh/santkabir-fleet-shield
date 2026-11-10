@@ -831,28 +831,6 @@ function MapView({
       });
 
       map.addLayer({
-        id: 'purvanchal-tier2-roads',
-        type: 'line',
-        source: 'purvanchal-tier2-source',
-        filter: ['==', '$type', 'LineString'],
-        minzoom: 10.8,
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': isDark ? '#475569' : '#94A3B8',
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            11, 1.2,
-            13, 2.0,
-            16, 3.8,
-          ],
-          'line-opacity': 0.7,
-        },
-      });
-
-      map.addLayer({
         id: 'purvanchal-tier2-dots',
         type: 'circle',
         source: 'purvanchal-tier2-source',
@@ -915,24 +893,6 @@ function MapView({
       map.addSource('purvanchal-tier3-source', {
         type: 'geojson',
         data: tier3DataRef.current || { type: 'FeatureCollection', features: [] },
-      });
-
-      map.addLayer({
-        id: 'purvanchal-tier3-paths',
-        type: 'line',
-        source: 'purvanchal-tier3-source',
-        filter: ['==', '$type', 'LineString'],
-        minzoom: 13.5,
-        paint: {
-          'line-color': isDark ? '#334155' : '#CBD5E1',
-          'line-width': [
-            'interpolate', ['linear'], ['zoom'],
-            13.5, 0.8,
-            16, 2.0,
-          ],
-          'line-dasharray': [2, 2],
-          'line-opacity': 0.65,
-        },
       });
 
       map.addLayer({

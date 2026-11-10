@@ -179,43 +179,6 @@ Object.entries(DISTRICT_BLOCKS).forEach(([district, distInfo]) => {
   });
 });
 
-// B. Secondary MDR Link Road Connectors (Connecting Blocks to NH-27)
-const mdrRoutes = [
-  // Basti to Rudhauli (SH-88)
-  [[82.7184, 26.7973], [82.7350, 26.8550], [82.7650, 26.9850]],
-  // Basti to Kalwari (SH-61)
-  [[82.7184, 26.7973], [82.7020, 26.7550], [82.6771, 26.7234]],
-  // Basti to Captainganj
-  [[82.7184, 26.7973], [82.6650, 26.7820], [82.6055, 26.7638]],
-  // Khalilabad to Mehdawal
-  [[83.0722, 26.7797], [83.0810, 26.8650], [83.0927, 26.9523]],
-  // Khalilabad to Dhanghata
-  [[83.0722, 26.7797], [83.0550, 26.6950], [83.0226, 26.6065]],
-  // Khalilabad to Semariyawan
-  [[83.0722, 26.7797], [83.0450, 26.8120], [83.0292, 26.8490]],
-  // Mehdawal to Bansi
-  [[83.0927, 26.9523], [83.0150, 27.0450], [82.9370, 27.1360]],
-  // Bansi to Naugarh
-  [[82.9370, 27.1360], [83.0120, 27.2150], [83.0850, 27.2920]],
-  // Domariyaganj to Bansi
-  [[82.6929, 27.0595], [82.8150, 27.0980], [82.9370, 27.1360]],
-  // Harraiya to Babhnan
-  [[82.4635, 26.7975], [82.4720, 26.8650], [82.4850, 26.9320]]
-];
-
-mdrRoutes.forEach((coords, idx) => {
-  t2Features.push({
-    type: 'Feature',
-    id: `t2-road-${idx + 1}`,
-    geometry: { type: 'LineString', coordinates: coords },
-    properties: {
-      name: `MDR Secondary Link ${idx + 1}`,
-      type: 'mdr_road',
-      tier: 2
-    }
-  });
-});
-
 const t2GeoJson = {
   type: 'FeatureCollection',
   metadata: {
@@ -273,23 +236,6 @@ t2Features.filter(f => f.geometry.type === 'Point').forEach((parent) => {
     });
 
     // Local single-lane branch path connecting hamlet to parent village
-    t3Features.push({
-      type: 'Feature',
-      id: `t3-path-${t3Id++}`,
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [pLon, pLat],
-          [Number(((pLon + hLon) / 2 + (rng() - 0.5) * 0.002).toFixed(5)), Number(((pLat + hLat) / 2 + (rng() - 0.5) * 0.002).toFixed(5))],
-          [hLon, hLat]
-        ]
-      },
-      properties: {
-        name: `${pName} Village Link Path`,
-        type: 'village_path',
-        tier: 3
-      }
-    });
   }
 });
 
