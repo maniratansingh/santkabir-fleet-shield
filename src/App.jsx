@@ -13,6 +13,15 @@ import { getNearestRuralLocation } from './utils/ruralLocator';
 import { getUniqueVehicleColor } from './utils/colors';
 import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
+// Demo fleet identity: one name only. The driver name is the device id.
+function toDriverFleet(fleet) {
+  return fleet.map((v) => {
+    const name = String(v.driverName || v.id || '').trim();
+    if (!name) return v;
+    return { ...v, id: name, name, driverName: '', driverPhone: '', plate: name };
+  });
+}
+
 export default function App() {
 
   // Demo simulation mode (OFF by default on refresh; click wand button or use ?demo to activate)
@@ -28,7 +37,7 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       if (params.has('dev') || params.has('demo')) {
-        return simulateFleetAtTime(ACTIVE_FLEET, Date.now());
+        return toDriverFleet(simulateFleetAtTime(ACTIVE_FLEET, Date.now()));
       }
     }
     return [];
@@ -46,7 +55,7 @@ export default function App() {
   const [connectionState, setConnectionState] = useState('connecting'); // connecting | live | polling | offline | demo
   const fleetStoreRef = useRef(new Map(
     typeof window !== 'undefined' && (new URLSearchParams(window.location.search).has('dev') || new URLSearchParams(window.location.search).has('demo'))
-      ? simulateFleetAtTime(ACTIVE_FLEET, Date.now()).map(v => [v.id, v])
+      ? toDriverFleet(simulateFleetAtTime(ACTIVE_FLEET, Date.now())).map(v => [v.id, v])
       : []
   ));
 
@@ -257,7 +266,7 @@ export default function App() {
 
       // PRIORITY 2: Explicit Demo Mode simulation (User activated via wand or ?demo)
       if (isDemoMode) {
-        const simulated = simulateFleetAtTime(ACTIVE_FLEET, now);
+        const simulated = toDriverFleet(simulateFleetAtTime(ACTIVE_FLEET, now));
         const simIds = new Set(simulated.map(v => v.id));
 
         // Clean any stale vehicles not in ACTIVE_FLEET
@@ -483,7 +492,7 @@ export default function App() {
     setIsDemoMode(prev => {
       const next = !prev;
       if (next) {
-        const demoFleet = simulateFleetAtTime(ACTIVE_FLEET, Date.now());
+        const demoFleet = toDriverFleet(simulateFleetAtTime(ACTIVE_FLEET, Date.now()));
         fleetStoreRef.current = new Map(demoFleet.map(v => [v.id, v]));
         setVehicles(demoFleet);
         showToast('Demo mode: 10 ambulances loaded', 'info');

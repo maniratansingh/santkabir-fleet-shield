@@ -22,41 +22,7 @@ import {
   Globe
 } from 'lucide-react';
 import { useSpringPresence } from '../hooks/useSpringPresence';
-
-const TRACCAR_SETTINGS = {
-  accuracy: 'highest',
-  distance: 0,
-  interval: 30,
-  angle: 0,
-  heartbeat: 60,
-  buffer: false,
-  wakelock: true,
-  stop_detection: true,
-  prefer_platform_providers: false,
-};
-
-const MAX_NAME_WORDS = 4;
-const MAX_NAME_LENGTH = 40;
-
-function sanitizeDriverName(raw) {
-  const collapsed = String(raw || '').replace(/\s+/g, ' ').replace(/^\s+/, '');
-  const words = collapsed.split(' ').slice(0, MAX_NAME_WORDS);
-  return words.join(' ').slice(0, MAX_NAME_LENGTH);
-}
-
-function buildTraccarUrl(server, id) {
-  try {
-    const url = new URL(server);
-    url.searchParams.set('id', id);
-    for (const [key, value] of Object.entries(TRACCAR_SETTINGS)) {
-      url.searchParams.set(key, String(value));
-    }
-    // Use %20 for spaces so every QR parser decodes the name identically.
-    return url.toString().replace(/\+/g, '%20');
-  } catch {
-    return '';
-  }
-}
+import { TRACCAR_SETTINGS, MAX_DRIVER_NAME_LENGTH, sanitizeDriverName, buildTraccarUrl } from '../utils/traccarProvisioning';
 
 export default function ProvisioningQrModal({
   isOpen,
@@ -396,8 +362,8 @@ export default function ProvisioningQrModal({
                       type="text"
                       value={driverName}
                       onChange={(e) => setDriverName(sanitizeDriverName(e.target.value))}
-                      placeholder="e.g. Ramesh Yadav"
-                      maxLength={MAX_NAME_LENGTH}
+                      placeholder="Enter driver name"
+                      maxLength={MAX_DRIVER_NAME_LENGTH}
                       autoCapitalize="words"
                       autoCorrect="off"
                       spellCheck={false}
@@ -424,7 +390,7 @@ export default function ProvisioningQrModal({
                       {canProvision ? 'This name becomes the Traccar device identifier.' : 'Enter a driver name to generate the QR.'}
                     </span>
                     <span className="type-caption text-slate-400 font-mono tabular-nums shrink-0">
-                      {driverName.length}/{MAX_NAME_LENGTH}
+                      {driverName.length}/{MAX_DRIVER_NAME_LENGTH}
                     </span>
                   </div>
                 </div>

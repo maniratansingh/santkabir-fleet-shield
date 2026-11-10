@@ -17,50 +17,40 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { useSpringPresence } from '../hooks/useSpringPresence';
+import { TRACCAR_SETTINGS, MAX_DRIVER_NAME_LENGTH, sanitizeDriverName, buildTraccarUrl } from '../utils/traccarProvisioning';
 
 export default function DriverSetupModal({ isOpen, onClose }) {
   const [selectedTab, setSelectedTab] = useState('provision'); // 'provision', 'traccar', or 'api'
-  const [deviceId, setDeviceId] = useState('AMB-ALPHA');
-  const [driverName, setDriverName] = useState('Ramesh Yadav');
+  const [driverName, setDriverName] = useState('');
   const [testSpeed, setTestSpeed] = useState(13.5); // knots (~25 km/h)
   const [copied, setCopied] = useState(false);
   const [pingStatus, setPingStatus] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const dialogRef = useRef(null);
+  const driverInputRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const wasOpenRef = useRef(false);
   const presence = useSpringPresence(isOpen, { fromScale: 0.96, fromY: 0, transformOrigin: 'center' });
 
-  const currentDomain = typeof window !== 'undefined' ? window.location.origin : 'https://fleet.mrps.in';
-  const effectiveId = deviceId.trim() || 'AMB-ALPHA';
-  const effectiveDriver = driverName.trim() || 'Assigned Driver';
-
-  // Strict provisioning schema per Master Integration Specification Section 1:
-  // "server": "https://fleet.mrps.in/api/track" (NO trailing slash)
-  const serverEndpoint = 'https://fleet.mrps.in/api/track';
-  const provisioningPayload = {
-    id: effectiveId,
-    server: serverEndpoint
-  };
-  const rawCompactJson = JSON.stringify(provisioningPayload);
-  const stringifiedJson = JSON.stringify(provisioningPayload, null, 2);
-
-  // Generate QR Code data URL
   useEffect(() => {
-    if (!isOpen) return;
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
-    QRCode.toDataURL(rawCompactJson, {
-      width: 280,
-      margin: 2,
-      errorCorrectionLevel: 'M',
-      color: {
-        dark: '#000000',
-        light: '#ffffff'
-      }
-    })
-      .then(url => setQrDataUrl(url))
-      .catch(err => console.error('Failed to generate QR Code in modal:', err));
-  }, [rawCompactJson, isOpen]);
+  // Reset only on open. Never reset the field while typing.
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      setDriverName('');
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
 
-  // Escape closes; Tab stays inside the dialog.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const timer = setTimeout(() => driverInputRef.current?.focus(), 80);
+    return () => clearTimeout(timer);
+  }, [isOpen]);
+
+  // Escape closes; Tab stays inside. Runs only on open/close.
   useEffect(() => {
     if (!isOpen) return undefined;
     const node = dialogRef.current;
@@ -69,12 +59,11 @@ export default function DriverSetupModal({ isOpen, onClose }) {
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
     const focusables = () =>
       Array.from(node.querySelectorAll(selector)).filter((el) => el.offsetParent !== null);
-    focusables()[0]?.focus();
 
     const onKey = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -92,7 +81,31 @@ export default function DriverSetupModal({ isOpen, onClose }) {
     };
     node.addEventListener('keydown', onKey);
     return () => node.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
+
+  const currentDomain = typeof window !== 'undefined' ? window.location.origin : 'https://fleet.mrps.in';
+  const serverEndpoint = 'https://fleet.mrps.in/api/track';
+  const cleanDriverName = sanitizeDriverName(driverName).trim();
+  const canProvision = cleanDriverName.length > 0;
+  const traccarUrl = canProvision ? buildTraccarUrl(serverEndpoint, cleanDriverName) : '';
+
+  useEffect(() => {
+    if (!isOpen || !traccarUrl) {
+      setQrDataUrl('');
+      return;
+    }
+    QRCode.toDataURL(traccarUrl, {
+      width: 280,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#000000',
+        light: '#ffffff'
+      }
+    })
+      .then(url => setQrDataUrl(url))
+      .catch(err => console.error('Failed to generate QR Code in modal:', err));
+  }, [traccarUrl, isOpen]);
 
   if (!isOpen && !presence.mounted) return null;
 
@@ -103,15 +116,17 @@ export default function DriverSetupModal({ isOpen, onClose }) {
   };
 
   const handleDownloadQr = () => {
-    if (!qrDataUrl) return;
+    if (!qrDataUrl || !cleanDriverName) return;
+    const safeName = cleanDriverName.replace(/[^a-z0-9]+/gi, '_');
     const link = document.createElement('a');
-    link.download = `FleetShield_Provision_${effectiveId}.png`;
+    link.download = `Traccar_${safeName}.png`;
     link.href = qrDataUrl;
     link.click();
   };
 
   // Test OsmAnd HTTP POST ping with URL query parameters
   const sendTestPing = async () => {
+    if (!canProvision) return;
     setPingStatus('sending');
     try {
       const nowEpoch = Math.floor(Date.now() / 1000);
@@ -120,8 +135,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
 
       // OsmAnd protocol: POST /api/track?id=...&timestamp=...&lat=...&lon=...&speed=...&bearing=...
       const queryParams = new URLSearchParams({
-        id: effectiveId,
-        driver: effectiveDriver,
+        id: cleanDriverName,
         timestamp: String(nowEpoch),
         lat: testLat,
         lon: testLon,
@@ -152,14 +166,13 @@ export default function DriverSetupModal({ isOpen, onClose }) {
     }
   };
 
-  const curlOsmAnd = `curl -X POST "${currentDomain}/api/track?id=${encodeURIComponent(effectiveId)}&timestamp=${Math.floor(Date.now() / 1000)}&lat=26.7912&lon=82.6841&speed=13.5&bearing=90&altitude=120.0&accuracy=10.0&batt=85.0&charge=true" \\
+  const curlOsmAnd = `curl -X POST "${currentDomain}/api/track?id=${encodeURIComponent(cleanDriverName || 'DRIVER_NAME')}&timestamp=${Math.floor(Date.now() / 1000)}&lat=26.7912&lon=82.6841&speed=13.5&bearing=90&altitude=120.0&accuracy=10.0&batt=85.0&charge=true" \\
   -H "Content-Type: application/x-www-form-urlencoded"`;
 
   const curlApiJson = `curl -X POST "${currentDomain}/api/track" \\
   -H "Content-Type: application/json" \\
   -d '{
-    "id": "${effectiveId}",
-    "driver": "${effectiveDriver}",
+    "id": "${cleanDriverName || 'DRIVER_NAME'}",
     "lat": 26.79125,
     "lon": 82.68410,
     "speed": ${testSpeed},
@@ -235,7 +248,7 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             }`}
           >
             <Smartphone className="w-3.5 h-3.5 max-sm:hidden" />
-            <span>Android QR</span>
+            <span>Traccar QR</span>
           </button>
 
           <button
@@ -275,36 +288,56 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             <div className="p-3.5 rounded-2xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200/80 dark:border-sky-800/60 flex items-start gap-2.5">
               <Sparkles className="w-5 h-5 text-sky-600 dark:text-cyan-400 shrink-0 mt-0.5" />
               <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                <strong>1-Scan Google ML Kit Provisioning:</strong> The customized Android app has no manual configuration screens for drivers. Point the phone's camera at this QR code from the Admin Settings to lock device credentials and start tracking.
+                <strong>Traccar Client QR provisioning:</strong> Open Settings in Traccar Client and tap the QR scan icon. The driver name and all tracking settings apply automatically.
               </div>
             </div>
 
-            {/* Device ID Input Form */}
+            {/* Driver name input — one identity only */}
             <div className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
-              <span className="text-xs font-bold text-slate-800 dark:text-white block">
-                Target Vehicle Identifier
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="ui-section-label">Vehicle ID</label>
-                  <input
-                    type="text"
-                    value={deviceId}
-                    onChange={(e) => setDeviceId(e.target.value)}
-                    placeholder="e.g. VEHICLE-102"
-                    className="w-full mt-0.5 px-3 py-1.5 text-xs font-mono font-bold rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
-                </div>
-                <div>
-                  <label className="ui-section-label">Driver Name</label>
-                  <input
-                    type="text"
-                    value={driverName}
-                    onChange={(e) => setDriverName(e.target.value)}
-                    placeholder="e.g. Ramesh Yadav"
-                    className="w-full mt-0.5 px-3 py-1.5 text-xs rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
-                </div>
+              <div className="flex items-center justify-between">
+                <label className="ui-section-label">
+                  Driver Name (<code className="lowercase text-sky-600 dark:text-cyan-400">id</code>)
+                </label>
+                <span className="type-caption text-slate-500 dark:text-slate-400 font-mono">
+                  Traccar device ID
+                </span>
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  ref={driverInputRef}
+                  type="text"
+                  value={driverName}
+                  onChange={(e) => setDriverName(sanitizeDriverName(e.target.value))}
+                  placeholder="Enter driver name"
+                  maxLength={MAX_DRIVER_NAME_LENGTH}
+                  autoCapitalize="words"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="w-full px-3 py-1.5 pr-9 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+                {driverName && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setDriverName('');
+                      driverInputRef.current?.focus();
+                    }}
+                    className="absolute right-2 p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    title="Clear"
+                    aria-label="Clear driver name"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className={`type-caption ${canProvision ? 'text-slate-500 dark:text-slate-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                  {canProvision ? 'This name becomes the Traccar device identifier.' : 'Enter a driver name to generate the QR.'}
+                </span>
+                <span className="type-caption text-slate-400 font-mono tabular-nums shrink-0">
+                  {driverName.length}/{MAX_DRIVER_NAME_LENGTH}
+                </span>
               </div>
             </div>
 
@@ -312,56 +345,64 @@ export default function DriverSetupModal({ isOpen, onClose }) {
             <div className="p-4 rounded-[18px] bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center">
               <div className="p-3 bg-white rounded-2xl shadow-md border border-slate-200">
                 {qrDataUrl ? (
-                  <img 
-                    src={qrDataUrl} 
-                    alt={`Provisioning QR Code for ${effectiveId}`}
+                  <img
+                    src={qrDataUrl}
+                    alt={cleanDriverName ? `Traccar provisioning QR for ${cleanDriverName}` : 'Traccar provisioning QR'}
                     className="w-48 h-48 block object-contain"
                   />
                 ) : (
-                  <div className="w-48 h-48 flex items-center justify-center text-slate-400">
-                    Generating QR...
+                  <div className="w-48 h-48 flex items-center justify-center text-center px-4 text-slate-400 font-mono text-xs">
+                    {canProvision ? 'Generating QR...' : 'Enter a driver name'}
                   </div>
                 )}
               </div>
 
               <div className="mt-2.5 flex items-center gap-2">
-                <span className="text-xs font-mono font-bold text-slate-800 dark:text-white">
-                  {effectiveId}
+                <span className="text-xs font-mono font-bold text-slate-800 dark:text-white truncate max-w-[46%]">
+                  {cleanDriverName || 'Driver name'}
                 </span>
                 <span className="text-slate-400 text-xs">•</span>
-                <span className="text-xs text-slate-500 font-mono">
+                <span className="text-xs text-slate-500 font-mono truncate max-w-[46%]">
                   {serverEndpoint}
                 </span>
               </div>
 
               <div className="flex items-center gap-2 mt-2.5">
                 <button
+                  type="button"
                   onClick={handleDownloadQr}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  disabled={!canProvision || !qrDataUrl}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download QR</span>
                 </button>
                 <button
-                  onClick={() => copyText(rawCompactJson)}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                  type="button"
+                  onClick={() => copyText(traccarUrl)}
+                  disabled={!canProvision || !traccarUrl}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? 'Copied' : 'Copy JSON'}</span>
+                  <span>{copied ? 'Copied URI!' : 'Copy URI'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Strict Schema JSON Preview */}
+            {/* Traccar URI Preview */}
             <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[0.6875rem] space-y-1">
               <div className="ui-section-label flex items-center justify-between">
-                <span>Exact Provisioning Schema (Section 1)</span>
-                <span className="text-emerald-400">Pure JSON</span>
+                <span>Traccar QR URI</span>
+                <span className="text-emerald-400">HTTPS URI</span>
               </div>
-              <pre className="p-2 bg-slate-950 rounded-lg text-emerald-400 text-xs overflow-x-auto leading-relaxed">
-                {stringifiedJson}
+              <pre className="p-2 bg-slate-950 rounded-lg text-emerald-400 text-xs overflow-x-auto leading-relaxed whitespace-pre-wrap break-all">
+                {traccarUrl || 'Enter a driver name to generate the Traccar URI.'}
               </pre>
             </div>
+
+            <p className="type-caption text-slate-500 dark:text-slate-400">
+              After scanning, open <strong>Advanced settings</strong> and set the settings password manually.
+            </p>
           </div>
         )}
 
@@ -412,12 +453,12 @@ export default function DriverSetupModal({ isOpen, onClose }) {
                     Test OsmAnd POST Request
                   </h6>
                   <p className="text-[0.6875rem] text-slate-500">
-                    Fire telemetry for <strong>{effectiveId}</strong> with speed in knots
+                    Fire telemetry for <strong>{cleanDriverName || '—'}</strong> with speed in knots
                   </p>
                 </div>
                 <button
                   onClick={sendTestPing}
-                  disabled={pingStatus === 'sending'}
+                  disabled={pingStatus === 'sending' || !canProvision}
                   className={`px-3.5 py-2 rounded-xl text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5 transition-all ${
                     pingStatus === 'success' 
                       ? 'bg-emerald-600' 
