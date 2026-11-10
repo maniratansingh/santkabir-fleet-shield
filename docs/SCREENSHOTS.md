@@ -72,7 +72,7 @@ selected or hovered vehicle always shows its tag.
     <td width="50%">
       <img src="assets/screenshots/provisioning-light.jpg" alt="Fleet provisioning dialog" />
       <br /><strong>Provisioning</strong><br />
-      Vehicle picker, server selection and the one-scan QR code.
+      Driver name, server selection and the one-scan Traccar QR. All tracking settings are inside the QR.
     </td>
   </tr>
 </table>

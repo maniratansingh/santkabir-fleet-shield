@@ -183,6 +183,8 @@ function AppleSheet({
   };
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
+  const selectedDriverName = selectedVehicle?.driverName?.trim() || '';
+  const showSelectedDriver = Boolean(selectedDriverName) && selectedDriverName.toUpperCase() !== String(selectedVehicle?.id || '').toUpperCase();
   const selectedState = selectedVehicle ? getFleetState(selectedVehicle) : null;
   const { height, isDragging, isExpanded, handleProps } = useDraggableSheet({
     detent,
@@ -234,7 +236,7 @@ function AppleSheet({
             }
           }}
           aria-label={selectedVehicle
-            ? `${selectedVehicle.name}, driver ${selectedVehicle.driverName}, ${selectedVehicle.speed} kilometres per hour, view fleet list`
+            ? `${selectedVehicle.name}${showSelectedDriver ? `, driver ${selectedDriverName}` : ''}, ${selectedVehicle.speed} kilometres per hour, view fleet list`
             : `Fleet overview, ${vehicles.length} ambulances, ${enRouteCount} en route, ${onSceneCount} on scene, ${atBaseCount} at base, view fleet list`}
           className="ui-press-row px-4 pb-2 flex-1 flex items-center justify-between cursor-pointer select-none"
         >
@@ -248,7 +250,7 @@ function AppleSheet({
               </span>
               <span className="type-caption text-slate-500 dark:text-slate-400 truncate block mt-0.5">
                 {selectedVehicle
-                  ? `Driver: ${selectedVehicle.driverName} · ${selectedVehicle.speed} km/h`
+                  ? `${showSelectedDriver ? `Driver: ${selectedDriverName} · ` : ''}${selectedVehicle.speed} km/h`
                   : vehicles.length === 0
                     ? connectionState === 'offline'
                       ? 'Telemetry offline · retrying'
@@ -315,12 +317,14 @@ function AppleSheet({
                       </div>
                     </div>
                   </div>
-                  <div className="type-footnote text-slate-500 dark:text-slate-400 mt-1 truncate">
-                    Driver:{' '}
-                    <strong className="text-slate-800 dark:text-slate-200 font-semibold">
-                      {selectedVehicle.driverName || 'Assigned driver'}
-                    </strong>
-                  </div>
+                  {showSelectedDriver && (
+                    <div className="type-footnote text-slate-500 dark:text-slate-400 mt-1 truncate">
+                      Driver:{' '}
+                      <strong className="text-slate-800 dark:text-slate-200 font-semibold">
+                        {selectedDriverName}
+                      </strong>
+                    </div>
+                  )}
                   <div className="type-caption text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-1 truncate">
                     <MapPin className="w-3 h-3 shrink-0" />
                     <span className="truncate">
@@ -342,10 +346,10 @@ function AppleSheet({
                   </div>
                   <div className="text-left">
                     <span className="type-footnote font-semibold text-slate-900 dark:text-white block leading-none">
-                      Provision Android app
+                      Provision Traccar app
                     </span>
                     <span className="type-caption text-slate-500 dark:text-slate-400 font-normal">
-                      One-scan QR for ML Kit
+                      One-scan driver QR
                     </span>
                   </div>
                 </div>
@@ -355,39 +359,45 @@ function AppleSheet({
                 </span>
               </button>
 
-              {/* Driver contact */}
-              <div className="ui-card p-3 flex items-center justify-between my-2">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className="w-10 h-10 rounded-[12px] text-white flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: selectedVehicle.lineColor || '#007AFF' }}
-                  >
-                    <User className="w-5 h-5" />
+              {/* Driver contact — only when the feed provides contact data */}
+              {(showSelectedDriver || selectedVehicle.driverPhone) && (
+                <div className="ui-card p-3 flex items-center justify-between my-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-10 h-10 rounded-[12px] text-white flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: selectedVehicle.lineColor || '#007AFF' }}
+                    >
+                      <User className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="ui-section-label">
+                        Driver
+                      </div>
+                      {showSelectedDriver && (
+                        <div className="type-subhead text-slate-900 dark:text-white truncate mt-0.5">
+                          {selectedDriverName}
+                        </div>
+                      )}
+                      {selectedVehicle.driverPhone && (
+                        <div className="type-caption font-mono text-slate-500 dark:text-slate-400 tnum">
+                          {selectedVehicle.driverPhone}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <div className="ui-section-label">
-                      Ambulance driver
-                    </div>
-                    <div className="type-subhead text-slate-900 dark:text-white truncate mt-0.5">
-                      {selectedVehicle.driverName || 'Driver'}
-                    </div>
-                    <div className="type-caption font-mono text-slate-500 dark:text-slate-400 tnum">
-                      {selectedVehicle.driverPhone || '+91 94151 40719'}
-                    </div>
-                  </div>
-                </div>
 
-                {selectedVehicle.driverPhone && (
-                  <a
-                    href={`tel:${selectedVehicle.driverPhone}`}
-                    aria-label={`Call ${selectedVehicle.driverName || 'driver'}`}
-                    className="ui-btn ui-btn-sm ui-btn-success shrink-0"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                    <span>Call driver</span>
-                  </a>
-                )}
-              </div>
+                  {selectedVehicle.driverPhone && (
+                    <a
+                      href={`tel:${selectedVehicle.driverPhone}`}
+                      aria-label={`Call ${selectedVehicle.driverName || 'driver'}`}
+                      className="ui-btn ui-btn-sm ui-btn-success shrink-0"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      <span>Call driver</span>
+                    </a>
+                  )}
+                </div>
+              )}
 
               {/* Live position and navigation */}
               <div className="ui-card my-2 p-3 space-y-2.5">
@@ -499,15 +509,17 @@ function AppleSheet({
                   <span className="type-caption font-medium text-slate-600 dark:text-slate-300">Route</span>
                 </button>
 
-                <a
-                  href={`tel:${selectedVehicle.driverPhone || '+919415140719'}`}
-                  className="ui-press flex flex-col items-center gap-1.5 text-center cursor-pointer group"
-                >
-                  <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <Phone className="w-4 h-4" />
-                  </span>
-                  <span className="type-caption font-medium text-slate-600 dark:text-slate-300">Call</span>
-                </a>
+                {selectedVehicle.driverPhone && (
+                  <a
+                    href={`tel:${selectedVehicle.driverPhone}`}
+                    className="ui-press flex flex-col items-center gap-1.5 text-center cursor-pointer group"
+                  >
+                    <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <Phone className="w-4 h-4" />
+                    </span>
+                    <span className="type-caption font-medium text-slate-600 dark:text-slate-300">Call</span>
+                  </a>
+                )}
 
                 <button
                   type="button"
@@ -669,7 +681,6 @@ function AppleSheet({
           isOpen={Boolean(qrModalVehicleId)}
           onClose={() => setQrModalVehicleId(null)}
           initialVehicleId={qrModalVehicleId}
-          availableVehicles={vehicles}
         />
       )}
     </div>

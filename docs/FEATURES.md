@@ -59,12 +59,12 @@ is removed from the hub state.
 
 | Feature | Where | Behaviour |
 |---|---|---|
-| QR provisioning | Vehicle row → Provision | Pick a vehicle, choose the server, download or copy the QR. |
+| QR provisioning | Vehicle row → Provision | Enter the driver name, choose the server, download or copy the Traccar QR. |
 | Telemetry setup | Island radio button | Android QR, OsmAnd and REST API tabs. |
 | OsmAnd contract | Telemetry setup | `/api/track` with URL-encoded query parameters. Speed is in knots. |
 | REST contract | Telemetry setup | JSON or form posts to `/api/track` or `/api/location`. |
 | Test ingestion | Provisioning dialog | Sends a test packet and reports the response and latency. |
-| Protocol tab | Provisioning dialog | Shows the exact JSON schema and field list. |
+| Protocol tab | Provisioning dialog | Shows the Traccar QR URI and the settings it applies. |
 
 ## Presentation
 

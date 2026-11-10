@@ -1833,7 +1833,8 @@ function MapView({
       const speedStr = isGap 
         ? 'Last Seen' 
         : (isParked ? 'Standby' : (v.speed > 0 ? `${v.speed} km/h` : 'Standby'));
-      const driverName = v.driverName || 'Driver';
+      const driverName = String(v.driverName || '').trim();
+      const showDriver = Boolean(driverName) && driverName.toUpperCase() !== String(v.id).toUpperCase();
       const distStr = `${liveDist} km Base`;
       const targetBearing = Number(v.bearing || 0);
 
@@ -1861,8 +1862,8 @@ function MapView({
                 <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
                 <span class="marker-id font-extrabold text-[0.6875rem] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
-                <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
-                <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
+                <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold" style="display:${showDriver ? '' : 'none'};">${driverName}</span>
+                <span class="marker-sep marker-sep-after-driver text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true" style="display:${showDriver ? '' : 'none'};">•</span>
                 <span class="marker-speed">${speedStr}</span>
                 <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                 <span class="marker-status px-1.5 py-0.2 rounded-md text-[0.625rem] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
@@ -1906,12 +1907,14 @@ function MapView({
           dotEl: el.querySelector('.marker-dot'),
           idEl: el.querySelector('.marker-id'),
           driverEl: el.querySelector('.marker-driver'),
+          driverSepEl: el.querySelector('.marker-sep-after-driver'),
           speedEl: el.querySelector('.marker-speed'),
           statusEl: el.querySelector('.marker-status'),
           distEl: el.querySelector('.marker-dist'),
           haloEl: el.querySelector('.selection-halo'),
           rotatorEl: el.querySelector('.ambulance-rotator'),
           prevDriver: driverName,
+          prevShowDriver: showDriver,
           prevSpeed: speedStr,
           prevDist: distStr,
           prevStatusText: statusBadgeText,
@@ -1946,8 +1949,8 @@ function MapView({
                   <span class="marker-dot w-2 h-2 rounded-full shrink-0" style="background-color: ${badgeColor}; box-shadow: 0 0 4px ${badgeColor}99;"></span>
                   <span class="marker-id font-extrabold text-[0.6875rem] tracking-tight" style="color: ${badgeColor};">${v.id}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
-                  <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold">${driverName}</span>
-                  <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
+                  <span class="marker-driver text-slate-700 dark:text-slate-200 font-semibold" style="display:${showDriver ? '' : 'none'};">${driverName}</span>
+                  <span class="marker-sep marker-sep-after-driver text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true" style="display:${showDriver ? '' : 'none'};">•</span>
                   <span class="marker-speed">${speedStr}</span>
                   <span class="marker-sep text-slate-400 dark:text-slate-600 font-normal" aria-hidden="true">•</span>
                   <span class="marker-status px-1.5 py-0.2 rounded-md text-[0.625rem] font-bold ${statusBadgeClass}">${statusBadgeText}</span>
@@ -1969,6 +1972,7 @@ function MapView({
           markerObj.dotEl = markerObj.element.querySelector('.marker-dot');
           markerObj.idEl = markerObj.element.querySelector('.marker-id');
           markerObj.driverEl = markerObj.element.querySelector('.marker-driver');
+          markerObj.driverSepEl = markerObj.element.querySelector('.marker-sep-after-driver');
           markerObj.speedEl = markerObj.element.querySelector('.marker-speed');
           markerObj.statusEl = markerObj.element.querySelector('.marker-status');
           markerObj.distEl = markerObj.element.querySelector('.marker-dist');
@@ -1979,6 +1983,7 @@ function MapView({
           markerObj.clampY = 0;
           markerObj.prevSelected = isSelected;
           markerObj.prevDriver = driverName;
+          markerObj.prevShowDriver = showDriver;
           markerObj.prevSpeed = speedStr;
           markerObj.prevDist = distStr;
           markerObj.prevStatusText = statusBadgeText;
@@ -2001,10 +2006,17 @@ function MapView({
           markerObj.prevShelf = shelf;
 
           // In-Place Text Updates (100% Flicker-Free, 0ms overhead)
-          if (markerObj.driverEl && markerObj.prevDriver !== driverName) {
-            markerObj.driverEl.textContent = driverName;
-            markerObj.prevDriver = driverName;
+          if (markerObj.driverEl) {
+            if (markerObj.prevDriver !== driverName) {
+              markerObj.driverEl.textContent = driverName;
+              markerObj.prevDriver = driverName;
+            }
+            markerObj.driverEl.style.display = showDriver ? '' : 'none';
           }
+          if (markerObj.driverSepEl) {
+            markerObj.driverSepEl.style.display = showDriver ? '' : 'none';
+          }
+          markerObj.prevShowDriver = showDriver;
           if (markerObj.speedEl && markerObj.prevSpeed !== speedStr) {
             markerObj.speedEl.textContent = speedStr;
             markerObj.prevSpeed = speedStr;

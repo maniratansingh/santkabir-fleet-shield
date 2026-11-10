@@ -133,7 +133,7 @@ The system pairs a hardened, private Android background client (`santkabir-fleet
     <td width="50%">
       <img src="docs/assets/screenshots/provisioning-light.jpg" alt="Provisioning dialog" />
       <br /><strong>Provisioning</strong><br />
-      Vehicle picker, server selection and a one-scan QR code.
+      Driver name, server selection and a one-scan Traccar QR.
     </td>
     <td width="50%">
       <img src="docs/assets/screenshots/telemetry-light.jpg" alt="Telemetry and tracker setup" />
@@ -317,6 +317,9 @@ through the legacy Pages dashboard. `wrangler.toml` binds one SQLite-backed
 The system is fully integrated with the customized **Sant Kabir Fleet Shield Android App** utilizing the **Traccar OsmAnd Protocol**.
 
 ### 1. The Provisioning Contract (QR Code)
+
+> The current **Provision** dialog generates a **Traccar Client URI QR**: driver name plus tracking settings. The JSON `{ id, server }` schema below is kept for the legacy Sant Kabir Android app.
+
 The Android app has been stripped of manual configuration screens for drivers. Devices are provisioned by the Fleet Administrator scanning a QR Code generated directly on the web dashboard (via the **View Vehicle** panel or **Telemetry Modal**).
 
 **Strict QR Code Schema:**

@@ -23,14 +23,48 @@ import {
 } from 'lucide-react';
 import { useSpringPresence } from '../hooks/useSpringPresence';
 
-export default function ProvisioningQrModal({ 
-  isOpen, 
-  onClose, 
-  initialVehicleId = 'AMB-01',
-  availableVehicles = []
+const TRACCAR_SETTINGS = {
+  accuracy: 'highest',
+  distance: 0,
+  interval: 30,
+  angle: 0,
+  heartbeat: 60,
+  buffer: false,
+  wakelock: true,
+  stop_detection: true,
+  prefer_platform_providers: false,
+};
+
+const MAX_NAME_WORDS = 4;
+const MAX_NAME_LENGTH = 40;
+
+function sanitizeDriverName(raw) {
+  const collapsed = String(raw || '').replace(/\s+/g, ' ').replace(/^\s+/, '');
+  const words = collapsed.split(' ').slice(0, MAX_NAME_WORDS);
+  return words.join(' ').slice(0, MAX_NAME_LENGTH);
+}
+
+function buildTraccarUrl(server, id) {
+  try {
+    const url = new URL(server);
+    url.searchParams.set('id', id);
+    for (const [key, value] of Object.entries(TRACCAR_SETTINGS)) {
+      url.searchParams.set(key, String(value));
+    }
+    // Use %20 for spaces so every QR parser decodes the name identically.
+    return url.toString().replace(/\+/g, '%20');
+  } catch {
+    return '';
+  }
+}
+
+export default function ProvisioningQrModal({
+  isOpen,
+  onClose,
+  initialVehicleId = '',
 }) {
   const [activeTab, setActiveTab] = useState('qr'); // 'qr', 'test', 'specs'
-  const [vehicleId, setVehicleId] = useState(initialVehicleId || 'AMB-01');
+  const [driverName, setDriverName] = useState('');
   const [serverMode, setServerMode] = useState('production'); // 'production', 'local', 'custom'
   const [customServerUrl, setCustomServerUrl] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -39,14 +73,32 @@ export default function ProvisioningQrModal({
   const [pingDetails, setPingDetails] = useState(null);
   const [clearStatus, setClearStatus] = useState(false);
   const dialogRef = useRef(null);
+  const inputRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  const wasOpenRef = useRef(false);
   const presence = useSpringPresence(isOpen, { fromScale: 0.96, fromY: 0, transformOrigin: 'center' });
 
-  // Sync initialVehicleId when opened
+  // Keep the latest close handler without re-running the focus trap.
   useEffect(() => {
-    if (initialVehicleId) {
-      setVehicleId(initialVehicleId.toUpperCase().trim());
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // Prefill only when the dialog opens. Never reset the field while typing.
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      const incoming = String(initialVehicleId || '').trim();
+      const looksLikeVehicleCode = /^(AMB|VEHICLE|SK)-/i.test(incoming);
+      setDriverName(sanitizeDriverName(looksLikeVehicleCode ? '' : incoming));
     }
-  }, [initialVehicleId, isOpen]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen, initialVehicleId]);
+
+  // Focus the name field once on open.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const timer = setTimeout(() => inputRef.current?.focus(), 80);
+    return () => clearTimeout(timer);
+  }, [isOpen]);
 
   // Escape closes; Tab stays inside the dialog.
   useEffect(() => {
@@ -57,12 +109,11 @@ export default function ProvisioningQrModal({
       'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
     const focusables = () =>
       Array.from(node.querySelectorAll(selector)).filter((el) => el.offsetParent !== null);
-    focusables()[0]?.focus();
 
     const onKey = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -80,13 +131,12 @@ export default function ProvisioningQrModal({
     };
     node.addEventListener('keydown', onKey);
     return () => node.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
-  // Determine effective server URL strictly per Master Integration Specification:
-  // "server": "https://fleet.mrps.in/api/track" (NO trailing slash)
+  // Determine effective server URL
   const productionServer = 'https://fleet.mrps.in/api/track';
-  const localServer = typeof window !== 'undefined' 
-    ? `${window.location.origin}/api/track` 
+  const localServer = typeof window !== 'undefined'
+    ? `${window.location.origin}/api/track`
     : 'http://localhost:3000/api/track';
 
   let effectiveServer = productionServer;
@@ -96,22 +146,17 @@ export default function ProvisioningQrModal({
     effectiveServer = customServerUrl.trim().replace(/\/+$/, '') || productionServer;
   }
 
-  const cleanVehicleId = (vehicleId || 'AMB-01').trim().toUpperCase();
+  const cleanDriverName = driverName.trim();
+  const canProvision = cleanDriverName.length > 0;
+  const traccarUrl = canProvision ? buildTraccarUrl(effectiveServer, cleanDriverName) : '';
 
-  // Strict JSON payload per Master Integration Specification Section 1:
-  // { "id": "UNIQUE_VEHICLE_ID", "server": "https://fleet.mrps.in/api/track" }
-  const provisioningPayload = {
-    id: cleanVehicleId,
-    server: effectiveServer
-  };
-  const stringifiedJson = JSON.stringify(provisioningPayload, null, 2);
-  const rawCompactJson = JSON.stringify(provisioningPayload);
-
-  // Generate crisp optical-grade QR Code data URL
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !traccarUrl) {
+      setQrDataUrl('');
+      return;
+    }
 
-    QRCode.toDataURL(rawCompactJson, {
+    QRCode.toDataURL(traccarUrl, {
       width: 360,
       margin: 2,
       errorCorrectionLevel: 'M',
@@ -122,26 +167,29 @@ export default function ProvisioningQrModal({
     })
       .then(url => setQrDataUrl(url))
       .catch(err => console.error('Failed to generate QR Code:', err));
-  }, [rawCompactJson, isOpen]);
+  }, [traccarUrl, isOpen]);
 
   if (!isOpen && !presence.mounted) return null;
 
-  const handleCopyJson = () => {
-    navigator.clipboard.writeText(rawCompactJson);
+  const handleCopyUri = () => {
+    if (!traccarUrl) return;
+    navigator.clipboard.writeText(traccarUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleDownloadQr = () => {
-    if (!qrDataUrl) return;
+    if (!qrDataUrl || !cleanDriverName) return;
+    const safeName = cleanDriverName.replace(/[^a-z0-9]+/gi, '_');
     const link = document.createElement('a');
-    link.download = `FleetShield_Provision_${cleanVehicleId}.png`;
+    link.download = `Traccar_${safeName}.png`;
     link.href = qrDataUrl;
     link.click();
   };
 
   // Test firing a live OsmAnd URL-query POST ping
   const handleTestPing = async (overrideSpeed = 13.5) => {
+    if (!canProvision) return;
     setPingStatus('sending');
     setPingDetails(null);
     try {
@@ -156,7 +204,7 @@ export default function ProvisioningQrModal({
       const charge = true;
 
       const params = new URLSearchParams({
-        id: cleanVehicleId,
+        id: cleanDriverName,
         timestamp: String(nowEpochSeconds),
         lat: testLat,
         lon: testLon,
@@ -224,14 +272,7 @@ export default function ProvisioningQrModal({
     }
   };
 
-  // Standard presets for emergency medical fleet
-  const standardPresets = ['AMB-01', 'AMB-02', 'AMB-LUCKNOW', 'AMB-GORAKHPUR', 'AMB-VARANASI'];
-  const allSuggested = Array.from(new Set([
-    ...availableVehicles.map(v => v.id),
-    ...standardPresets
-  ])).filter(Boolean);
-
-  const curlExample = `curl -X POST "${effectiveServer}?id=${encodeURIComponent(cleanVehicleId)}&timestamp=$(date +%s)&lat=26.7973&lon=82.7184&speed=13.5&bearing=90&altitude=120.0&accuracy=10.0&batt=90.0&charge=true" \\
+  const curlExample = `curl -X POST "${effectiveServer}?id=${encodeURIComponent(cleanDriverName || 'DRIVER_NAME')}&timestamp=$(date +%s)&lat=26.7973&lon=82.7184&speed=13.5&bearing=90&altitude=120.0&accuracy=10.0&batt=90.0&charge=true" \\
   -H "Content-Type: application/x-www-form-urlencoded"`;
 
   return (
@@ -259,14 +300,14 @@ export default function ProvisioningQrModal({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 id="provisioning-dialog-title" className="type-headline text-slate-900 dark:text-white">
-                  Fleet provisioning
+                  Driver provisioning
                 </h3>
                 <span className="ui-chip ui-chip-accent">
-                  ML Kit
+                  Traccar QR
                 </span>
               </div>
               <p className="type-caption text-slate-500 dark:text-slate-400 mt-0.5">
-                Sant Kabir Fleet Shield · Android app & backend integration
+                Traccar Client · one driver name, all tracking settings
               </p>
             </div>
           </div>
@@ -336,62 +377,57 @@ export default function ProvisioningQrModal({
             <div className="space-y-4 animate-in fade-in duration-150">
               
               <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_320px] md:items-start">
-              {/* Vehicle ID & Server Config Bar */}
+              {/* Driver name & server configuration */}
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-3">
                 
-                {/* Vehicle ID Input */}
+                {/* Driver Name Input — the only identity field */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="ui-section-label">
-                      Vehicle Identifier (<code className="lowercase text-sky-600 dark:text-cyan-400">id</code>)
+                      Driver Name (<code className="lowercase text-sky-600 dark:text-cyan-400">id</code>)
                     </label>
                     <span className="type-caption text-slate-500 dark:text-slate-400 font-mono">
-                      Database Device Key
+                      Traccar device ID
                     </span>
                   </div>
                   <div className="relative flex items-center">
                     <input
+                      ref={inputRef}
                       type="text"
-                      value={vehicleId}
-                      onChange={(e) => setVehicleId(e.target.value.toUpperCase())}
-                      placeholder="e.g. AMB-01 or VEHICLE-102"
-                      className="w-full px-3.5 py-2 text-sm font-mono font-bold rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white uppercase focus:outline-none focus:ring-2 focus:ring-sky-500 pr-9"
+                      value={driverName}
+                      onChange={(e) => setDriverName(sanitizeDriverName(e.target.value))}
+                      placeholder="e.g. Ramesh Yadav"
+                      maxLength={MAX_NAME_LENGTH}
+                      autoCapitalize="words"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="w-full px-3.5 py-2 pr-9 text-sm font-semibold rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                     />
-                    {vehicleId && (
+                    {driverName && (
                       <button
-                        onClick={() => setVehicleId('')}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setDriverName('');
+                          inputRef.current?.focus();
+                        }}
                         className="absolute right-2.5 p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                         title="Clear"
+                        aria-label="Clear driver name"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
-                </div>
-
-                {/* Quick-Select Suggestion Chips */}
-                {allSuggested.length > 0 && (
-                  <div className="pt-0.5">
-                    <span className="ui-section-label block mb-1.5">
-                      Quick Select Vehicle Designation:
+                  <div className="flex items-center justify-between gap-2 mt-1.5">
+                    <span className={`type-caption ${canProvision ? 'text-slate-500 dark:text-slate-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {canProvision ? 'This name becomes the Traccar device identifier.' : 'Enter a driver name to generate the QR.'}
                     </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {allSuggested.map((id) => (
-                        <button
-                          key={id}
-                          onClick={() => setVehicleId(id)}
-                          className={`px-2.5 py-1 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
-                            cleanVehicleId === id
-                              ? 'bg-sky-600 text-white shadow-xs'
-                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 hover:border-sky-400'
-                          }`}
-                        >
-                          {id}
-                        </button>
-                      ))}
-                    </div>
+                    <span className="type-caption text-slate-400 font-mono tabular-nums shrink-0">
+                      {driverName.length}/{MAX_NAME_LENGTH}
+                    </span>
                   </div>
-                )}
+                </div>
 
                 {/* Target Ingestion Server Mode Switcher */}
                 <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800/70">
@@ -472,12 +508,12 @@ export default function ProvisioningQrModal({
                   {qrDataUrl ? (
                     <img 
                       src={qrDataUrl} 
-                      alt={`Provisioning QR Code for ${cleanVehicleId}`}
+                      alt={cleanDriverName ? `Traccar provisioning QR for ${cleanDriverName}` : "Traccar provisioning QR"}
                       className="w-56 h-56 sm:w-64 sm:h-64 block object-contain select-none"
                     />
                   ) : (
-                    <div className="w-56 h-56 sm:w-64 sm:h-64 flex items-center justify-center text-slate-400 font-mono text-xs">
-                      Rendering QR...
+                    <div className="w-56 h-56 sm:w-64 sm:h-64 flex items-center justify-center text-center px-6 text-slate-400 font-mono text-xs">
+                      {canProvision ? 'Rendering QR...' : 'Enter a driver name'}
                     </div>
                   )}
                 </div>
@@ -485,8 +521,8 @@ export default function ProvisioningQrModal({
                 {/* Subtitle Caption */}
                 <div className="mt-3 flex items-center justify-center gap-2 text-xs font-mono">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span className="font-extrabold text-slate-900 dark:text-white">
-                    {cleanVehicleId}
+                  <span className="font-extrabold text-slate-900 dark:text-white truncate max-w-[52%]">
+                    {cleanDriverName || 'Driver name'}
                   </span>
                   <span className="text-slate-400">•</span>
                   <span className="text-slate-500 truncate max-w-[200px] sm:max-w-[300px]">
@@ -497,19 +533,23 @@ export default function ProvisioningQrModal({
                 {/* Primary Action Buttons (Save & Copy) */}
                 <div className="grid grid-cols-2 gap-2 mt-3.5 w-full max-w-xs">
                   <button
+                    type="button"
                     onClick={handleDownloadQr}
-                    className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
+                    disabled={!canProvision || !qrDataUrl}
+                    className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
                   >
                     <Download className="w-4 h-4" />
                     <span>Download PNG</span>
                   </button>
 
                   <button
-                    onClick={handleCopyJson}
-                    className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white text-xs font-semibold border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    type="button"
+                    onClick={handleCopyUri}
+                    disabled={!canProvision || !traccarUrl}
+                    className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white text-xs font-semibold border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                    <span>{copied ? 'Copied JSON!' : 'Copy JSON'}</span>
+                    <span>{copied ? 'Copied URI!' : 'Copy URI'}</span>
                   </button>
                 </div>
               </div>
@@ -522,10 +562,10 @@ export default function ProvisioningQrModal({
                   <span>Fleet Administrator Workflow:</span>
                 </h5>
                 <ol className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-decimal pl-4 leading-relaxed font-medium">
-                  <li>Open the <strong>Sant Kabir Fleet Shield</strong> app on driver's Android device.</li>
-                  <li>Enter your confidential <strong>Master PIN</strong> to enter <strong>Admin Settings</strong>.</li>
-                  <li>Tap <strong>"Scan Provisioning QR"</strong> and align camera with the code above.</li>
-                  <li>Google ML Kit instantly extracts <code>id</code> & <code>server</code>, locks settings, and awakens the background tracking service.</li>
+                  <li>Install <strong>Traccar Client</strong> on the driver's Android phone.</li>
+                  <li>Open <strong>Settings</strong> and tap the <strong>QR scan</strong> icon.</li>
+                  <li>Scan the code above. The driver name and all tracking settings apply automatically.</li>
+                  <li>Open <strong>Advanced settings</strong> and set the settings password manually. If a password already exists, unlock Settings before scanning.</li>
                 </ol>
               </div>
 
@@ -551,13 +591,13 @@ export default function ProvisioningQrModal({
                       Live Telemetry Packet Ping
                     </h5>
                     <p className="text-[0.6875rem] text-slate-500">
-                      Sending telemetry for: <strong className="text-sky-600 dark:text-cyan-400 font-mono">{cleanVehicleId}</strong>
+                      Sending telemetry for: <strong className="text-sky-600 dark:text-cyan-400 font-mono">{cleanDriverName || '—'}</strong>
                     </p>
                   </div>
                   <button
                     onClick={() => handleTestPing(13.5)}
-                    disabled={pingStatus === 'sending'}
-                    className={`py-2 px-4 rounded-xl text-xs font-bold text-white shadow-md transition-all cursor-pointer flex items-center gap-1.5 ${
+                    disabled={pingStatus === 'sending' || !canProvision}
+                    className={`py-2 px-4 rounded-xl text-xs font-bold text-white shadow-md transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed ${
                       pingStatus === 'success'
                         ? 'bg-emerald-600 shadow-emerald-500/20'
                         : pingStatus === 'error'
@@ -654,43 +694,36 @@ export default function ProvisioningQrModal({
           {activeTab === 'specs' && (
             <div className="space-y-4 animate-in fade-in duration-150">
               
-              {/* Pure JSON Schema */}
+              {/* Traccar QR URI */}
               <div className="p-3 rounded-2xl bg-slate-900 text-slate-200 font-mono text-[0.6875rem] space-y-1">
                 <div className="ui-section-label flex items-center justify-between">
-                  <span>1. QR Code JSON Contract</span>
-                  <span className="text-emerald-400">Pure JSON Body</span>
+                  <span>1. Traccar Client QR URI</span>
+                  <span className="text-emerald-400">HTTPS URI</span>
                 </div>
-                <pre className="p-3 bg-slate-950 rounded-xl text-sky-300 text-xs font-mono overflow-x-auto border border-slate-800 leading-relaxed">
-                  {stringifiedJson}
+                <pre className="p-3 bg-slate-950 rounded-xl text-sky-300 text-xs font-mono overflow-x-auto border border-slate-800 leading-relaxed whitespace-pre-wrap break-all">
+                  {traccarUrl || 'Enter a driver name to generate the Traccar URI.'}
                 </pre>
               </div>
 
-              {/* Parameter Dictionary Reference */}
+              {/* Applied settings */}
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-2">
                 <h5 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                   <Info className="w-4 h-4 text-sky-600 dark:text-cyan-400" />
-                  <span>2. OsmAnd URL Query Parameter Dictionary:</span>
+                  <span>2. Settings applied by the QR:</span>
                 </h5>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 font-mono text-[0.6875rem] text-slate-600 dark:text-slate-400">
                   <div className="p-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
-                    <strong className="text-sky-600 dark:text-cyan-400">id</strong>: Unique identifier
+                    <strong className="text-sky-600 dark:text-cyan-400">id</strong>: {cleanDriverName || 'driver name'}
                   </div>
-                  <div className="p-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
-                    <strong className="text-sky-600 dark:text-cyan-400">timestamp</strong>: Epoch seconds (UTC)
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
-                    <strong className="text-sky-600 dark:text-cyan-400">lat / lon</strong>: Coordinates
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
-                    <strong className="text-sky-600 dark:text-cyan-400">speed</strong>: Knots (x 1.852 = km/h)
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
-                    <strong className="text-sky-600 dark:text-cyan-400">bearing</strong>: Heading (0-360°)
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
-                    <strong className="text-sky-600 dark:text-cyan-400">batt / charge</strong>: Battery & Power
-                  </div>
+                  {Object.entries(TRACCAR_SETTINGS).map(([key, value]) => (
+                    <div key={key} className="p-1.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-200/60 dark:border-slate-800">
+                      <strong className="text-sky-600 dark:text-cyan-400">{key}</strong>: {String(value)}
+                    </div>
+                  ))}
                 </div>
+                <p className="type-caption text-slate-500 dark:text-slate-400">
+                  Traccar uploads over HTTPS POST form data. It does not use WebSocket. Speed is sent in knots.
+                </p>
               </div>
 
               {/* Cloudflare Architecture Note */}

@@ -1937,7 +1937,7 @@ function processTelemetryPacket(packet, options = {}) {
     id: cleanId,
     name: cleanId,
     type: "ambulance",
-    driverName: packet.driver ? String(packet.driver).trim() : existing.driverName || "Driver",
+    driverName: packet.driver ? String(packet.driver).trim() : existing.driverName || "",
     driverPhone: existing.driverPhone || "",
     plate: existing.plate || cleanId,
     status: speedKmH > 3 ? "moving" : distKm < 0.25 ? "at_base" : "in_field",

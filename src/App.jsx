@@ -235,7 +235,7 @@ export default function App() {
             isParked: Boolean(liveV.isParked),
             lineColor: liveV.lineColor || existing.lineColor || colors.line,
             glowColor: liveV.glowColor || existing.glowColor || colors.glow,
-            driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
+            driverName: liveV.driverName || existing.driverName || '',
             villageName: liveV.villageName || existing.villageName || 'Sant Kabir Eye Hospital Base (Basti)',
             villageBlock: liveV.villageBlock || existing.villageBlock || 'Basti Sadar',
             villageDistrict: liveV.villageDistrict || existing.villageDistrict || 'Basti',
@@ -328,7 +328,7 @@ export default function App() {
         isParked: Boolean(liveV.isParked),
         lineColor: liveV.lineColor || existing.lineColor || colors.line,
         glowColor: liveV.glowColor || existing.glowColor || colors.glow,
-        driverName: liveV.driverName || existing.driverName || 'Assigned Driver',
+        driverName: liveV.driverName || existing.driverName || '',
         villageName: liveV.villageName || existing.villageName || 'Sant Kabir Eye Hospital Base (Basti)',
         villageBlock: liveV.villageBlock || existing.villageBlock || 'Basti Sadar',
         villageDistrict: liveV.villageDistrict || existing.villageDistrict || 'Basti',
@@ -631,7 +631,6 @@ export default function App() {
         isOpen={Boolean(provisionModalVehicleId)}
         onClose={() => setProvisionModalVehicleId(null)}
         initialVehicleId={provisionModalVehicleId}
-        availableVehicles={vehicles}
       />
 
       {/* 7. Live Telemetry & Tracker Stream Modal */}

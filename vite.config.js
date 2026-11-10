@@ -72,7 +72,7 @@ function telemetryDevPlugin() {
         }
 
         let id = parsedUrl.searchParams.get('id') || parsedUrl.searchParams.get('uniqueId') || 'SK-AMB-01';
-        let driver = parsedUrl.searchParams.get('driver') || parsedUrl.searchParams.get('driverName') || 'Emergency Driver';
+        let driver = parsedUrl.searchParams.get('driver') || parsedUrl.searchParams.get('driverName') || '';
         let lat = parseFloat(parsedUrl.searchParams.get('lat') || parsedUrl.searchParams.get('latitude') || '');
         let lon = parseFloat(parsedUrl.searchParams.get('lon') || parsedUrl.searchParams.get('lng') || parsedUrl.searchParams.get('longitude') || '');
         let rawSpeed = parseFloat(parsedUrl.searchParams.get('speed') || '0');
@@ -86,19 +86,34 @@ function telemetryDevPlugin() {
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
-          if (body && (isNaN(lat) || isNaN(lon))) {
+          if (body && (isNaN(lat) || isNaN(lon) || !id)) {
+            const contentType = req.headers['content-type'] || '';
             try {
-              const json = JSON.parse(body);
-              if (json.id) id = json.id;
-              if (json.driver) driver = json.driver;
-              if (!isNaN(json.lat)) lat = parseFloat(json.lat);
-              if (!isNaN(json.lon)) lon = parseFloat(json.lon);
-              if (!isNaN(json.speed)) rawSpeed = parseFloat(json.speed);
-              if (!isNaN(json.bearing)) bearing = parseFloat(json.bearing);
-              if (!isNaN(json.altitude)) altitude = parseFloat(json.altitude);
-              if (!isNaN(json.accuracy)) accuracy = parseFloat(json.accuracy);
-              if (!isNaN(json.batt)) batt = parseFloat(json.batt);
-              if (json.charge !== undefined) charge = Boolean(json.charge);
+              if (contentType.includes('application/json')) {
+                const json = JSON.parse(body);
+                if (json.id) id = json.id;
+                if (json.driver) driver = json.driver;
+                if (!isNaN(json.lat)) lat = parseFloat(json.lat);
+                if (!isNaN(json.lon)) lon = parseFloat(json.lon);
+                if (!isNaN(json.speed)) rawSpeed = parseFloat(json.speed);
+                if (!isNaN(json.bearing)) bearing = parseFloat(json.bearing);
+                if (!isNaN(json.altitude)) altitude = parseFloat(json.altitude);
+                if (!isNaN(json.accuracy)) accuracy = parseFloat(json.accuracy);
+                if (!isNaN(json.batt)) batt = parseFloat(json.batt);
+                if (json.charge !== undefined) charge = Boolean(json.charge);
+              } else if (contentType.includes('application/x-www-form-urlencoded')) {
+                const form = new URLSearchParams(body);
+                if (form.get('id')) id = form.get('id');
+                if (form.get('driver')) driver = form.get('driver');
+                if (form.get('lat')) lat = parseFloat(form.get('lat'));
+                if (form.get('lon')) lon = parseFloat(form.get('lon'));
+                if (form.get('speed')) rawSpeed = parseFloat(form.get('speed'));
+                if (form.get('bearing')) bearing = parseFloat(form.get('bearing'));
+                if (form.get('altitude')) altitude = parseFloat(form.get('altitude'));
+                if (form.get('accuracy')) accuracy = parseFloat(form.get('accuracy'));
+                if (form.get('batt')) batt = parseFloat(form.get('batt'));
+                if (form.get('charge') !== null) charge = form.get('charge') === 'true' || form.get('charge') === '1';
+              }
             } catch (e) {}
           }
 
