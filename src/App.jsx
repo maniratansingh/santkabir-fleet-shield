@@ -365,6 +365,13 @@ export default function App() {
       } else if (payload?.type === 'delta' && payload.vehicle) {
         upsertVehicle(payload.vehicle, now);
         publish();
+      } else if (payload?.type === 'remove' && Array.isArray(payload.ids)) {
+        const ids = payload.ids.map(String);
+        for (const id of ids) {
+          fleetStoreRef.current.delete(id);
+        }
+        setSelectedVehicleId((current) => (current && ids.includes(current) ? null : current));
+        publish();
       } else if (payload?.type === 'clear') {
         fleetStoreRef.current.clear();
         setVehicles([]);

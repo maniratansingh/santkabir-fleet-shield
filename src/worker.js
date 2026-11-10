@@ -18,6 +18,8 @@ const vehicleFilters = new Map();
 // move to the WebSocket path get immediate updates without this throttle.
 const HUB_NAME = 'purvanchal-fleet';
 const HUB_FORWARD_INTERVAL_MS = 30000;
+const VEHICLE_TTL_MS = 35 * 60 * 1000;
+const HUB_PRUNE_INTERVAL_MS = 60 * 1000;
 const lastHubForward = new Map();
 
 // Constant-time comparison of two secrets (fixed-length SHA-256 digests)
@@ -487,8 +489,18 @@ export class PurvanchalFleetHub {
     this.state.blockConcurrencyWhile(async () => {
       const saved = await this.state.storage.get('fleet_snapshot');
       if (Array.isArray(saved)) {
-        this.vehicles = new Map(saved.filter(v => v && v.id).map(v => [String(v.id), v]));
+        const cutoff = Date.now() - VEHICLE_TTL_MS;
+        const fresh = saved.filter((v) => {
+          if (!v || !v.id) return false;
+          const lastSeen = Number(v.updatedAt || v.lastSeen || 0);
+          return lastSeen > 0 && lastSeen >= cutoff;
+        });
+        this.vehicles = new Map(fresh.map(v => [String(v.id), v]));
+        if (fresh.length !== saved.length) {
+          await this.state.storage.put('fleet_snapshot', fresh);
+        }
       }
+      await this.ensurePruneAlarm();
     });
   }
 
@@ -516,6 +528,7 @@ export class PurvanchalFleetHub {
 
       try {
         if (role === 'dashboard') {
+          await this.pruneStaleVehicles({ broadcast: false });
           server.send(JSON.stringify({
             type: 'snapshot',
             vehicles: Array.from(this.vehicles.values()),
@@ -544,6 +557,7 @@ export class PurvanchalFleetHub {
     }
 
     if (url.pathname.endsWith('/vehicles')) {
+      await this.pruneStaleVehicles({ broadcast: false });
       return new Response(JSON.stringify({
         success: true,
         vehicles: Array.from(this.vehicles.values()),
@@ -646,6 +660,44 @@ export class PurvanchalFleetHub {
       const role = ws.deserializeAttachment?.()?.role;
       if (role === 'tracker') continue;
       try { ws.send(payload); } catch (e) {}
+    }
+  }
+
+  async ensurePruneAlarm() {
+    const alarm = await this.state.storage.getAlarm();
+    if (alarm === null) {
+      await this.state.storage.setAlarm(Date.now() + HUB_PRUNE_INTERVAL_MS);
+    }
+  }
+
+  async pruneStaleVehicles({ persist = true, broadcast = true } = {}) {
+    const now = Date.now();
+    const removed = [];
+    for (const [id, v] of this.vehicles) {
+      const lastSeen = Number(v.updatedAt || v.lastSeen || 0);
+      if (!lastSeen || now - lastSeen > VEHICLE_TTL_MS) {
+        this.vehicles.delete(id);
+        this.filters.delete(id);
+        this.wsTrackerIds.delete(id);
+        removed.push(id);
+      }
+    }
+    if (removed.length) {
+      if (persist) {
+        await this.state.storage.put('fleet_snapshot', Array.from(this.vehicles.values()));
+      }
+      if (broadcast) {
+        this.broadcast({ type: 'remove', ids: removed, timestamp: now });
+      }
+    }
+    return removed;
+  }
+
+  async alarm() {
+    try {
+      await this.pruneStaleVehicles();
+    } finally {
+      await this.state.storage.setAlarm(Date.now() + HUB_PRUNE_INTERVAL_MS);
     }
   }
 
