@@ -84,7 +84,7 @@ selected or hovered vehicle always shows its tag.
     <td width="50%">
       <img src="assets/screenshots/telemetry-light.jpg" alt="Telemetry and tracker setup dialog" />
       <br /><strong>Telemetry setup</strong><br />
-      Android QR, OsmAnd and REST API tabs with the exact provisioning schema.
+      One driver field, Traccar QR, OsmAnd and REST API tabs.
     </td>
     <td width="50%">
       <img src="assets/screenshots/route-anchoring.jpg" alt="Base-anchored routes" />
