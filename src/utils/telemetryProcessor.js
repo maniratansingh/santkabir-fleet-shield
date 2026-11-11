@@ -6,6 +6,7 @@ import { BASE_LAT, BASE_LON } from './baseLocation.js';
 import { calculateBearing, calculateDistanceKm } from './geo.js';
 import { getUniqueVehicleColor } from './colors.js';
 import { resolveVillage } from './village.js';
+import { canonicalVehicleId } from './vehicleId.js';
 
 /**
  * Coerce an object, compact array, or JSON string into a telemetry packet.
@@ -57,7 +58,7 @@ export function coerceTelemetryPacket(raw) {
  */
 export function processTelemetryPacket(packet, options = {}) {
   if (!packet) return null;
-  const cleanId = String(packet.id || '').trim().toUpperCase();
+  const cleanId = canonicalVehicleId(packet.id);
   const rawLat = Number(packet.lat);
   const rawLon = Number(packet.lon);
 

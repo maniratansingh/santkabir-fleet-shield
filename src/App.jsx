@@ -12,6 +12,8 @@ import { simulateFleetAtTime } from './utils/fleetSimulation';
 import { getDeliveryRouteSplit, subscribeToRouteUpdates } from './utils/roadDistance';
 import { getNearestRuralLocation } from './utils/ruralLocator';
 import { getUniqueVehicleColor } from './utils/colors';
+import { withVehicleAgeState } from './utils/vehicleState';
+import { canonicalVehicleId } from './utils/vehicleId';
 import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
 
 // Demo fleet identity: one name only. The driver name is the device id.
@@ -115,6 +117,17 @@ export default function App() {
     vehiclesRef.current = vehicles;
   }, [vehicles]);
 
+  // Keep age-derived state fresh while the wallboard sits idle. This moves a
+  // quiet vehicle from live -> no signal -> parked -> offline without needing
+  // a new GPS packet.
+  useEffect(() => {
+    if (isDemoMode) return undefined;
+    const interval = setInterval(() => {
+      setVehicles((prev) => prev.map((v) => withVehicleAgeState(v, Date.now())));
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [isDemoMode]);
+
   // Show temporary toast notification
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
@@ -142,7 +155,10 @@ export default function App() {
     let timeoutId;
 
     const runTourStep = () => {
-      const currentVehicles = vehiclesRef.current || [];
+      const allVehicles = vehiclesRef.current || [];
+      // Offline records keep their name and last position, but the TV tour
+      // should only visit vehicles that are actually reporting.
+      const currentVehicles = allVehicles.filter((v) => !v.isOffline);
       if (!currentVehicles || currentVehicles.length === 0) {
         setSelectedVehicleId(null);
         setFitTrigger(prev => prev + 1);
@@ -224,7 +240,7 @@ export default function App() {
 
       // PRIORITY 1: Real-time Telemetry reported to /api/vehicles
       if (serverVehicles && serverVehicles.length > 0) {
-        const liveIds = new Set(serverVehicles.map(v => v.id));
+        const liveIds = new Set(serverVehicles.map(v => canonicalVehicleId(v.id)));
 
         // Synchronize store with reported server vehicles
         for (const storedId of Array.from(store.keys())) {
@@ -234,16 +250,16 @@ export default function App() {
         }
 
         serverVehicles.forEach(liveV => {
-          const existing = store.get(liveV.id) || {};
-          const colors = getUniqueVehicleColor(liveV.id);
+          const id = canonicalVehicleId(liveV.id);
+          if (!id) return;
+          const existing = store.get(id) || {};
+          const colors = getUniqueVehicleColor(id);
 
-          store.set(liveV.id, {
+          const merged = {
             ...existing,
             ...liveV,
-            isLive: Boolean(liveV.isLive !== false),
-            isSignalGap: Boolean(liveV.isSignalGap),
-            gapMinutes: liveV.gapMinutes || 0,
-            isParked: Boolean(liveV.isParked),
+            id,
+            name: id,
             lineColor: liveV.lineColor || existing.lineColor || colors.line,
             glowColor: liveV.glowColor || existing.glowColor || colors.glow,
             driverName: liveV.driverName || existing.driverName || '',
@@ -254,8 +270,10 @@ export default function App() {
             villageLabel: liveV.villageLabel || existing.villageLabel || 'Sant Kabir Eye Hospital',
             highwayName: liveV.highwayName || existing.highwayName || liveV.villageBadge || 'Highway Link',
             roadDistFromBaseKm: liveV.roadDistFromBaseKm || existing.roadDistFromBaseKm || 0,
-            lastSeen: liveV.lastSeen || now,
-          });
+            lastSeen: liveV.lastSeen || existing.lastSeen || now,
+          };
+
+          store.set(id, withVehicleAgeState(merged, now));
         });
 
         setVehicles(
@@ -322,21 +340,23 @@ export default function App() {
     let closed = false;
     let reconnectTimer = null;
     let heartbeatTimer = null;
+    let reconcileTimer = null;
     let attempt = 0;
     let socket = null;
 
     const upsertVehicle = (liveV, now) => {
       if (!liveV || !liveV.id) return;
+      const id = canonicalVehicleId(liveV.id);
+      if (!id) return;
       const store = fleetStoreRef.current;
-      const existing = store.get(liveV.id) || {};
-      const colors = getUniqueVehicleColor(liveV.id);
-      store.set(liveV.id, {
+      const existing = store.get(id) || {};
+      const colors = getUniqueVehicleColor(id);
+
+      const merged = {
         ...existing,
         ...liveV,
-        isLive: Boolean(liveV.isLive !== false),
-        isSignalGap: Boolean(liveV.isSignalGap),
-        gapMinutes: liveV.gapMinutes || 0,
-        isParked: Boolean(liveV.isParked),
+        id,
+        name: id,
         lineColor: liveV.lineColor || existing.lineColor || colors.line,
         glowColor: liveV.glowColor || existing.glowColor || colors.glow,
         driverName: liveV.driverName || existing.driverName || '',
@@ -347,8 +367,12 @@ export default function App() {
         villageLabel: liveV.villageLabel || existing.villageLabel || 'Sant Kabir Eye Hospital',
         highwayName: liveV.highwayName || existing.highwayName || liveV.villageBadge || 'Highway Link',
         roadDistFromBaseKm: liveV.roadDistFromBaseKm || existing.roadDistFromBaseKm || 0,
-        lastSeen: liveV.lastSeen || now,
-      });
+        lastSeen: liveV.lastSeen || existing.lastSeen || now,
+      };
+
+      // Always recompute live/no-signal/parked/offline from the packet age.
+      // Never trust the stored isLive flag, which is stale after quiet time.
+      store.set(id, withVehicleAgeState(merged, now));
     };
 
     const publish = () => {
@@ -365,13 +389,14 @@ export default function App() {
       try { payload = JSON.parse(event.data); } catch (e) { return; }
       const now = Date.now();
 
-      if (payload?.type === 'snapshot' && Array.isArray(payload.vehicles) && payload.vehicles.length > 0) {
+      if (payload?.type === 'snapshot' && Array.isArray(payload.vehicles)) {
         const store = fleetStoreRef.current;
-        const liveIds = new Set(payload.vehicles.map(v => v.id));
+        const liveIds = new Set(payload.vehicles.map(v => canonicalVehicleId(v.id)).filter(Boolean));
         for (const id of Array.from(store.keys())) {
           if (!liveIds.has(id)) store.delete(id);
         }
         payload.vehicles.forEach(v => upsertVehicle(v, now));
+        setSelectedVehicleId((current) => (current && !liveIds.has(current) ? null : current));
         publish();
       } else if (payload?.type === 'delta' && payload.vehicle) {
         upsertVehicle(payload.vehicle, now);
@@ -402,6 +427,15 @@ export default function App() {
         heartbeatTimer = setInterval(() => {
           try { socket.send('ping'); } catch (e) {}
         }, 25000);
+        // Periodic snapshot reconciliation removes browser-side ghosts: if an
+        // id no longer exists in the Durable Object, drop it from the board.
+        reconcileTimer = setInterval(() => {
+          try {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: 'subscribe' }));
+            }
+          } catch (e) {}
+        }, 60000);
       };
       socket.onmessage = handleMessage;
       socket.onerror = () => {};
@@ -411,6 +445,10 @@ export default function App() {
         if (heartbeatTimer) {
           clearInterval(heartbeatTimer);
           heartbeatTimer = null;
+        }
+        if (reconcileTimer) {
+          clearInterval(reconcileTimer);
+          reconcileTimer = null;
         }
         if (!closed) {
           attempt += 1;
@@ -427,6 +465,7 @@ export default function App() {
       wsConnectedRef.current = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (reconcileTimer) clearInterval(reconcileTimer);
       if (socket) {
         try { socket.close(); } catch (e) {}
       }
@@ -524,6 +563,45 @@ export default function App() {
 
   const handleOpenProvisionModal = useCallback((id) => {
     setProvisionModalVehicleId(id || 'AMB-01');
+  }, []);
+
+  // Manual removal for test devices, uninstalled phones, renamed drivers and
+  // ghosts. Requires the admin key; remembered for this browser session only.
+  const handleRemoveVehicle = useCallback(async (id) => {
+    const target = canonicalVehicleId(id);
+    if (!target) return;
+
+    let adminKey = '';
+    try {
+      adminKey = sessionStorage.getItem('sk_admin_key') || '';
+    } catch (e) {}
+    if (!adminKey) {
+      adminKey = window.prompt(`Admin key required to remove ${target}`) || '';
+    }
+    if (!adminKey) return;
+
+    try {
+      const res = await fetch(`/api/remove?id=${encodeURIComponent(target)}`, {
+        method: 'POST',
+        headers: { 'X-Admin-Key': adminKey },
+      });
+      if (res.status === 401) {
+        try { sessionStorage.removeItem('sk_admin_key'); } catch (e) {}
+        showToast('Admin key rejected', 'alert');
+        return;
+      }
+      if (!res.ok) {
+        showToast('Could not remove driver record', 'alert');
+        return;
+      }
+      try { sessionStorage.setItem('sk_admin_key', adminKey); } catch (e) {}
+      fleetStoreRef.current.delete(target);
+      setVehicles((prev) => prev.filter((v) => canonicalVehicleId(v.id) !== target));
+      setSelectedVehicleId((prev) => (prev === target ? null : prev));
+      showToast(`${target} removed`, 'info');
+    } catch (e) {
+      showToast('Remove failed — network error', 'alert');
+    }
   }, []);
 
   const handleOpenMap = useCallback(() => {
@@ -640,6 +718,7 @@ export default function App() {
         onFitRoute={handleFitRoute}
         onFocusDistance={handleFocusDistance}
         onOpenProvisionModal={handleOpenProvisionModal}
+        onRemoveVehicle={handleRemoveVehicle}
         detent={detent}
         onChangeDetent={setDetent}
         filter={fleetFilter}

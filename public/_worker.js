@@ -1862,6 +1862,11 @@ function resolveVillage(lat, lon) {
   };
 }
 
+// src/utils/vehicleId.js
+function canonicalVehicleId(value) {
+  return String(value ?? "").replace(/[\s\u00a0]+/g, " ").trim().toUpperCase();
+}
+
 // src/utils/telemetryProcessor.js
 function coerceTelemetryPacket(raw) {
   if (!raw) return null;
@@ -1895,7 +1900,7 @@ function coerceTelemetryPacket(raw) {
 }
 function processTelemetryPacket(packet, options = {}) {
   if (!packet) return null;
-  const cleanId = String(packet.id || "").trim().toUpperCase();
+  const cleanId = canonicalVehicleId(packet.id);
   const rawLat = Number(packet.lat);
   const rawLon = Number(packet.lon);
   if (!cleanId || !Number.isFinite(rawLat) || !Number.isFinite(rawLon)) return null;
@@ -1967,13 +1972,60 @@ function processTelemetryPacket(packet, options = {}) {
   };
 }
 
+// src/utils/vehicleState.js
+var LIVE_WINDOW_MS = 60 * 1e3;
+var SIGNAL_GAP_WINDOW_MS = 15 * 60 * 1e3;
+var PARKED_WINDOW_MS = 35 * 60 * 1e3;
+var OFFLINE_AFTER_MS = PARKED_WINDOW_MS;
+function getVehicleLastSeenMs(v) {
+  const candidates = [v?.updatedAt, v?.lastSeen];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+function computeVehicleAgeState(v, now = Date.now()) {
+  const lastSeenMs = getVehicleLastSeenMs(v);
+  if (!lastSeenMs) {
+    return {
+      lastSeenMs: 0,
+      ageMs: null,
+      ageSec: null,
+      gapMinutes: null,
+      isLive: false,
+      isSignalGap: false,
+      isParked: false,
+      isOffline: true,
+      networkState: "offline"
+    };
+  }
+  const ageMs = Math.max(0, Number(now) - lastSeenMs);
+  const ageSec = Math.floor(ageMs / 1e3);
+  const gapMinutes = Math.floor(ageSec / 60);
+  const isLive = ageMs < LIVE_WINDOW_MS;
+  const isOffline = ageMs > OFFLINE_AFTER_MS;
+  const isSignalGap = !isLive && !isOffline && ageMs <= SIGNAL_GAP_WINDOW_MS;
+  const isParked = !isLive && !isOffline && !isSignalGap;
+  return {
+    lastSeenMs,
+    ageMs,
+    ageSec,
+    gapMinutes,
+    isLive,
+    isSignalGap,
+    isParked,
+    isOffline,
+    networkState: isLive ? "live" : isOffline ? "offline" : isSignalGap ? "gap" : "parked"
+  };
+}
+
 // src/worker.js
 var liveVehicles = /* @__PURE__ */ new Map();
 var vehicleFilters = /* @__PURE__ */ new Map();
 var HUB_NAME = "purvanchal-fleet";
 var HUB_FORWARD_INTERVAL_MS = 3e4;
-var VEHICLE_TTL_MS = 35 * 60 * 1e3;
-var HUB_PRUNE_INTERVAL_MS = 60 * 1e3;
+var HUB_PERSIST_INTERVAL_MS = 5e3;
 var lastHubForward = /* @__PURE__ */ new Map();
 async function safeEqual(a, b) {
   const enc = new TextEncoder();
@@ -2079,7 +2131,7 @@ var worker_default = {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       }
-      const vehId = String(id).trim().toUpperCase();
+      const vehId = canonicalVehicleId(id);
       const existing = liveVehicles.get(vehId) || {};
       let filter = vehicleFilters.get(vehId);
       if (!filter) {
@@ -2186,34 +2238,93 @@ var worker_default = {
         }
       });
     }
-    if (url.pathname === "/api/vehicles" || url.pathname === "/api/vehicles/") {
-      const now = Date.now();
-      const DECOMMISSION_TIMEOUT_MS = 35 * 60 * 1e3;
-      for (const [vKey, vVal] of liveVehicles.entries()) {
-        const lastSeen = vVal.updatedAt || vVal.lastSeen || 0;
-        if (now - lastSeen > DECOMMISSION_TIMEOUT_MS) {
-          liveVehicles.delete(vKey);
-          vehicleFilters.delete(vKey);
-          lastHubForward.delete(vKey);
+    if (url.pathname === "/api/remove" || url.pathname === "/api/remove/") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, X-Admin-Key"
+          }
+        });
+      }
+      if (request.method !== "POST" && request.method !== "DELETE") {
+        return new Response(JSON.stringify({ error: "Method not allowed" }), {
+          status: 405,
+          headers: {
+            "Content-Type": "application/json",
+            "Allow": "POST, DELETE, OPTIONS",
+            "Access-Control-Allow-Origin": "*"
+          }
+        });
+      }
+      if (!env.ADMIN_SECRET_KEY) {
+        return new Response(JSON.stringify({ error: "Admin endpoint not configured" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+      const suppliedKey = request.headers.get("X-Admin-Key") || "";
+      if (!await safeEqual(suppliedKey, env.ADMIN_SECRET_KEY)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+      const ids = /* @__PURE__ */ new Set();
+      const queryId = url.searchParams.get("id");
+      if (queryId) ids.add(canonicalVehicleId(queryId));
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+          if (body?.id) ids.add(canonicalVehicleId(body.id));
+          if (Array.isArray(body?.ids)) {
+            body.ids.forEach((value) => {
+              const id = canonicalVehicleId(value);
+              if (id) ids.add(id);
+            });
+          }
+        } catch (e) {
         }
       }
-      const reportedList = Array.from(liveVehicles.values()).map((vVal) => {
-        const lastSeen = vVal.updatedAt || vVal.lastSeen || 0;
-        const ageSec = Math.max(0, Math.floor((now - lastSeen) / 1e3));
-        const gapMinutes = Math.floor(ageSec / 60);
-        const isLive = ageSec < 60;
-        const isSignalGap = ageSec >= 60 && ageSec <= 15 * 60;
-        const isParked = ageSec > 15 * 60;
-        return {
-          ...vVal,
-          ageSec,
-          gapMinutes,
-          isLive,
-          isSignalGap,
-          isParked,
-          networkState: isLive ? "live" : isSignalGap ? "gap" : "parked"
-        };
+      const cleanIds = Array.from(ids).filter(Boolean);
+      if (cleanIds.length === 0) {
+        return new Response(JSON.stringify({ error: "Missing id" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+      for (const id of cleanIds) {
+        liveVehicles.delete(id);
+        vehicleFilters.delete(id);
+        lastHubForward.delete(id);
+      }
+      if (env.FLEET_HUB) {
+        const hubRemove = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME)).fetch("https://fleet-hub/remove", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: cleanIds })
+        }).catch(() => null);
+        if (ctx?.waitUntil) ctx.waitUntil(hubRemove);
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        removed: cleanIds
+      }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        }
       });
+    }
+    if (url.pathname === "/api/vehicles" || url.pathname === "/api/vehicles/") {
+      const now = Date.now();
+      const reportedList = Array.from(liveVehicles.values()).map((vVal) => ({
+        ...vVal,
+        ...computeVehicleAgeState(vVal, now)
+      }));
       const list = reportedList;
       return new Response(JSON.stringify({
         success: true,
@@ -2354,18 +2465,18 @@ var PurvanchalFleetHub = class {
     this.state.blockConcurrencyWhile(async () => {
       const saved = await this.state.storage.get("fleet_snapshot");
       if (Array.isArray(saved)) {
-        const cutoff = Date.now() - VEHICLE_TTL_MS;
-        const fresh = saved.filter((v) => {
-          if (!v || !v.id) return false;
-          const lastSeen = Number(v.updatedAt || v.lastSeen || 0);
-          return lastSeen > 0 && lastSeen >= cutoff;
-        });
-        this.vehicles = new Map(fresh.map((v) => [String(v.id), v]));
-        if (fresh.length !== saved.length) {
-          await this.state.storage.put("fleet_snapshot", fresh);
+        const next = /* @__PURE__ */ new Map();
+        for (const v of saved) {
+          if (!v) continue;
+          const id = canonicalVehicleId(v.id);
+          if (!id) continue;
+          next.set(id, { ...v, id, name: id });
+        }
+        this.vehicles = next;
+        if (next.size !== saved.length) {
+          await this.state.storage.put("fleet_snapshot", Array.from(next.values()));
         }
       }
-      await this.ensurePruneAlarm();
     });
   }
   async fetch(request) {
@@ -2392,10 +2503,9 @@ var PurvanchalFleetHub = class {
       }
       try {
         if (role === "dashboard") {
-          await this.pruneStaleVehicles({ broadcast: false });
           server.send(JSON.stringify({
             type: "snapshot",
-            vehicles: Array.from(this.vehicles.values()),
+            vehicles: this.getFleetSnapshot(),
             timestamp: Date.now()
           }));
         } else {
@@ -2408,9 +2518,11 @@ var PurvanchalFleetHub = class {
     if (url.pathname.endsWith("/track") && request.method === "POST") {
       try {
         const record = await request.json();
-        if (record && record.id && !this.wsTrackerIds.has(String(record.id))) {
-          this.vehicles.set(String(record.id), record);
-          this.broadcast({ type: "delta", vehicle: record });
+        const id = canonicalVehicleId(record?.id);
+        if (id && !this.wsTrackerIds.has(id)) {
+          const stored = { ...record, id, name: id };
+          this.vehicles.set(id, stored);
+          this.broadcast({ type: "delta", vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
           this.persistSnapshotIfDue();
         }
       } catch (e) {
@@ -2421,10 +2533,9 @@ var PurvanchalFleetHub = class {
       });
     }
     if (url.pathname.endsWith("/vehicles")) {
-      await this.pruneStaleVehicles({ broadcast: false });
       return new Response(JSON.stringify({
         success: true,
-        vehicles: Array.from(this.vehicles.values()),
+        vehicles: this.getFleetSnapshot(),
         count: this.vehicles.size,
         timestamp: Date.now()
       }), { status: 200, headers: jsonHeaders });
@@ -2441,6 +2552,32 @@ var PurvanchalFleetHub = class {
         status: 200,
         headers: jsonHeaders
       });
+    }
+    if (url.pathname.endsWith("/remove") && (request.method === "POST" || request.method === "DELETE")) {
+      let ids = [];
+      try {
+        const body = await request.json();
+        if (body?.id) ids.push(body.id);
+        if (Array.isArray(body?.ids)) ids.push(...body.ids);
+      } catch (e) {
+        ids = url.searchParams.getAll("id");
+      }
+      ids = Array.from(new Set(ids.map(canonicalVehicleId).filter(Boolean)));
+      const removed = [];
+      for (const id of ids) {
+        if (this.vehicles.delete(id)) removed.push(id);
+        this.filters.delete(id);
+        this.wsTrackerIds.delete(id);
+      }
+      if (removed.length) {
+        await this.state.storage.put("fleet_snapshot", Array.from(this.vehicles.values()));
+        this.broadcast({ type: "remove", ids: removed, timestamp: Date.now() });
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        removed,
+        count: this.vehicles.size
+      }), { status: 200, headers: jsonHeaders });
     }
     return new Response(JSON.stringify({ error: "Not found" }), {
       status: 404,
@@ -2460,7 +2597,7 @@ var PurvanchalFleetHub = class {
       }
       const packet = coerceTelemetryPacket(raw);
       if (!packet) return;
-      const id = String(packet.id || "").trim().toUpperCase();
+      const id = canonicalVehicleId(packet.id);
       if (!id) return;
       const existing = this.vehicles.get(id) || {};
       let filter = this.filters.get(id);
@@ -2476,7 +2613,7 @@ var PurvanchalFleetHub = class {
         ws.serializeAttachment({ role: "tracker", id: record.id });
       } catch (e) {
       }
-      this.broadcast({ type: "delta", vehicle: record });
+      this.broadcast({ type: "delta", vehicle: { ...record, ...computeVehicleAgeState(record) } });
       this.persistSnapshotIfDue();
       try {
         ws.send(JSON.stringify({ type: "ack", id: record.id, timestamp: Date.now() }));
@@ -2491,12 +2628,15 @@ var PurvanchalFleetHub = class {
       } else if (data?.type === "subscribe") {
         ws.send(JSON.stringify({
           type: "snapshot",
-          vehicles: Array.from(this.vehicles.values()),
+          vehicles: this.getFleetSnapshot(),
           timestamp: Date.now()
         }));
       } else if (data?.type === "track" && data.vehicle?.id) {
-        this.vehicles.set(String(data.vehicle.id), data.vehicle);
-        this.broadcast({ type: "delta", vehicle: data.vehicle });
+        const id = canonicalVehicleId(data.vehicle.id);
+        if (!id) return;
+        const stored = { ...data.vehicle, id, name: id };
+        this.vehicles.set(id, stored);
+        this.broadcast({ type: "delta", vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
         this.persistSnapshotIfDue();
       }
     } catch (e) {
@@ -2532,44 +2672,16 @@ var PurvanchalFleetHub = class {
       }
     }
   }
-  async ensurePruneAlarm() {
-    const alarm = await this.state.storage.getAlarm();
-    if (alarm === null) {
-      await this.state.storage.setAlarm(Date.now() + HUB_PRUNE_INTERVAL_MS);
-    }
-  }
-  async pruneStaleVehicles({ persist = true, broadcast = true } = {}) {
+  getFleetSnapshot() {
     const now = Date.now();
-    const removed = [];
-    for (const [id, v] of this.vehicles) {
-      const lastSeen = Number(v.updatedAt || v.lastSeen || 0);
-      if (!lastSeen || now - lastSeen > VEHICLE_TTL_MS) {
-        this.vehicles.delete(id);
-        this.filters.delete(id);
-        this.wsTrackerIds.delete(id);
-        removed.push(id);
-      }
-    }
-    if (removed.length) {
-      if (persist) {
-        await this.state.storage.put("fleet_snapshot", Array.from(this.vehicles.values()));
-      }
-      if (broadcast) {
-        this.broadcast({ type: "remove", ids: removed, timestamp: now });
-      }
-    }
-    return removed;
-  }
-  async alarm() {
-    try {
-      await this.pruneStaleVehicles();
-    } finally {
-      await this.state.storage.setAlarm(Date.now() + HUB_PRUNE_INTERVAL_MS);
-    }
+    return Array.from(this.vehicles.values()).map((record) => ({
+      ...record,
+      ...computeVehicleAgeState(record, now)
+    }));
   }
   persistSnapshotIfDue() {
     const now = Date.now();
-    if (now - this.lastSnapshotAt < 6e4) return;
+    if (now - this.lastSnapshotAt < HUB_PERSIST_INTERVAL_MS) return;
     this.lastSnapshotAt = now;
     const snapshot = Array.from(this.vehicles.values());
     if (this.state.waitUntil) {

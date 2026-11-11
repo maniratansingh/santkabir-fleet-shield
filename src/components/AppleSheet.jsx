@@ -15,12 +15,14 @@ import {
   X,
   Clock,
   ShieldCheck,
-  QrCode
+  QrCode,
+  Trash2
 } from 'lucide-react';
 import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
 import { getNearestRuralLocation } from '../utils/ruralLocator';
 import { getUniqueVehicleColor } from '../utils/colors';
 import { getFleetState, countFleetStates, sortVehiclesByPriority } from '../utils/fleetStatus';
+import { formatVehicleAge } from '../utils/vehicleState';
 import ProvisioningQrModal from './ProvisioningQrModal';
 import { useDraggableSheet } from '../hooks/useDraggableSheet';
 
@@ -30,6 +32,7 @@ const STATE_TEXT = {
   on_scene: 'text-slate-500 dark:text-slate-400',
   returning: 'text-sky-600 dark:text-sky-400',
   at_base: 'text-rose-600 dark:text-rose-400',
+  offline: 'text-slate-500 dark:text-slate-400',
 };
 
 const STATE_DOT = {
@@ -38,6 +41,7 @@ const STATE_DOT = {
   on_scene: 'bg-slate-400',
   returning: 'bg-sky-500',
   at_base: 'bg-rose-500',
+  offline: 'bg-slate-500',
 };
 
 function getVehicleDistance(v) {
@@ -49,27 +53,20 @@ function getVehicleDistance(v) {
   return Math.round(dist * 1.15 * 10) / 10;
 }
 
-function formatLastSeen(lastSeen) {
-  if (!lastSeen) return 'Live Active';
-  const diffSec = Math.max(1, Math.round((Date.now() - lastSeen) / 1000));
-  if (diffSec < 60) return `${diffSec}s ago`;
-  const diffMin = Math.round(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.round(diffMin / 60);
-  return `${diffHr}h ago`;
-}
-
 // Ultra-fast memoized row (0ms re-render overhead per ambulance card)
 const AmbulanceRow = React.memo(function AmbulanceRow({
   v,
   isSelected,
   onSelectVehicle,
   openProvision,
+  onRemoveVehicle,
 }) {
   const uniqueColors = getUniqueVehicleColor(v.id);
   const vColor = v.lineColor || uniqueColors.line;
   const distKm = v.roadDistFromBaseKm || getVehicleDistance(v);
   const state = getFleetState(v);
+  const isOffline = state.key === 'offline';
+  const dotColor = isOffline ? '#64748B' : vColor;
   const locationLabel = (v.lat && v.lon)
     ? getNearestRuralLocation(Number(v.lat), Number(v.lon)).badge
     : (v.villageBadge || 'Purvanchal region');
@@ -79,7 +76,7 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
       role="button"
       tabIndex={0}
       aria-pressed={isSelected}
-      aria-label={`${v.id}, ${state.label}, ${v.speed > 0 ? `${v.speed} kilometres per hour` : 'stationary'}, ${locationLabel}, ${distKm} kilometres from base`}
+      aria-label={`${v.id}, ${state.label}, ${isOffline ? `last seen ${formatVehicleAge(v)}` : (v.speed > 0 ? `${v.speed} kilometres per hour` : 'stationary')}, ${locationLabel}, ${distKm} kilometres from base`}
       onClick={() => onSelectVehicle(v.id)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -90,7 +87,9 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
       className={`ui-press-row px-3 py-2.5 rounded-[14px] border cursor-pointer flex items-center justify-between group ${
         isSelected
           ? 'bg-sky-50 dark:bg-sky-950 border-sky-400 dark:border-sky-600 shadow-xs'
-          : 'bg-white dark:bg-[#0f1d31] border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
+          : isOffline
+            ? 'bg-slate-50 dark:bg-[#0d1727] border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
+            : 'bg-white dark:bg-[#0f1d31] border-slate-200/70 dark:border-slate-800 hover:border-slate-400'
       }`}
     >
       {/* Left: identifier, speed and village */}
@@ -98,16 +97,16 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
         <div className="flex items-center gap-2">
           <div
             className="w-2.5 h-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: vColor, boxShadow: `0 0 6px ${vColor}88` }}
+            style={{ backgroundColor: dotColor, boxShadow: `0 0 6px ${dotColor}88` }}
           />
-          <span className="type-footnote font-mono font-bold text-slate-900 dark:text-white shrink-0 tnum">
+          <span className={`type-footnote font-mono font-bold shrink-0 tnum ${isOffline ? 'text-slate-600 dark:text-slate-300' : 'text-slate-900 dark:text-white'}`}>
             {v.id}
           </span>
           <span className={`type-caption font-semibold shrink-0 ${STATE_TEXT[state.key]}`}>
             {state.label}
           </span>
           <span className="type-caption font-mono text-slate-500 dark:text-slate-400 truncate tnum">
-            {v.speed > 0 ? `${v.speed} km/h` : '—'}
+            {v.speed > 0 && !isOffline ? `${v.speed} km/h` : '—'}
           </span>
         </div>
 
@@ -117,6 +116,15 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
             {locationLabel} · {distKm} km
           </span>
         </div>
+
+        {isOffline && (
+          <div className="flex items-center gap-1 mt-0.5 pl-[18px]">
+            <Clock className="w-3 h-3 text-slate-400 dark:text-slate-500 shrink-0" />
+            <span className="type-caption font-medium text-slate-500 dark:text-slate-400 truncate">
+              Last seen {formatVehicleAge(v)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Right: quick actions */}
@@ -132,6 +140,21 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
         >
           <QrCode className="w-3.5 h-3.5" />
         </button>
+
+        {isOffline && onRemoveVehicle && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemoveVehicle(v.id);
+            }}
+            aria-label={`Remove ${v.id} from the fleet`}
+            title="Remove this driver record"
+            className="touch-target ui-press w-9 h-9 rounded-[10px] bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/70 text-rose-600 dark:text-rose-400 flex items-center justify-center transition-colors cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
 
         {v.driverPhone && (
           <a
@@ -170,6 +193,7 @@ function AppleSheet({
   onFitRoute,
   onFocusDistance,
   onOpenProvisionModal,
+  onRemoveVehicle,
   detent = 'peek', // 'peek', 'half', 'full'
   onChangeDetent,
   filter: controlledFilter,
@@ -204,12 +228,14 @@ function AppleSheet({
   const onSceneCount = counts.on_scene;
   const atBaseCount = counts.at_base;
   const signalGapCount = counts.no_signal;
+  const offlineCount = counts.offline;
 
   const filteredVehicles = vehicles.filter((v) => {
     const state = getFleetState(v);
     if (filter === 'enroute') return state.key === 'moving' || state.key === 'returning';
     if (filter === 'onscene') return state.key === 'on_scene';
     if (filter === 'nosignal') return state.key === 'no_signal';
+    if (filter === 'offline') return state.key === 'offline';
     return true;
   });
   const sortedVehicles = sortVehiclesByPriority(filteredVehicles);
@@ -264,7 +290,7 @@ function AppleSheet({
                       : connectionState === 'connecting'
                         ? 'Connecting to fleet…'
                         : 'Hospital base standby · Ready for GPS telemetry'
-                    : `${enRouteCount} en route${onSceneCount > 0 ? ` · ${onSceneCount} on scene` : ''}${atBaseCount > 0 ? ` · ${atBaseCount} at base` : ''}`}
+                    : `${enRouteCount} en route${onSceneCount > 0 ? ` · ${onSceneCount} on scene` : ''}${atBaseCount > 0 ? ` · ${atBaseCount} at base` : ''}${offlineCount > 0 ? ` · ${offlineCount} offline` : ''}`}
               </span>
             </div>
           </div>
@@ -411,7 +437,7 @@ function AppleSheet({
                 <div className="flex items-center justify-between gap-2">
                   <div className="type-subhead text-slate-800 dark:text-white flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Live position</span>
+                    <span>{selectedState.key === 'offline' ? 'Last known position' : 'Live position'}</span>
                   </div>
                   <span className="ui-chip font-mono tnum">
                     {Number(selectedVehicle.lat || 0).toFixed(5)}° N, {Number(selectedVehicle.lon || 0).toFixed(5)}° E
@@ -550,13 +576,34 @@ function AppleSheet({
                   </span>
                 </div>
                 <div className="ui-card p-2.5">
-                  <span className="ui-section-label block">Last update</span>
+                  <span className="ui-section-label block">
+                    {selectedState.key === 'offline' ? 'Last seen' : 'Last update'}
+                  </span>
                   <span className="type-subhead text-slate-800 dark:text-white font-mono tnum mt-0.5 flex items-center gap-1">
-                    <Signal className="w-3 h-3 text-emerald-500" />
-                    {formatLastSeen(selectedVehicle.lastSeen)}
+                    <Signal
+                      className={`w-3 h-3 ${
+                        selectedState.key === 'no_signal'
+                          ? 'text-amber-500'
+                          : selectedState.key === 'offline'
+                            ? 'text-slate-400'
+                            : 'text-emerald-500'
+                      }`}
+                    />
+                    {formatVehicleAge(selectedVehicle)}
                   </span>
                 </div>
               </div>
+
+              {onRemoveVehicle && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveVehicle(selectedVehicle.id)}
+                  className="mt-2 w-full min-h-10 rounded-[12px] border border-rose-500/30 bg-rose-500/10 px-3 py-2 flex items-center justify-center gap-2 type-footnote font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-500/15 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Remove driver record</span>
+                </button>
+              )}
             </div>
           ) : (
             /* VIEW B: FLEET LIST OVERVIEW */
@@ -568,13 +615,14 @@ function AppleSheet({
                   { key: 'enroute', label: 'En route' },
                   { key: 'onscene', label: 'On scene' },
                   { key: 'nosignal', label: 'No signal' },
+                  { key: 'offline', label: `Offline${offlineCount > 0 ? ` (${offlineCount})` : ''}` },
                 ].map((tab) => (
                   <button
                     key={tab.key}
                     type="button"
                     onClick={() => setFilter(tab.key)}
                     aria-pressed={filter === tab.key}
-                    className={`ui-press flex-1 min-h-10 py-1 type-footnote font-semibold rounded-[9px] transition-colors cursor-pointer ${
+                    className={`ui-press flex-1 min-h-10 py-1 text-[0.6875rem] font-semibold rounded-[9px] whitespace-nowrap transition-colors cursor-pointer ${
                       filter === tab.key
                         ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
@@ -645,6 +693,7 @@ function AppleSheet({
                       isSelected={selectedVehicleId === v.id}
                       onSelectVehicle={onSelectVehicle}
                       openProvision={openProvision}
+                      onRemoveVehicle={onRemoveVehicle}
                     />
                   ))
                 )}

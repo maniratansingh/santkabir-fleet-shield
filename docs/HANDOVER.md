@@ -1,17 +1,17 @@
 # Handover
 
-Last updated: 10 November 2026.
+Last updated: 12 November 2026.
 
 ## Status
 
-Ready. All three branches are synced and the working tree has no uncommitted
-tracked changes.
+`experimental` is the active branch and the branch deployed at
+`fleet.mrps.in`. `testing` and `main` are promoted only after verification.
 
 | Branch | Role | State |
 |---|---|---|
-| `main` | Production at `fleet.mrps.in` | Synced |
-| `testing` | QA gate | Synced |
-| `experimental` | Active work | Synced |
+| `main` | Production promotion target | Unchanged |
+| `testing` | QA gate | Unchanged |
+| `experimental` | Active work and live deployment | Current |
 
 Confirm the current commit:
 
@@ -35,6 +35,18 @@ git branch -vv
 - Base-anchored route data: 195 village routes and 17 / 15 / 11 fleet arrays.
 - Dashboard stream: WebSocket snapshot + deltas, 10-second HTTP fallback.
 - TV auto-tour: close-up at zoom 13.2 desktop / 12.2 mobile, fitted overview.
+- Persistent fleet records: a quiet vehicle is never deleted at 35 minutes.
+  Its age maps to **Live** (<60 s), **No signal** (60 s – 15 min), **Parked**
+  (15 – 35 min) or **Offline** (>35 min). The driver name and last position
+  stay on the board, and the same id moves back to Live when a packet arrives.
+- Identity: `canonicalVehicleId` trims, collapses internal whitespace and
+  uppercases. The Worker, Durable Object, dashboard and QR path share it, so a
+  reconnecting phone updates its existing record instead of creating a ghost.
+- Offline vehicles are excluded from live counts, trails and the TV auto-tour.
+  They remain under the **Offline** filter with “Last seen X ago” and a manual
+  **Remove** action (admin key required).
+- Browser reconciliation: a fresh snapshot is requested every 60 seconds, so
+  ids removed on the server disappear from an already-open dashboard.
 
 ## Start the app
 

@@ -953,7 +953,7 @@ function MapView({
         map.removeSource('delivery-trail-routes');
       }
 
-      const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
+      const activeVehicles = vehicles.filter(v => v.status !== 'at_base' && !v.isOffline);
       const trailFeatures = activeVehicles
         .filter(v => v.id === selectedVehicleId)
         .map((v) => {
@@ -1160,7 +1160,7 @@ function MapView({
     }
 
     const isDark = theme === 'dark' || currentStyleKeyRef.current === 'dark';
-    const activeVehicles = vehicles.filter(v => v.status !== 'at_base');
+    const activeVehicles = vehicles.filter(v => v.status !== 'at_base' && !v.isOffline);
     const hasSelection = Boolean(selectedVehicleId);
 
     // Individual authentic road lines for each active working vehicle strictly behind vehicle back to Base Hospital
@@ -1770,8 +1770,11 @@ function MapView({
       
       const isGap = Boolean(v.isSignalGap);
       const isParked = Boolean(v.isParked);
+      const isOffline = Boolean(v.isOffline);
       const gapMins = v.gapMinutes || 1;
-      const badgeColor = isGap ? '#F59E0B' : (isParked ? '#94A3B8' : vColor);
+      const badgeColor = isOffline
+        ? '#64748B'
+        : (isGap ? '#F59E0B' : (isParked ? '#94A3B8' : vColor));
 
       const liveLoc = (v.lat && v.lon)
         ? getNearestRuralLocation(Number(v.lat), Number(v.lon))
@@ -1779,7 +1782,10 @@ function MapView({
 
       let statusBadgeText = '';
       let statusBadgeClass = '';
-      if (isGap) {
+      if (isOffline) {
+        statusBadgeText = 'Offline';
+        statusBadgeClass = 'bg-slate-500/15 text-slate-500 dark:text-slate-400 border border-slate-500/30';
+      } else if (isGap) {
         statusBadgeText = `⏳ Gap ${gapMins}m`;
         statusBadgeClass = 'bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30';
       } else if (isParked && liveDist < 1.2) {
@@ -1790,9 +1796,11 @@ function MapView({
         statusBadgeClass = 'bg-slate-500/10 text-slate-600 dark:text-slate-300 border border-slate-500/20';
       }
 
-      const speedStr = isGap 
-        ? 'Last Seen' 
-        : (isParked ? 'Standby' : (v.speed > 0 ? `${v.speed} km/h` : 'Standby'));
+      const speedStr = isOffline
+        ? 'Last seen'
+        : (isGap
+          ? 'Last Seen'
+          : (isParked ? 'Standby' : (v.speed > 0 ? `${v.speed} km/h` : 'Standby')));
       const driverName = String(v.driverName || '').trim();
       const showDriver = Boolean(driverName) && driverName.toUpperCase() !== String(v.id).toUpperCase();
       const distStr = `${liveDist} km Base`;
@@ -1837,7 +1845,7 @@ function MapView({
             <!-- 3D Isometric Ambulance (Always Visible, Zero Strobe/Blink, Hardware accelerated) -->
             <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${targetBearing}deg); will-change: transform; transition: none;">
               <div class="selection-halo absolute w-14 h-14 max-sm:w-11 max-sm:h-11 rounded-full ring-2 ring-sky-400 dark:ring-cyan-400 shadow-[0_0_22px_rgba(56,189,248,0.7)] pointer-events-none transition-opacity duration-300 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}"></div>
-              ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
+              ${get3DAmbulanceSvg(isDark, (isGap || isOffline) ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
             </div>
           </div>
         `;
@@ -1921,7 +1929,7 @@ function MapView({
               </div>
               <div class="ambulance-rotator mt-0.5 relative flex items-center justify-center pointer-events-auto" style="transform: rotate(${markerObj.displayAngle || targetBearing}deg); will-change: transform; transition: none;">
                 <div class="selection-halo absolute w-14 h-14 max-sm:w-11 max-sm:h-11 rounded-full ring-2 ring-sky-400 dark:ring-cyan-400 shadow-[0_0_22px_rgba(56,189,248,0.7)] pointer-events-none transition-opacity duration-300 ${isSelected ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}"></div>
-                ${get3DAmbulanceSvg(isDark, isGap ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
+                ${get3DAmbulanceSvg(isDark, (isGap || isOffline) ? 'stopped' : v.status, isSelected, badgeColor, v.id)}
               </div>
             </div>
           `;

@@ -58,6 +58,7 @@ function DynamicIsland({
   const onSceneCount = counts.on_scene;
   const atBaseCount = counts.at_base;
   const signalGapCount = counts.no_signal;
+  const offlineCount = counts.offline;
 
   const connection = CONNECTION_META[connectionState] || CONNECTION_META.connecting;
   const fleetDot =
@@ -177,6 +178,14 @@ function DynamicIsland({
                             <span className="mx-1 text-slate-300 dark:text-slate-600">·</span>
                             <span className="text-amber-600 dark:text-amber-400 font-semibold">
                               {signalGapCount} no signal
+                            </span>
+                          </>
+                        )}
+                        {offlineCount > 0 && (
+                          <>
+                            <span className="mx-1 text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
+                            <span className="hidden sm:inline text-slate-500 dark:text-slate-400 font-semibold">
+                              {offlineCount} offline
                             </span>
                           </>
                         )}
@@ -301,6 +310,12 @@ function DynamicIsland({
               {signalGapCount > 0 && (
                 <div className="mt-2 rounded-[14px] border border-amber-500/25 bg-amber-500/10 px-3 py-2 type-footnote font-medium text-amber-700 dark:text-amber-300">
                   {signalGapCount} ambulance{signalGapCount > 1 ? 's' : ''} without a recent GPS fix.
+                </div>
+              )}
+
+              {offlineCount > 0 && (
+                <div className="mt-2 rounded-[14px] border border-slate-500/25 bg-slate-500/10 px-3 py-2 type-footnote font-medium text-slate-600 dark:text-slate-300">
+                  {offlineCount} offline · last position kept. Open the fleet list to remove old records.
                 </div>
               )}
 

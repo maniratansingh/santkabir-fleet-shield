@@ -9,6 +9,7 @@ export const FLEET_STATES = {
   on_scene: { key: 'on_scene', label: 'On scene', priority: 2 },
   returning: { key: 'returning', label: 'Returning', priority: 3 },
   at_base: { key: 'at_base', label: 'At base', priority: 4 },
+  offline: { key: 'offline', label: 'Offline', priority: 5 },
 };
 
 export function getVehicleDistanceFromBase(v) {
@@ -23,6 +24,7 @@ export function getVehicleDistanceFromBase(v) {
 
 export function getFleetState(v) {
   if (!v) return FLEET_STATES.at_base;
+  if (v.isOffline) return FLEET_STATES.offline;
   if (v.isSignalGap) return FLEET_STATES.no_signal;
 
   const status = String(v.status || '').toLowerCase();
@@ -67,6 +69,7 @@ export function countFleetStates(vehicles = []) {
     on_scene: 0,
     returning: 0,
     at_base: 0,
+    offline: 0,
     enRoute: 0,
   };
 
