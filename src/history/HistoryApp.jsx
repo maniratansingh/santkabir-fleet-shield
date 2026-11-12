@@ -395,6 +395,16 @@ export default function HistoryApp() {
 
     const segments = { valid: [], gap: [], suspect: [] };
     const suspectIndexes = new Set();
+    const intervals = [];
+
+    for (let index = 1; index < points.length; index += 1) {
+      const dtSeconds = (Number(points[index].device_time) - Number(points[index - 1].device_time)) / 1000;
+      if (Number.isFinite(dtSeconds) && dtSeconds > 0) intervals.push(dtSeconds);
+    }
+    intervals.sort((a, b) => a - b);
+    const medianInterval = intervals.length ? intervals[Math.floor(intervals.length / 2)] : 30;
+    const gapThreshold = Math.max(90, medianInterval * 3);
+    const isSampleTrail = String(selectedId).toUpperCase().startsWith('SAMPLE ');
 
     for (let index = 1; index < points.length; index += 1) {
       const previous = points[index - 1];
@@ -409,7 +419,7 @@ export default function HistoryApp() {
       const speedKmh = dtSeconds > 0 ? distanceKm / (dtSeconds / 3600) : Infinity;
 
       let type = 'valid';
-      if (!Number.isFinite(dtSeconds) || dtSeconds > 90) {
+      if (!Number.isFinite(dtSeconds) || dtSeconds > gapThreshold) {
         type = 'gap';
       } else if (speedKmh > 150) {
         type = 'suspect';
@@ -435,7 +445,9 @@ export default function HistoryApp() {
       let kind = 'normal';
       if (suspectIndexes.has(index)) kind = 'suspect';
       else if (accuracy > 50) kind = 'low';
-      else if (Number.isFinite(bufferedMs) && bufferedMs > 5 * 60 * 1000) kind = 'buffered';
+      else if (!isSampleTrail && Number.isFinite(bufferedMs) && bufferedMs > 5 * 60 * 1000) {
+        kind = 'buffered';
+      }
       return {
         type: 'Feature',
         geometry: {
@@ -589,7 +601,7 @@ export default function HistoryApp() {
         drawRafRef.current = null;
       }
     };
-  }, [points, mapReady]);
+  }, [points, mapReady, selectedId]);
 
   useEffect(() => {
     const map = mapRef.current;

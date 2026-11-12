@@ -376,6 +376,12 @@ HISTORY_TEST_PASSWORD='...' npm run test:history  # requires wrangler dev on :87
 npm run test:routes       # route origin guard only
 ```
 
+To seed six local history samples with different densities and quality levels:
+
+```bash
+HISTORY_TEST_PASSWORD='...' npm run seed:history-samples
+```
+
 ---
 
 ## ☁️ Deployment Guide

@@ -15,6 +15,7 @@
     "test:map-matching": "node scripts/verify_map_matching.mjs",
     "test:do-ws": "node scripts/verify_do_ws.mjs",
     "test:history": "node scripts/verify_history.mjs",
+    "seed:history-samples": "node scripts/seed_history_samples.mjs",
     "test:routes": "node scripts/verify_route_anchors.mjs",
     "data:routes": "node scripts/build_all_75_road_routes.mjs && node scripts/rebuild_fleet_routes.mjs"
   },
