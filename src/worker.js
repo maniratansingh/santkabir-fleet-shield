@@ -44,9 +44,9 @@ async function safeEqual(a, b) {
 const HISTORY_NAME = 'fleet-history';
 const HISTORY_COOKIE = 'history_session';
 const HISTORY_SESSION_SECONDS = 8 * 60 * 60;
-const HISTORY_BUCKET_MS = 30 * 60 * 1000; // 30-minute snapshots
+const HISTORY_BUCKET_MS = 30 * 1000; // 30-second samples
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-const HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS); // 336
+const HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS); // 20,160
 const HISTORY_PASSWORD_SALT = 'rTKeYtOFsbi0PIKaqMs_OA';
 const HISTORY_PASSWORD_HASH = '7bxbsXqTEsfLe4kE61yvx2wcYVXovaOGzFKsSl2pPg8';
 const HISTORY_PASSWORD_ITERATIONS = 210000;
@@ -1236,8 +1236,8 @@ export class FleetHistory {
     const from = Number(url.searchParams.get('from') || now - HISTORY_RETENTION_MS);
     const to = Number(url.searchParams.get('to') || now);
     const limit = Math.min(
-      2000,
-      Math.max(1, Number(url.searchParams.get('limit') || 2000))
+      25000,
+      Math.max(1, Number(url.searchParams.get('limit') || 25000))
     );
 
     const points = this.state.storage.sql

@@ -2042,7 +2042,7 @@ async function safeEqual(a, b) {
 var HISTORY_NAME = "fleet-history";
 var HISTORY_COOKIE = "history_session";
 var HISTORY_SESSION_SECONDS = 8 * 60 * 60;
-var HISTORY_BUCKET_MS = 30 * 60 * 1e3;
+var HISTORY_BUCKET_MS = 30 * 1e3;
 var HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1e3;
 var HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS);
 var HISTORY_PASSWORD_SALT = "rTKeYtOFsbi0PIKaqMs_OA";
@@ -3074,8 +3074,8 @@ var FleetHistory = class {
     const from = Number(url.searchParams.get("from") || now - HISTORY_RETENTION_MS);
     const to = Number(url.searchParams.get("to") || now);
     const limit = Math.min(
-      2e3,
-      Math.max(1, Number(url.searchParams.get("limit") || 2e3))
+      25e3,
+      Math.max(1, Number(url.searchParams.get("limit") || 25e3))
     );
     const points = this.state.storage.sql.exec(
       `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery

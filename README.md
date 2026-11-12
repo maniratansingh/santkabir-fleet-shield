@@ -63,9 +63,11 @@ Verified on 12 November 2026: build pass, master contract 28/28, route anchors
 A separate history service is now on `experimental` only. It does **not** change
 the live board and is **not deployed** to `fleet.mrps.in` yet.
 
-- A second SQLite-backed Durable Object, `FleetHistory`, stores **30-minute
-  snapshots** for **7 days** in a fixed ring buffer. Old slots are overwritten;
-  there is no purge job.
+- A second SQLite-backed Durable Object, `FleetHistory`, stores every
+  **30-second point** for **7 days** in a fixed ring buffer (20,160 slots per
+  vehicle). Old slots are overwritten; there is no purge job.
+- The history page draws the trail progressively in chunks with a visible
+  progress bar, so a large 7-day range does not block the page.
 - The live telemetry path writes to it asynchronously with `ctx.waitUntil`.
   A history failure cannot delay or block the live dashboard.
 - All vehicles are currently allowed. An allowlist can be added later.

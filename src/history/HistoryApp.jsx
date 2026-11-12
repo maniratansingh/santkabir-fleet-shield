@@ -6,6 +6,7 @@ import {
   Clock,
   Eye,
   EyeOff,
+  Info,
   Lock,
   LogOut,
   MapPin,
@@ -16,7 +17,6 @@ import {
   Sun,
   Trash2,
 } from 'lucide-react';
-import { calculateDistanceKm } from '../data/mockData';
 import { getUniqueVehicleColor } from '../utils/colors';
 import AppleRangePicker from './AppleRangePicker';
 import {
@@ -137,6 +137,19 @@ function formatTime(timestamp) {
   });
 }
 
+function preciseDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((Number(lat2) - Number(lat1)) * Math.PI) / 180;
+  const dLon = ((Number(lon2) - Number(lon1)) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((Number(lat1) * Math.PI) / 180) *
+      Math.cos((Number(lat2) * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options });
   const data = await response.json().catch(() => ({}));
@@ -162,6 +175,46 @@ function ThemeButton({ theme, onToggle }) {
   );
 }
 
+const HISTORY_LEGEND = [
+  {
+    symbol: <span className="block w-2.5 h-2.5 rounded-full bg-sky-500 border border-sky-900" />,
+    label: 'Measured point',
+  },
+  {
+    symbol: <span className="block w-4 h-4 rounded-full bg-amber-500/30 border-2 border-amber-400" />,
+    label: 'Low accuracy (>50 m)',
+  },
+  {
+    symbol: <span className="block w-3.5 h-3.5 rounded-full bg-sky-500/15 border-2 border-sky-400" />,
+    label: 'Buffered upload',
+  },
+  {
+    symbol: <span className="block w-5 border-t-2 border-sky-500" />,
+    label: 'Measured link',
+  },
+  {
+    symbol: <span className="block w-5 border-t border-dotted border-slate-400/70" />,
+    label: 'No data',
+  },
+  {
+    symbol: <span className="block w-5 border-t-2 border-dashed border-amber-500" />,
+    label: 'Suspect jump (>150 km/h)',
+  },
+];
+
+function HistoryLegend() {
+  return (
+    <div className="space-y-1.5">
+      {HISTORY_LEGEND.map((item) => (
+        <div key={item.label} className="flex items-center gap-2">
+          <span className="w-5 shrink-0 flex justify-center">{item.symbol}</span>
+          <span className="text-[10px] text-slate-600 dark:text-slate-300">{item.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function HistoryApp() {
   const [authed, setAuthed] = useState(null);
   const [password, setPassword] = useState('');
@@ -181,6 +234,7 @@ export default function HistoryApp() {
   const [vehicles, setVehicles] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [points, setPoints] = useState([]);
+  const [drawnCount, setDrawnCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
   const [error, setError] = useState('');
@@ -193,10 +247,13 @@ export default function HistoryApp() {
   const [appliedFrom, setAppliedFrom] = useState(0);
   const [appliedTo, setAppliedTo] = useState(0);
   const [mobileRangeOpen, setMobileRangeOpen] = useState(false);
+  const [mobileKeyOpen, setMobileKeyOpen] = useState(false);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef([]);
+  const drawRafRef = useRef(null);
+  const startMarkerRef = useRef(null);
+  const endMarkerRef = useRef(null);
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
@@ -316,68 +373,247 @@ export default function HistoryApp() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
+    if (!map || !mapReady) return undefined;
 
-    markersRef.current.forEach((marker) => marker.remove());
-    markersRef.current = [];
+    if (drawRafRef.current) {
+      cancelAnimationFrame(drawRafRef.current);
+      drawRafRef.current = null;
+    }
+
+    if (startMarkerRef.current) {
+      try { startMarkerRef.current.remove(); } catch (e) {}
+      startMarkerRef.current = null;
+    }
+    if (endMarkerRef.current) {
+      try { endMarkerRef.current.remove(); } catch (e) {}
+      endMarkerRef.current = null;
+    }
 
     const coordinates = points
       .map((point) => [Number(point.lon), Number(point.lat)])
       .filter(([lon, lat]) => Number.isFinite(lon) && Number.isFinite(lat));
 
-    const geojson = {
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: coordinates.length > 1 ? coordinates : [],
-      },
-      properties: {},
-    };
+    const segments = { valid: [], gap: [], suspect: [] };
+    const suspectIndexes = new Set();
 
-    if (map.getSource('history-trail')) {
-      map.getSource('history-trail').setData(geojson);
-    } else {
-      map.addSource('history-trail', { type: 'geojson', data: geojson });
-      map.addLayer({
-        id: 'history-trail-line',
-        type: 'line',
-        source: 'history-trail',
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': '#0ea5e9',
-          'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3, 10, 5, 14, 7],
-          'line-opacity': 0.95,
+    for (let index = 1; index < points.length; index += 1) {
+      const previous = points[index - 1];
+      const current = points[index];
+      const dtSeconds = (Number(current.device_time) - Number(previous.device_time)) / 1000;
+      const distanceKm = preciseDistanceKm(
+        previous.lat,
+        previous.lon,
+        current.lat,
+        current.lon
+      );
+      const speedKmh = dtSeconds > 0 ? distanceKm / (dtSeconds / 3600) : Infinity;
+
+      let type = 'valid';
+      if (!Number.isFinite(dtSeconds) || dtSeconds > 90) {
+        type = 'gap';
+      } else if (speedKmh > 150) {
+        type = 'suspect';
+        suspectIndexes.add(index);
+      }
+
+      segments[type].push({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [Number(previous.lon), Number(previous.lat)],
+            [Number(current.lon), Number(current.lat)],
+          ],
         },
+        properties: { i: index - 1 },
       });
     }
 
-    if (coordinates.length > 0) {
-      const first = coordinates[0];
-      const last = coordinates[coordinates.length - 1];
+    const pointFeatures = points.map((point, index) => {
+      const accuracy = Number(point.accuracy) || 0;
+      const bufferedMs = Number(point.received_at) - Number(point.device_time);
+      let kind = 'normal';
+      if (suspectIndexes.has(index)) kind = 'suspect';
+      else if (accuracy > 50) kind = 'low';
+      else if (Number.isFinite(bufferedMs) && bufferedMs > 5 * 60 * 1000) kind = 'buffered';
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [Number(point.lon), Number(point.lat)],
+        },
+        properties: { i: index, kind },
+      };
+    });
 
-      const startEl = document.createElement('div');
-      startEl.style.cssText =
-        'width:14px;height:14px;border-radius:9999px;background:#30d158;border:3px solid #052e16;box-shadow:0 0 0 4px rgba(48,209,88,.18);';
-      markersRef.current.push(
-        new maplibregl.Marker({ element: startEl }).setLngLat(first).addTo(map)
-      );
+    const haloFeatures = pointFeatures.filter((feature) => feature.properties.kind === 'low');
+    const collection = (features) => ({ type: 'FeatureCollection', features });
 
-      if (coordinates.length > 1) {
-        const endEl = document.createElement('div');
-        endEl.style.cssText =
-          'width:14px;height:14px;border-radius:9999px;background:#ff453a;border:3px solid #450a0a;box-shadow:0 0 0 4px rgba(255,69,58,.18);';
-        markersRef.current.push(
-          new maplibregl.Marker({ element: endEl }).setLngLat(last).addTo(map)
-        );
+    const ensureSource = (id, data, layerId, layer) => {
+      if (map.getSource(id)) {
+        map.getSource(id).setData(data);
+      } else {
+        map.addSource(id, { type: 'geojson', data });
+        map.addLayer({ id: layerId, source: id, ...layer });
       }
+    };
 
-      const bounds = coordinates.reduce(
-        (acc, coordinate) => acc.extend(coordinate),
-        new maplibregl.LngLatBounds(coordinates[0], coordinates[0])
-      );
-      map.fitBounds(bounds, { padding: 70, maxZoom: 14, duration: 500 });
+    ensureSource('history-valid', collection(segments.valid), 'history-valid-line', {
+      type: 'line',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      filter: ['<=', ['get', 'i'], -2],
+      paint: {
+        'line-color': '#0ea5e9',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2.5, 10, 4.5, 14, 6],
+        'line-opacity': 0.9,
+      },
+    });
+
+    ensureSource('history-gap', collection(segments.gap), 'history-gap-line', {
+      type: 'line',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      filter: ['<=', ['get', 'i'], -2],
+      paint: {
+        'line-color': '#94a3b8',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 10, 2.5, 14, 3.5],
+        'line-dasharray': [1, 4],
+        'line-opacity': 0.45,
+      },
+    });
+
+    ensureSource('history-suspect', collection(segments.suspect), 'history-suspect-line', {
+      type: 'line',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      filter: ['<=', ['get', 'i'], -2],
+      paint: {
+        'line-color': '#f59e0b',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2.5, 10, 4.5, 14, 6],
+        'line-dasharray': [2, 2],
+        'line-opacity': 0.95,
+      },
+    });
+
+    ensureSource('history-halos', collection(haloFeatures), 'history-halo', {
+      type: 'circle',
+      filter: ['all', ['==', ['get', 'kind'], 'low'], ['<=', ['get', 'i'], -1]],
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 10, 14, 22],
+        'circle-color': 'rgba(245, 158, 11, 0.16)',
+        'circle-stroke-width': 0,
+      },
+    });
+
+    ensureSource('history-points', collection(pointFeatures), 'history-point-layer', {
+      type: 'circle',
+      filter: ['<=', ['get', 'i'], -1],
+      paint: {
+        'circle-radius': [
+          'case',
+          ['==', ['get', 'kind'], 'normal'],
+          ['interpolate', ['linear'], ['zoom'], 6, 2, 12, 3.5, 16, 5],
+          ['interpolate', ['linear'], ['zoom'], 6, 4, 12, 5.5, 16, 7],
+        ],
+        'circle-color': [
+          'case',
+          ['==', ['get', 'kind'], 'low'], '#f59e0b',
+          ['==', ['get', 'kind'], 'buffered'], 'rgba(14,165,233,0.15)',
+          ['==', ['get', 'kind'], 'suspect'], '#f59e0b',
+          '#0ea5e9',
+        ],
+        'circle-stroke-color': [
+          'case',
+          ['==', ['get', 'kind'], 'low'], '#fbbf24',
+          ['==', ['get', 'kind'], 'buffered'], '#38bdf8',
+          ['==', ['get', 'kind'], 'suspect'], '#ef4444',
+          '#082f49',
+        ],
+        'circle-stroke-width': 1.5,
+      },
+    });
+
+    if (coordinates.length === 0) {
+      setDrawnCount(0);
+      return undefined;
     }
+
+    const firstCoordinate = [Number(points[0].lon), Number(points[0].lat)];
+    const lastCoordinate = [
+      Number(points[points.length - 1].lon),
+      Number(points[points.length - 1].lat),
+    ];
+
+    const startEl = document.createElement('div');
+    startEl.style.cssText =
+      'width:14px;height:14px;border-radius:9999px;background:#30d158;border:3px solid #052e16;box-shadow:0 0 0 4px rgba(48,209,88,.18);';
+    startMarkerRef.current = new maplibregl.Marker({ element: startEl })
+      .setLngLat(firstCoordinate)
+      .addTo(map);
+
+    if (points.length > 1) {
+      const endEl = document.createElement('div');
+      endEl.style.cssText =
+        'width:14px;height:14px;border-radius:9999px;background:#ff453a;border:3px solid #450a0a;box-shadow:0 0 0 4px rgba(255,69,58,.18);display:none;';
+      endMarkerRef.current = new maplibregl.Marker({ element: endEl })
+        .setLngLat(lastCoordinate)
+        .addTo(map);
+    }
+
+    const bounds = coordinates.reduce(
+      (acc, coordinate) => acc.extend(coordinate),
+      new maplibregl.LngLatBounds(coordinates[0], coordinates[0])
+    );
+    map.fitBounds(bounds, { padding: 70, maxZoom: 14, duration: 500 });
+
+    setDrawnCount(0);
+    let cancelled = false;
+    let drawn = 0;
+    const total = points.length;
+    const chunk = Math.max(1, Math.ceil(total / 100));
+
+    const step = () => {
+      if (cancelled) return;
+      drawn = Math.min(total, drawn + chunk);
+      setDrawnCount(drawn);
+      if (drawn < total) {
+        drawRafRef.current = requestAnimationFrame(step);
+      } else {
+        drawRafRef.current = null;
+      }
+    };
+    drawRafRef.current = requestAnimationFrame(step);
+
+    return () => {
+      cancelled = true;
+      if (drawRafRef.current) {
+        cancelAnimationFrame(drawRafRef.current);
+        drawRafRef.current = null;
+      }
+    };
   }, [points, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const pointFilter = ['<=', ['get', 'i'], drawnCount - 1];
+    const segmentFilter = ['<=', ['get', 'i'], drawnCount - 2];
+
+    if (map.getLayer('history-point-layer')) map.setFilter('history-point-layer', pointFilter);
+    if (map.getLayer('history-halo')) {
+      map.setFilter('history-halo', ['all', ['==', ['get', 'kind'], 'low'], pointFilter]);
+    }
+    ['history-valid-line', 'history-gap-line', 'history-suspect-line'].forEach((id) => {
+      if (map.getLayer(id)) map.setFilter(id, segmentFilter);
+    });
+
+    if (startMarkerRef.current) {
+      startMarkerRef.current.getElement().style.display = drawnCount > 0 ? '' : 'none';
+    }
+    if (endMarkerRef.current) {
+      endMarkerRef.current.getElement().style.display =
+        points.length > 0 && drawnCount >= points.length ? '' : 'none';
+    }
+  }, [drawnCount, mapReady, points.length]);
 
   const applyPreset = (key) => {
     const now = Date.now();
@@ -504,11 +740,11 @@ export default function HistoryApp() {
     const previous = points[index - 1];
     return (
       total +
-      calculateDistanceKm(
-        Number(previous.lat),
-        Number(previous.lon),
-        Number(point.lat),
-        Number(point.lon)
+      preciseDistanceKm(
+        previous.lat,
+        previous.lon,
+        point.lat,
+        point.lon
       )
     );
   }, 0);
@@ -587,7 +823,7 @@ export default function HistoryApp() {
 
           <div className="mt-5 pt-4 border-t border-slate-200 dark:border-white/10 text-[11px] text-slate-500 flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5" />
-            Sant Kabir Eye Hospital · Basti · 30-minute snapshots
+            Sant Kabir Eye Hospital · Basti · 30-second history
           </div>
         </form>
       </div>
@@ -603,7 +839,7 @@ export default function HistoryApp() {
         <div className="min-w-0">
           <h1 className="text-base font-semibold tracking-tight leading-tight">Fleet History</h1>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
-            30-minute snapshots · 7 days · {vehicles.length} vehicles
+            30-second samples · 7 days · {vehicles.length} {vehicles.length === 1 ? 'vehicle' : 'vehicles'}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
@@ -648,6 +884,13 @@ export default function HistoryApp() {
               onApply={applyCustom}
               error={error}
             />
+          </div>
+
+          <div className="px-3 py-2 border-b border-slate-200 dark:border-white/10">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+              Map key
+            </div>
+            <HistoryLegend />
           </div>
 
           <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -734,6 +977,14 @@ export default function HistoryApp() {
               >
                 {rangeLabel}
               </button>
+              <button
+                type="button"
+                onClick={() => setMobileKeyOpen(true)}
+                aria-label="Map key"
+                className="rounded-[10px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 p-2 text-slate-700 dark:text-slate-200"
+              >
+                <Info className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -766,9 +1017,35 @@ export default function HistoryApp() {
               </div>
             </div>
 
+            {points.length > 0 && (
+              <div className="mt-2">
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                  {drawnCount < points.length ? (
+                    <>
+                      <RefreshCw className="w-3 h-3 animate-spin text-sky-500" />
+                      Drawing {drawnCount.toLocaleString()} / {points.length.toLocaleString()} points…
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                      Trail complete · {points.length.toLocaleString()} points
+                    </>
+                  )}
+                </div>
+                <div className="mt-1.5 h-1 rounded-full bg-slate-500/15 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-sky-500 transition-[width] duration-100"
+                    style={{
+                      width: `${points.length ? Math.round((drawnCount / points.length) * 100) : 0}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
               <MapPin className="w-3 h-3" />
-              Green start · Red end · 30-minute snapshots
+              Green start · Red end · 30-second samples
             </div>
           </div>
 
@@ -787,7 +1064,7 @@ export default function HistoryApp() {
                 <Route className="w-6 h-6 text-slate-400 dark:text-slate-500 mx-auto" />
                 <p className="mt-2 text-sm font-semibold">No history in this range</p>
                 <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
-                  The 30-minute collector stores one point per vehicle per bucket. Try a wider period.
+                  History stores every 30-second point. Try a wider period.
                 </p>
               </div>
             </div>
@@ -837,6 +1114,33 @@ export default function HistoryApp() {
               onApply={applyCustom}
               error={error}
             />
+          </div>
+        </>
+      )}
+
+      {mobileKeyOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-[1px]"
+            aria-hidden="true"
+            onClick={() => setMobileKeyOpen(false)}
+          />
+          <div className="md:hidden fixed left-0 right-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-[24px] border-t border-slate-200 dark:border-white/10 bg-white dark:bg-[#0b1728] p-4 pb-[calc(1rem+var(--safe-bottom))] shadow-2xl">
+            <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600 mx-auto mb-3" />
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">Map key</h2>
+              <button
+                type="button"
+                onClick={() => setMobileKeyOpen(false)}
+                className="rounded-full px-3 py-1 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:bg-sky-500/10"
+              >
+                Done
+              </button>
+            </div>
+            <HistoryLegend />
+            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-white/10 text-[10px] text-slate-500">
+              Green start · Red end · 30-second samples
+            </div>
           </div>
         </>
       )}
