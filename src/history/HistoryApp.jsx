@@ -769,25 +769,22 @@ export default function HistoryApp() {
     });
 
     if (!map.hasImage('history-arrow')) {
-      const size = 28;
+      const size = 32;
       const canvas = document.createElement('canvas');
       canvas.width = size;
       canvas.height = size;
       const ctx = canvas.getContext('2d');
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
+      ctx.lineWidth = 7;
       ctx.beginPath();
-      ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(size / 2, 5);
-      ctx.lineTo(size - 6, size - 7);
-      ctx.lineTo(size / 2, size - 10);
-      ctx.lineTo(6, size - 7);
-      ctx.closePath();
-      ctx.fillStyle = '#e0f2fe';
-      ctx.strokeStyle = '#0ea5e9';
-      ctx.lineWidth = 1.5;
-      ctx.fill();
+      ctx.moveTo(9, 20);
+      ctx.lineTo(16, 12);
+      ctx.lineTo(23, 20);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)';
+      ctx.lineWidth = 3.6;
       ctx.stroke();
       map.addImage('history-arrow', ctx.getImageData(0, 0, size, size));
     }
@@ -797,14 +794,14 @@ export default function HistoryApp() {
       filter: ['<=', ['get', 'i'], -1],
       layout: {
         'icon-image': 'history-arrow',
-        'icon-size': 0.8,
+        'icon-size': 0.72,
         'icon-rotate': ['get', 'bearing'],
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
         'icon-padding': 0,
       },
       paint: {
-        'icon-opacity': 0.85,
+        'icon-opacity': 0.9,
       },
     });
 
