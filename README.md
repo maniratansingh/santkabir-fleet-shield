@@ -88,6 +88,9 @@ offline/persistence behaviour.
 - The page has 24-hour, 7-day, Today and Yesterday presets, plus a custom
   Apple-style calendar + time range, a mobile bottom sheet, and a light/dark
   theme toggle.
+- On desktop the control sidebar is collapsible. Vehicle selection and the
+  period picker sit at the top; the map key and history-management actions are
+  collapsed by default, leaving more room for the map.
 - Points are split into trips at a day boundary or after a gap longer than
   15 minutes. Each trip gets its own colour from an 8-colour palette, with a
   desktop trip panel and a mobile trips sheet. Selecting a trip highlights it

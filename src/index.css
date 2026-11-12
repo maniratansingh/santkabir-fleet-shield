@@ -691,3 +691,14 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
     top: 4.25rem;
   }
 }
+
+/* History page: collapsible sections use the native details element. */
+.history-details > summary {
+  list-style: none;
+}
+.history-details > summary::-webkit-details-marker {
+  display: none;
+}
+.history-details[open] .history-chevron {
+  transform: rotate(180deg);
+}

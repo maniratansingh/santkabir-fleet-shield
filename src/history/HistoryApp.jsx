@@ -3,7 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import {
-  Clock,
+  ChevronDown,
   Eye,
   EyeOff,
   Info,
@@ -11,6 +11,8 @@ import {
   LogOut,
   MapPin,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Route,
   ShieldCheck,
@@ -392,7 +394,7 @@ function ThemeButton({ theme, onToggle }) {
       onClick={onToggle}
       aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-      className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10 transition-colors"
+      className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
     >
       {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-sky-600" />}
     </button>
@@ -484,6 +486,14 @@ export default function HistoryApp() {
       return 'both';
     }
   });
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      return localStorage.getItem('sk_history_sidebar') !== 'closed';
+    } catch (e) {
+      return true;
+    }
+  });
   const [mobileTripsOpen, setMobileTripsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
@@ -524,6 +534,16 @@ export default function HistoryApp() {
       // ignore storage errors
     }
   }, [trailMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sk_history_sidebar', sidebarOpen ? 'open' : 'closed');
+    } catch (e) {
+      // ignore storage errors
+    }
+    const frame = requestAnimationFrame(() => mapRef.current?.resize());
+    return () => cancelAnimationFrame(frame);
+  }, [sidebarOpen]);
 
   useEffect(() => {
     const to = Date.now();
@@ -1280,11 +1300,25 @@ export default function HistoryApp() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((value) => !value)}
+            className="hidden md:inline-flex ui-press items-center gap-1.5 rounded-full px-2.5 py-2.5 text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+            aria-expanded={sidebarOpen}
+            aria-controls="history-sidebar"
+            aria-label={sidebarOpen ? 'Hide controls' : 'Show controls'}
+            title={sidebarOpen ? 'Hide controls' : 'Show controls'}
+          >
+            {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+            <span className="hidden lg:inline text-[11px] font-semibold">
+              {sidebarOpen ? 'Hide controls' : 'Show controls'}
+            </span>
+          </button>
           <ThemeButton theme={theme} onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
           <button
             type="button"
             onClick={() => setRefreshKey((value) => value + 1)}
-            className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10"
+            className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
             aria-label="Refresh history"
             title="Refresh history"
           >
@@ -1293,7 +1327,7 @@ export default function HistoryApp() {
           <button
             type="button"
             onClick={handleLogout}
-            className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10"
+            className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
             aria-label="Lock history"
             title="Lock history"
           >
@@ -1303,87 +1337,106 @@ export default function HistoryApp() {
       </header>
 
       <div className="flex-1 min-h-0 flex">
-        <aside className="hidden md:flex w-[300px] shrink-0 border-r border-slate-200 dark:border-white/10 bg-white/80 dark:bg-[#081321]/70 flex-col min-h-0">
-          <div className="p-3 border-b border-slate-200 dark:border-white/10">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-              Select period
-            </div>
-            <AppleRangePicker
-              preset={preset}
-              rangeLabel={rangeLabel}
-              fromValue={fromInput}
-              toValue={toInput}
-              minMs={Date.now() - MAX_RANGE_MS}
-              maxMs={Date.now()}
-              onFromChange={setFromInput}
-              onToChange={setToInput}
-              onPreset={applyPreset}
-              onApply={applyCustom}
-              error={error}
-            />
-          </div>
-
-          <div className="px-3 py-2 border-b border-slate-200 dark:border-white/10">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
-              Map key
-            </div>
-            <HistoryLegend trailMode={trailMode} />
-          </div>
-
-          <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Vehicles
-          </div>
-          <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-1">
-            {vehicles.length === 0 && !vehiclesLoading && (
-              <div className="px-3 py-6 text-xs text-slate-500 text-center">No history yet.</div>
-            )}
-            {vehicles.map((vehicle) => {
-              const color = getUniqueVehicleColor(vehicle.id).line;
-              const isSelected = vehicle.id === selectedId;
-              return (
-                <button
-                  key={vehicle.id}
-                  type="button"
-                  onClick={() => setSelectedId(vehicle.id)}
-                  className={`w-full text-left rounded-[12px] border px-3 py-2.5 transition-colors ${
-                    isSelected
-                      ? 'border-sky-400/60 bg-sky-500/10'
-                      : 'border-transparent hover:bg-slate-200/60 dark:hover:bg-white/5'
-                  }`}
+        <aside
+          id="history-sidebar"
+          className={`${sidebarOpen ? 'hidden md:flex' : 'hidden'} w-[300px] shrink-0 border-r border-slate-200 dark:border-white/10 bg-white/80 dark:bg-[#081321]/70 flex-col min-h-0`}
+        >
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <section className="p-3 border-b border-slate-200 dark:border-white/10" aria-labelledby="history-vehicle-label">
+              <label
+                id="history-vehicle-label"
+                htmlFor="history-vehicle"
+                className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500"
+              >
+                Vehicle
+              </label>
+              <div className="relative mt-2">
+                <select
+                  id="history-vehicle"
+                  value={selectedId}
+                  onChange={(event) => setSelectedId(event.target.value)}
+                  className="w-full appearance-none rounded-[10px] border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04] px-3 py-2.5 pr-9 text-sm font-mono font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
                 >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}88` }}
-                    />
-                    <span className="text-sm font-mono font-semibold truncate">{vehicle.id}</span>
-                  </div>
-                  <div className="mt-1 pl-[18px] text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <Clock className="w-3 h-3" />
-                    {formatAge(vehicle.last_seen)} · {vehicle.points} points
-                  </div>
-                </button>
-              );
-            })}
+                  {vehicles.length === 0 && <option value="">No history yet</option>}
+                  {vehicles.map((vehicle) => (
+                    <option key={vehicle.id} value={vehicle.id}>
+                      {vehicle.id} · {formatAge(vehicle.last_seen)} · {vehicle.points} pts
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+              {selectedVehicle && (
+                <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: vColor }} />
+                  <span className="truncate font-mono">{selectedVehicle.id}</span>
+                  <span className="ml-auto shrink-0 tabular-nums">
+                    {formatAge(selectedVehicle.last_seen)} · {selectedVehicle.points} pts
+                  </span>
+                </p>
+              )}
+            </section>
+
+            <section className="p-3 border-b border-slate-200 dark:border-white/10" aria-labelledby="history-period-label">
+              <div
+                id="history-period-label"
+                className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-2"
+              >
+                Select period
+              </div>
+              <AppleRangePicker
+                preset={preset}
+                rangeLabel={rangeLabel}
+                fromValue={fromInput}
+                toValue={toInput}
+                minMs={Date.now() - MAX_RANGE_MS}
+                maxMs={Date.now()}
+                onFromChange={setFromInput}
+                onToChange={setToInput}
+                onPreset={applyPreset}
+                onApply={applyCustom}
+                error={error}
+              />
+            </section>
+
+            <details className="history-details group border-b border-slate-200 dark:border-white/10">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-400/70">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Map key
+                </span>
+                <ChevronDown className="history-chevron h-3.5 w-3.5 text-slate-400 transition-transform" />
+              </summary>
+              <div className="px-3 pb-3">
+                <HistoryLegend trailMode={trailMode} />
+              </div>
+            </details>
           </div>
 
-          <div className="p-3 border-t border-slate-200 dark:border-white/10 space-y-1.5">
-            <button
-              type="button"
-              onClick={() => handleDelete(false)}
-              disabled={!selectedId}
-              className="w-full min-h-9 rounded-[10px] border border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300 text-xs font-semibold disabled:opacity-40"
-            >
-              Delete this vehicle
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDelete(true)}
-              className="w-full min-h-9 rounded-[10px] border border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 hover:border-rose-500/25 text-xs font-semibold"
-            >
-              Delete all history
-            </button>
-          </div>
+          <details className="history-details group border-t border-slate-200 dark:border-white/10">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-400/70">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Manage history
+              </span>
+              <ChevronDown className="history-chevron h-3.5 w-3.5 text-slate-400 transition-transform" />
+            </summary>
+            <div className="p-3 pt-0 space-y-1.5">
+              <button
+                type="button"
+                onClick={() => handleDelete(false)}
+                disabled={!selectedId}
+                className="w-full min-h-9 rounded-[10px] border border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300 text-xs font-semibold disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60"
+              >
+                Delete this vehicle
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDelete(true)}
+                className="w-full min-h-9 rounded-[10px] border border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 hover:border-rose-500/25 text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60"
+              >
+                Delete all history
+              </button>
+            </div>
+          </details>
         </aside>
 
         <main className="relative flex-1 min-w-0 overflow-hidden">
