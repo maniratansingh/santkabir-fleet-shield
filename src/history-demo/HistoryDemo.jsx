@@ -186,6 +186,13 @@ function formatMinute(minute) {
   });
 }
 
+const TYPE_LABEL = {
+  normal: 'Normal',
+  low: 'Low accuracy',
+  buffered: 'Buffered',
+  suspect: 'Suspect',
+};
+
 function LegendItem({ symbol, label, note }) {
   return (
     <div className="flex items-start gap-2">
@@ -207,6 +214,7 @@ function LegendItem({ symbol, label, note }) {
 export default function HistoryDemo() {
   const [mode, setMode] = useState('proposed');
   const [legendOpen, setLegendOpen] = useState(false);
+  const [showPoints, setShowPoints] = useState(false);
   const [theme, setTheme] = useState(() => {
     if (typeof window === 'undefined') return 'dark';
     try {
@@ -218,6 +226,7 @@ export default function HistoryDemo() {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  const gapMarkerRef = useRef(null);
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
@@ -237,6 +246,7 @@ export default function HistoryDemo() {
     if (mapRef.current) {
       mapRef.current.remove();
       mapRef.current = null;
+      gapMarkerRef.current = null;
       setMapReady(false);
     }
 
@@ -261,6 +271,7 @@ export default function HistoryDemo() {
       window.removeEventListener('resize', handleResize);
       map.remove();
       mapRef.current = null;
+      gapMarkerRef.current = null;
       setMapReady(false);
     };
   }, [theme]);
@@ -283,6 +294,10 @@ export default function HistoryDemo() {
     map.addSource('demo-suspect', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: linkFeatures('suspect') },
+    });
+    map.addSource('demo-gap', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: linkFeatures('gap') },
     });
     map.addSource('demo-points', {
       type: 'geojson',
@@ -331,6 +346,19 @@ export default function HistoryDemo() {
         'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3.5, 10, 5.5, 14, 7],
         'line-dasharray': [2, 2],
         'line-opacity': 0.95,
+      },
+    });
+
+    map.addLayer({
+      id: 'demo-gap-line',
+      type: 'line',
+      source: 'demo-gap',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#94a3b8',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 10, 2.5, 14, 3.5],
+        'line-dasharray': [1, 4],
+        'line-opacity': 0.45,
       },
     });
 
@@ -393,6 +421,20 @@ export default function HistoryDemo() {
         .addTo(map)
     );
 
+    const gapLink = LINKS.find((link) => link.type === 'gap');
+    if (gapLink) {
+      const gapEl = document.createElement('div');
+      gapEl.className =
+        'rounded-full border border-slate-300/60 dark:border-white/15 bg-white/90 dark:bg-[#0b1728]/90 px-2 py-0.5 text-[9px] font-semibold text-slate-500 dark:text-slate-300 shadow-sm';
+      gapEl.textContent = 'no data';
+      gapMarkerRef.current = new maplibregl.Marker({ element: gapEl })
+        .setLngLat([
+          (gapLink.from.lon + gapLink.to.lon) / 2,
+          (gapLink.from.lat + gapLink.to.lat) / 2,
+        ])
+        .addTo(map);
+    }
+
     const bounds = POINTS.reduce(
       (acc, point) => acc.extend([point.lon, point.lat]),
       new maplibregl.LngLatBounds(
@@ -416,8 +458,12 @@ export default function HistoryDemo() {
     setVisibility('demo-current-line', !proposed);
     setVisibility('demo-valid-line', proposed);
     setVisibility('demo-suspect-line', proposed);
+    setVisibility('demo-gap-line', proposed);
     setVisibility('demo-halo', proposed);
     setVisibility('demo-point-layer', proposed);
+    if (gapMarkerRef.current) {
+      gapMarkerRef.current.getElement().style.display = proposed ? '' : 'none';
+    }
   }, [mode, mapReady]);
 
   const gapCount = LINKS.filter((link) => link.type === 'gap').length;
@@ -481,17 +527,23 @@ export default function HistoryDemo() {
         note: 'Dotted; only between plausible points',
       },
       {
-        symbol: (
-          <span className="relative block w-5 h-0.5">
-            <span className="absolute left-0 top-0 w-1.5 h-0.5 bg-slate-400 dark:bg-slate-500" />
-            <span className="absolute right-0 top-0 w-1.5 h-0.5 bg-slate-400 dark:bg-slate-500" />
-          </span>
-        ),
-        label: 'Gap — no line',
-        note: 'No data; nothing is invented',
+        symbol: <span className="block w-5 border-t border-dotted border-slate-400/60" />,
+        label: 'Faint gap link',
+        note: 'No data; direction only',
       },
     ];
   }, [mode]);
+
+  const pointNote = (point, index) => {
+    if (index === 0) return 'Start';
+    if (index === POINTS.length - 1) return 'End';
+    if (point.kind === 'low') return 'Low accuracy';
+    if (point.kind === 'buffered') return `Buffered +${point.buffered}m`;
+    if (point.kind === 'suspect') return 'Suspect jump';
+    const previous = LINKS[index - 1];
+    if (previous?.type === 'gap') return `After ${previous.dtMinutes}-min gap`;
+    return '—';
+  };
 
   const renderLegend = () => (
     <div>
@@ -516,6 +568,70 @@ export default function HistoryDemo() {
         {legend.map((item, index) => (
           <LegendItem key={index} {...item} />
         ))}
+      </div>
+
+      <div className="mt-3 rounded-[12px] border border-slate-200 dark:border-white/10 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowPoints((value) => !value)}
+          aria-expanded={showPoints}
+          className="w-full px-3 py-2 text-[11px] font-semibold text-slate-700 dark:text-slate-200 bg-slate-500/5 dark:bg-white/5 flex items-center justify-between hover:bg-slate-500/10 dark:hover:bg-white/10 transition-colors"
+        >
+          <span>Raw demo points</span>
+          <span className="text-[10px] font-mono text-slate-500">
+            {POINTS.length} {showPoints ? '▾' : '▸'}
+          </span>
+        </button>
+        {showPoints && (
+          <div className="max-h-[260px] overflow-auto border-t border-slate-200 dark:border-white/10">
+            <table className="w-full text-left text-[10px]">
+              <thead className="sticky top-0 bg-white dark:bg-[#0b1728]">
+                <tr className="text-[9px] uppercase tracking-wider text-slate-500">
+                  <th className="px-2 py-1.5">Time</th>
+                  <th className="px-2 py-1.5">Type</th>
+                  <th className="px-2 py-1.5">Position</th>
+                  <th className="px-2 py-1.5 text-right">Acc</th>
+                </tr>
+              </thead>
+              <tbody>
+                {POINTS.map((point, index) => {
+                  const note = pointNote(point, index);
+                  return (
+                    <tr key={index} className="border-t border-slate-200/60 dark:border-white/5">
+                      <td className="px-2 py-1.5 font-mono text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {formatMinute(point.min)}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <span
+                          className={`block font-semibold ${
+                            point.kind === 'low' || point.kind === 'suspect'
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : point.kind === 'buffered'
+                                ? 'text-sky-600 dark:text-sky-400'
+                                : 'text-slate-700 dark:text-slate-200'
+                          }`}
+                        >
+                          {TYPE_LABEL[point.kind]}
+                        </span>
+                        {note !== '—' && (
+                          <span className="block text-[9px] text-slate-500">{note}</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 font-mono text-[9px] text-slate-500 whitespace-nowrap">
+                        {point.lat.toFixed(4)}
+                        <br />
+                        {point.lon.toFixed(4)}
+                      </td>
+                      <td className="px-2 py-1.5 font-mono text-right text-slate-600 dark:text-slate-300">
+                        {point.accuracy}m
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="mt-3 pt-3 border-t border-slate-200 dark:border-white/10 flex items-start gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
