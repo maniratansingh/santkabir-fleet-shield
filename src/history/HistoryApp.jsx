@@ -244,63 +244,101 @@ function buildTrips(points) {
   });
 }
 
-function tripBearing(from, to) {
-  const y =
-    Math.sin(((to.lon - from.lon) * Math.PI) / 180) *
-    Math.cos((to.lat * Math.PI) / 180);
-  const x =
-    Math.cos((from.lat * Math.PI) / 180) * Math.sin((to.lat * Math.PI) / 180) -
-    Math.sin((from.lat * Math.PI) / 180) *
-      Math.cos((to.lat * Math.PI) / 180) *
-      Math.cos(((to.lon - from.lon) * Math.PI) / 180);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+function TripSwatch({ trip }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" className="shrink-0">
+      <path
+        d="M4 14 C7.5 10.5, 10.5 7.5, 14 4"
+        fill="none"
+        stroke={trip.color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeDasharray={trip.isReturn ? '3 3' : undefined}
+      />
+      <circle cx="4" cy="14" r="1.9" fill={trip.color} />
+      <circle cx="14" cy="4" r="1.9" fill={trip.color} />
+    </svg>
+  );
 }
 
 function TripList({ trips, selectedTrip, onSelect, onAll }) {
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       <button
         type="button"
         onClick={onAll}
-        className={`w-full rounded-[10px] border px-2.5 py-2 text-left text-[10px] font-semibold transition-colors ${
+        aria-pressed={selectedTrip === null}
+        className={`w-full rounded-[12px] border px-2.5 py-2 text-left transition-all duration-200 ${
           selectedTrip === null
-            ? 'border-sky-400/60 bg-sky-500/10 text-slate-900 dark:text-white'
-            : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-white/5'
+            ? 'border-sky-400/50 bg-sky-500/10 text-slate-900 dark:text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+            : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-white/[0.04]'
         }`}
       >
-        All trips · {trips.length}
+        <span className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-semibold">All trips</span>
+          <span className="rounded-full bg-slate-500/10 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-slate-500 dark:text-slate-300">
+            {trips.length}
+          </span>
+        </span>
       </button>
-      {trips.map((trip) => (
-        <button
-          key={trip.index}
-          type="button"
-          onClick={() => onSelect(trip.index)}
-          className={`w-full rounded-[10px] border px-2.5 py-2 text-left transition-colors ${
-            selectedTrip === trip.index
-              ? 'border-sky-400/60 bg-sky-500/10'
-              : 'border-transparent hover:bg-slate-200/60 dark:hover:bg-white/5'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: trip.color, boxShadow: `0 0 5px ${trip.color}88` }}
-            />
-            <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-100 truncate">
-              Trip {trip.index + 1}{trip.isReturn ? ' · Return' : ''}
-            </span>
-            <span className="ml-auto text-[9px] font-mono text-slate-500 shrink-0">
-              {trip.distance.toFixed(1)} km
-            </span>
-          </div>
-          <div className="mt-1 pl-[18px] text-[9px] text-slate-500 dark:text-slate-400 flex items-center justify-between gap-2">
-            <span className="truncate">
-              {formatTime(trip.start)} → {formatTime(trip.end)}
-            </span>
-            <span className="shrink-0">{trip.points.length} pts</span>
-          </div>
-        </button>
-      ))}
+
+      <div className="my-1 h-px bg-slate-200/70 dark:bg-white/5" />
+
+      {trips.map((trip) => {
+        const selected = selectedTrip === trip.index;
+        return (
+          <button
+            key={trip.index}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onSelect(trip.index)}
+            style={
+              selected
+                ? { borderColor: `${trip.color}66`, backgroundColor: `${trip.color}14` }
+                : undefined
+            }
+            className={`w-full rounded-[12px] border px-2.5 py-2 text-left transition-all duration-200 ${
+              selected
+                ? 'shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+                : 'border-transparent hover:bg-slate-200/50 dark:hover:bg-white/[0.04]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <TripSwatch trip={trip} />
+              <span className="truncate text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+                Trip {trip.index + 1}
+              </span>
+              {trip.isReturn && (
+                <span
+                  title="Inferred when this trip starts near the previous trip’s end and finishes near its start."
+                  className="shrink-0 rounded-full border border-dashed border-slate-400/70 px-1.5 py-[1px] text-[8px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:border-white/25 dark:text-slate-300"
+                >
+                  Return
+                </span>
+              )}
+              <span className="ml-auto shrink-0 text-[10px] font-semibold tabular-nums text-slate-600 dark:text-slate-300">
+                {trip.distance.toFixed(1)} km
+              </span>
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-2 pl-[26px] text-[9px] tabular-nums text-slate-500 dark:text-slate-400">
+              <span className="truncate">
+                {formatTime(trip.start)} → {formatTime(trip.end)}
+              </span>
+              <span className="shrink-0">{trip.points.length} pts</span>
+            </div>
+          </button>
+        );
+      })}
+
+      {trips.some((trip) => trip.isReturn) && (
+        <p className="flex items-start gap-1.5 px-1.5 pt-2 text-[9px] leading-relaxed text-slate-500 dark:text-slate-400">
+          <Info className="mt-[1px] h-3 w-3 shrink-0" />
+          <span>
+            Return is inferred when a trip starts near the previous trip’s end and finishes
+            near its start — not from GPS heading.
+          </span>
+        </p>
+      )}
     </div>
   );
 }
@@ -348,6 +386,10 @@ const HISTORY_LEGEND = [
     label: 'Measured link',
   },
   {
+    symbol: <span className="block w-5 border-t-2 border-dashed border-sky-400/80" />,
+    label: 'Return trip · offset (inferred)',
+  },
+  {
     symbol: <span className="block w-5 border-t border-dotted border-slate-400/70" />,
     label: 'No data',
   },
@@ -392,6 +434,7 @@ export default function HistoryApp() {
   const [drawnCount, setDrawnCount] = useState(0);
   const trips = useMemo(() => buildTrips(points), [points]);
   const [selectedTrip, setSelectedTrip] = useState(null);
+  const selectedTripData = selectedTrip === null ? null : trips[selectedTrip] || null;
   const [tripsOpen, setTripsOpen] = useState(true);
   const [mobileTripsOpen, setMobileTripsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -525,7 +568,6 @@ export default function HistoryApp() {
     const handleResize = () => map.resize();
     window.addEventListener('resize', handleResize);
     mapRef.current = map;
-    if (typeof window !== 'undefined') window.__historyMap = map;
 
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -560,7 +602,6 @@ export default function HistoryApp() {
     const suspectFeatures = [];
     const pointFeatures = [];
     const haloFeatures = [];
-    const arrowFeatures = [];
 
     for (const trip of trips) {
       const tripPoints = trip.points;
@@ -575,8 +616,6 @@ export default function HistoryApp() {
       intervals.sort((a, b) => a - b);
       const median = intervals.length ? intervals[Math.floor(intervals.length / 2)] : 30;
       const gapThreshold = Math.max(90, median * 3);
-      let arrowDistance = 0;
-      let arrowCount = 0;
 
       for (let index = 1; index < tripPoints.length; index += 1) {
         const previous = tripPoints[index - 1];
@@ -613,36 +652,6 @@ export default function HistoryApp() {
         else if (type === 'suspect') suspectFeatures.push(feature);
         else if (trip.isReturn) returnFeatures.push(feature);
         else validFeatures.push(feature);
-
-        arrowDistance += distanceKm;
-        if (arrowDistance >= 2) {
-          arrowFeatures.push({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [b.lon, b.lat] },
-            properties: {
-              i: previous.globalIndex,
-              tripIndex: trip.index,
-              bearing: tripBearing(a, b),
-            },
-          });
-          arrowDistance = 0;
-          arrowCount += 1;
-        }
-      }
-
-      if (arrowCount === 0 && displayPoints.length > 1) {
-        const middle = Math.floor(displayPoints.length / 2);
-        const a = displayPoints[middle - 1];
-        const b = displayPoints[middle];
-        arrowFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [b.lon, b.lat] },
-          properties: {
-            i: tripPoints[middle - 1].globalIndex,
-            tripIndex: trip.index,
-            bearing: tripBearing(a, b),
-          },
-        });
       }
 
       tripPoints.forEach((point, index) => {
@@ -768,43 +777,6 @@ export default function HistoryApp() {
       },
     });
 
-    if (!map.hasImage('history-arrow')) {
-      const size = 32;
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(15, 23, 42, 0.85)';
-      ctx.lineWidth = 7;
-      ctx.beginPath();
-      ctx.moveTo(9, 20);
-      ctx.lineTo(16, 12);
-      ctx.lineTo(23, 20);
-      ctx.stroke();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)';
-      ctx.lineWidth = 3.6;
-      ctx.stroke();
-      map.addImage('history-arrow', ctx.getImageData(0, 0, size, size));
-    }
-
-    ensureSource('history-arrows', collection(arrowFeatures), 'history-arrow-layer', {
-      type: 'symbol',
-      filter: ['<=', ['get', 'i'], -1],
-      layout: {
-        'icon-image': 'history-arrow',
-        'icon-size': 0.72,
-        'icon-rotate': ['get', 'bearing'],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-padding': 0,
-      },
-      paint: {
-        'icon-opacity': 0.9,
-      },
-    });
-
     if (points.length === 0) {
       setDrawnCount(0);
       return undefined;
@@ -867,9 +839,6 @@ export default function HistoryApp() {
     if (map.getLayer('history-halo')) {
       map.setFilter('history-halo', ['all', ['==', ['get', 'kind'], 'low'], pointFilter]);
     }
-    if (map.getLayer('history-arrow-layer')) {
-      map.setFilter('history-arrow-layer', pointFilter);
-    }
     ['history-valid-line', 'history-return-line', 'history-gap-line', 'history-suspect-line'].forEach((id) => {
       if (map.getLayer(id)) map.setFilter(id, segmentFilter);
     });
@@ -889,25 +858,27 @@ export default function HistoryApp() {
 
     const opacity = selectedTrip === null
       ? 0.9
-      : ['case', ['==', ['get', 'tripIndex'], selectedTrip], 1, 0.18];
+      : ['case', ['==', ['get', 'tripIndex'], selectedTrip], 1, 0.12];
     const pointOpacity = selectedTrip === null
       ? 0.95
-      : ['case', ['==', ['get', 'tripIndex'], selectedTrip], 1, 0.15];
+      : ['case', ['==', ['get', 'tripIndex'], selectedTrip], 1, 0.12];
+    const selectedIsReturn = selectedTrip !== null && Boolean(trips[selectedTrip]?.isReturn);
 
     ['history-valid-line', 'history-return-line', 'history-suspect-line'].forEach((id) => {
       if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', opacity);
     });
+    if (map.getLayer('history-return-line')) {
+      // A selected return trip becomes a solid offset line so it reads as the hero route.
+      map.setPaintProperty('history-return-line', 'line-dasharray', selectedIsReturn ? null : [4, 4]);
+    }
     if (map.getLayer('history-point-layer')) {
       map.setPaintProperty('history-point-layer', 'circle-opacity', pointOpacity);
       map.setPaintProperty('history-point-layer', 'circle-stroke-opacity', pointOpacity);
     }
     if (map.getLayer('history-halo')) {
-      map.setPaintProperty('history-halo', 'circle-opacity', selectedTrip === null ? 0.8 : 0.25);
+      map.setPaintProperty('history-halo', 'circle-opacity', selectedTrip === null ? 0.8 : 0.2);
     }
-    if (map.getLayer('history-arrow-layer')) {
-      map.setPaintProperty('history-arrow-layer', 'icon-opacity', selectedTrip === null ? 0.85 : 0.4);
-    }
-  }, [selectedTrip, mapReady]);
+  }, [selectedTrip, mapReady, trips]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1267,16 +1238,23 @@ export default function HistoryApp() {
           </div>
 
           {trips.length > 0 && (
-            <div className="hidden md:flex absolute left-3 top-3 z-20 w-[290px] max-h-[46vh] flex-col rounded-[16px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 shadow-xl overflow-hidden">
+            <div className="hidden md:flex absolute left-3 top-3 z-20 w-[300px] max-h-[48vh] flex-col rounded-[18px] border border-slate-200/80 dark:border-white/10 bg-white/90 dark:bg-[#0b1728]/85 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_40px_-12px_rgba(2,6,23,0.45)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_40px_-12px_rgba(2,6,23,0.65)] overflow-hidden">
               <button
                 type="button"
                 onClick={() => setTripsOpen((value) => !value)}
-                className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-white/10"
+                className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200/70 dark:border-white/[0.06]"
               >
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Trips · {trips.length}
+                <span className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Trips
+                  </span>
+                  <span className="rounded-full bg-slate-500/10 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-slate-500 dark:text-slate-300">
+                    {trips.length}
+                  </span>
                 </span>
-                <span className="text-[10px] text-slate-500">{tripsOpen ? 'Hide' : 'Show'}</span>
+                <span className="text-[10px] font-medium text-slate-500">
+                  {tripsOpen ? 'Hide' : 'Show'}
+                </span>
               </button>
               {tripsOpen && (
                 <div className="overflow-y-auto p-2">
@@ -1333,7 +1311,7 @@ export default function HistoryApp() {
             </div>
           </div>
 
-          <div className="absolute left-3 bottom-10 md:bottom-3 z-10 max-w-[calc(100%-1.5rem)] rounded-[16px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 backdrop-blur px-3.5 py-3 shadow-xl">
+          <div className="absolute left-3 bottom-10 md:bottom-3 z-10 max-w-[calc(100%-1.5rem)] rounded-[18px] border border-slate-200/80 dark:border-white/10 bg-white/90 dark:bg-[#0b1728]/85 backdrop-blur-xl px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_40px_-12px_rgba(2,6,23,0.45)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_40px_-12px_rgba(2,6,23,0.65)]">
             <div className="flex items-center gap-2">
               <span
                 className="w-2.5 h-2.5 rounded-full"
@@ -1344,24 +1322,32 @@ export default function HistoryApp() {
               <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                 · {selectedTrip === null ? `${trips.length} trips` : `Trip ${selectedTrip + 1} of ${trips.length}`}
               </span>
+              {selectedTripData?.isReturn && (
+                <span
+                  title="Inferred from this trip’s start and end matching the previous trip."
+                  className="shrink-0 rounded-full border border-dashed border-slate-400/70 px-1.5 py-[1px] text-[8px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:border-white/25 dark:text-slate-300"
+                >
+                  Return
+                </span>
+              )}
             </div>
 
-            <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-1.5 text-[11px]">
+            <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-2 text-[11px]">
               <div>
-                <div className="text-slate-500">Points</div>
-                <div className="font-mono font-semibold">{points.length}</div>
+                <div className="text-[9px] font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Points</div>
+                <div className="mt-0.5 font-mono font-semibold tabular-nums">{points.length}</div>
               </div>
               <div>
-                <div className="text-slate-500">Distance</div>
-                <div className="font-mono font-semibold">{distanceKm.toFixed(1)} km</div>
+                <div className="text-[9px] font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Distance</div>
+                <div className="mt-0.5 font-mono font-semibold tabular-nums">{distanceKm.toFixed(1)} km</div>
               </div>
               <div>
-                <div className="text-slate-500">First</div>
-                <div className="font-mono font-semibold">{formatTime(firstPoint?.device_time)}</div>
+                <div className="text-[9px] font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">First</div>
+                <div className="mt-0.5 font-mono font-semibold tabular-nums">{formatTime(firstPoint?.device_time)}</div>
               </div>
               <div>
-                <div className="text-slate-500">Last</div>
-                <div className="font-mono font-semibold">{formatTime(lastPoint?.device_time)}</div>
+                <div className="text-[9px] font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Last</div>
+                <div className="mt-0.5 font-mono font-semibold tabular-nums">{formatTime(lastPoint?.device_time)}</div>
               </div>
             </div>
 
@@ -1503,7 +1489,12 @@ export default function HistoryApp() {
           <div className="md:hidden fixed left-0 right-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-[24px] border-t border-slate-200 dark:border-white/10 bg-white dark:bg-[#0b1728] p-4 pb-[calc(1rem+var(--safe-bottom))] shadow-2xl">
             <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600 mx-auto mb-3" />
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold">Trips · {trips.length}</h2>
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                Trips
+                <span className="rounded-full bg-slate-500/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500 dark:text-slate-300">
+                  {trips.length}
+                </span>
+              </h2>
               <button
                 type="button"
                 onClick={() => setMobileTripsOpen(false)}

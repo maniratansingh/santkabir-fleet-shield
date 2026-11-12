@@ -82,10 +82,8 @@ the live board and is **not deployed** to `fleet.mrps.in` yet.
   and fits the map to it.
 - When a trip returns along the same road, it is detected as a return trip and
   drawn as a **55 m offset dashed line**, so outbound and return are both
-  visible instead of hiding each other.
-- Direction arrows are clean white chevrons with a thin dark casing, placed
-  roughly every 2 km along each trip (one in the middle for short trips), and
-  fade with the selected trip.
+  visible instead of hiding each other. Selecting the return trip shows it as
+  a solid offset line while the other trip fades.
 - Sample trails can be seeded locally at several densities: `SAMPLE OUT AND
   BACK`, `EXCELLENT`, `VERY GOOD`, `GOOD`, `MEDIUM`, `POOR` and `BAD`. They
   use real road coordinates from `src/data/allVillagesRoadRoutes.json`; sparse
