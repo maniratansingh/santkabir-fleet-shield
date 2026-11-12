@@ -27,6 +27,15 @@ const ROUTES = JSON.parse(
 
 const SAMPLE_DEFS = [
   {
+    id: 'SAMPLE OUT AND BACK',
+    routeName: 'Harraiya Gram',
+    intervalSec: 30,
+    durationMin: 60,
+    returnGapMin: 20,
+    outAndBack: true,
+    accuracy: [8, 20],
+  },
+  {
     id: 'SAMPLE EXCELLENT',
     routeName: 'Harraiya Gram',
     intervalSec: 30,
@@ -126,31 +135,41 @@ function buildPoints(def) {
   if (!route?.coordinates?.length) throw new Error(`Missing route ${def.routeName}`);
 
   const { cumulative, total } = routeMetrics(route.coordinates);
-  const count = Math.floor((def.durationMin * 60) / def.intervalSec) + 1;
+  const count = Math.max(2, Math.floor((def.durationMin * 60) / def.intervalSec) + 1);
   const now = Date.now();
+  const specs = [];
   let time = now - def.durationMin * 60 * 1000;
-  const times = [];
 
   for (let index = 0; index < count; index += 1) {
-    times.push(time);
+    specs.push({ fraction: index / (count - 1), time });
     time += def.intervalSec * 1000;
     const gap = def.gaps?.find((item) => item.after === index);
     if (gap) time += gap.minutes * 60 * 1000;
   }
 
-  if (times[times.length - 1] > now) {
-    const shift = times[times.length - 1] - now;
-    for (let index = 0; index < times.length; index += 1) times[index] -= shift;
+  if (def.outAndBack) {
+    time += (def.returnGapMin || 20) * 60 * 1000;
+    for (let index = 0; index < count; index += 1) {
+      specs.push({ fraction: 1 - index / (count - 1), time });
+      time += def.intervalSec * 1000;
+    }
   }
 
-  return times.map((timestamp, index) => {
-    const fraction = count > 1 ? index / (count - 1) : 0;
-    const [lon, lat] = pointAtDistance(route.coordinates, cumulative, total * fraction);
+  const lastTime = specs[specs.length - 1].time;
+  if (lastTime > now) {
+    const shift = lastTime - now;
+    specs.forEach((spec) => {
+      spec.time -= shift;
+    });
+  }
+
+  return specs.map((spec, index) => {
+    const [lon, lat] = pointAtDistance(route.coordinates, cumulative, total * spec.fraction);
     let accuracy = rand(def.accuracy[0], def.accuracy[1]);
     if (def.poorFixAt === index) accuracy = Math.max(accuracy, 150);
     if (index % 29 === 0) accuracy = Math.min(300, Math.max(accuracy, 90));
     return {
-      time: timestamp,
+      time: spec.time,
       lat,
       lon,
       accuracy: Math.round(accuracy),

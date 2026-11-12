@@ -76,6 +76,19 @@ the live board and is **not deployed** to `fleet.mrps.in` yet.
 - The page has 24-hour, 7-day, Today and Yesterday presets, plus a custom
   Apple-style calendar + time range, a mobile bottom sheet, and a light/dark
   theme toggle.
+- Points are split into trips at a day boundary or after a gap longer than
+  15 minutes. Each trip gets its own colour from an 8-colour palette, with a
+  desktop trip panel and a mobile trips sheet. Selecting a trip highlights it
+  and fits the map to it.
+- When a trip returns along the same road, it is detected as a return trip and
+  drawn as a **55 m offset dashed line**, so outbound and return are both
+  visible instead of hiding each other.
+- Direction arrows are placed roughly every 2 km along each trip (one in the
+  middle for short trips) and fade with the selected trip.
+- Sample trails can be seeded locally at several densities: `SAMPLE OUT AND
+  BACK`, `EXCELLENT`, `VERY GOOD`, `GOOD`, `MEDIUM`, `POOR` and `BAD`. They
+  use real road coordinates from `src/data/allVillagesRoadRoutes.json`; sparse
+  samples deliberately show visible jumps rather than invented roads.
 - Ingest events, logins and history deletes are recorded in `history_audit`.
 - History deletion is separate from the live record. You can delete one
   vehicle's history, a range, or all history without touching the live fleet.
@@ -376,7 +389,7 @@ HISTORY_TEST_PASSWORD='...' npm run test:history  # requires wrangler dev on :87
 npm run test:routes       # route origin guard only
 ```
 
-To seed six local history samples with different densities and quality levels:
+To seed seven local history samples with different densities and quality levels:
 
 ```bash
 HISTORY_TEST_PASSWORD='...' npm run seed:history-samples

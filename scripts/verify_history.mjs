@@ -82,7 +82,7 @@ const history = await fetch(
   { headers: { Cookie: cookie } }
 );
 const historyJson = await history.json();
-assert(historyJson.count === 1, 'History returns the 30-minute bucket point');
+assert(historyJson.count === 1, 'History returns the 30-second point');
 assert(historyJson.points?.[0]?.lat === 26.85, 'History preserves latitude');
 assert(historyJson.points?.[0]?.lon === 82.85, 'History preserves longitude');
 

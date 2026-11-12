@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
@@ -150,6 +150,161 @@ function preciseDistanceKm(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+const TRIP_COLORS = [
+  '#0ea5e9',
+  '#22c55e',
+  '#f59e0b',
+  '#8b5cf6',
+  '#ec4899',
+  '#14b8a6',
+  '#f97316',
+  '#64748b',
+];
+
+function offsetTripPoints(points, meters) {
+  const coords = points.map((point) => [Number(point.lon), Number(point.lat)]);
+  if (!meters || coords.length < 2) {
+    return points.map((point) => ({ lon: Number(point.lon), lat: Number(point.lat) }));
+  }
+  return coords.map((coord, index) => {
+    const previous = coords[Math.max(0, index - 1)];
+    const next = coords[Math.min(coords.length - 1, index + 1)];
+    const dLon = next[0] - previous[0];
+    const dLat = next[1] - previous[1];
+    const length = Math.hypot(dLon, dLat) || 1;
+    const lat = coord[1] + (dLon / length) * (meters / 111320);
+    const lon =
+      coord[0] -
+      (dLat / length) * (meters / (111320 * Math.cos((coord[1] * Math.PI) / 180)));
+    return { lon: Number(lon.toFixed(6)), lat: Number(lat.toFixed(6)) };
+  });
+}
+
+function buildTrips(points) {
+  if (!points.length) return [];
+  const dayKey = (timestamp) =>
+    Math.floor((Number(timestamp) + 5.5 * 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
+
+  const raw = [];
+  let current = [];
+  let previousTime = null;
+  let previousDay = null;
+
+  points.forEach((point, index) => {
+    const timestamp = Number(point.device_time);
+    const day = dayKey(timestamp);
+    if (
+      current.length > 0 &&
+      ((Number.isFinite(timestamp) &&
+        Number.isFinite(previousTime) &&
+        timestamp - previousTime > 15 * 60 * 1000) ||
+        day !== previousDay)
+    ) {
+      raw.push(current);
+      current = [];
+    }
+    current.push({ ...point, globalIndex: index });
+    previousTime = timestamp;
+    previousDay = day;
+  });
+  if (current.length) raw.push(current);
+
+  return raw.map((tripPoints, index) => {
+    const first = tripPoints[0];
+    const last = tripPoints[tripPoints.length - 1];
+    let distance = 0;
+    for (let pointIndex = 1; pointIndex < tripPoints.length; pointIndex += 1) {
+      const before = tripPoints[pointIndex - 1];
+      const after = tripPoints[pointIndex];
+      distance += preciseDistanceKm(before.lat, before.lon, after.lat, after.lon);
+    }
+
+    const previous = index > 0 ? raw[index - 1] : null;
+    const isReturn = Boolean(
+      previous &&
+        preciseDistanceKm(
+          first.lat,
+          first.lon,
+          previous[previous.length - 1].lat,
+          previous[previous.length - 1].lon
+        ) < 2 &&
+        preciseDistanceKm(last.lat, last.lon, previous[0].lat, previous[0].lon) < 2
+    );
+
+    return {
+      index,
+      points: tripPoints,
+      start: Number(first.device_time),
+      end: Number(last.device_time),
+      distance,
+      color: TRIP_COLORS[index % TRIP_COLORS.length],
+      isReturn,
+      displayPoints: offsetTripPoints(tripPoints, isReturn ? 55 : 0),
+    };
+  });
+}
+
+function tripBearing(from, to) {
+  const y =
+    Math.sin(((to.lon - from.lon) * Math.PI) / 180) *
+    Math.cos((to.lat * Math.PI) / 180);
+  const x =
+    Math.cos((from.lat * Math.PI) / 180) * Math.sin((to.lat * Math.PI) / 180) -
+    Math.sin((from.lat * Math.PI) / 180) *
+      Math.cos((to.lat * Math.PI) / 180) *
+      Math.cos(((to.lon - from.lon) * Math.PI) / 180);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function TripList({ trips, selectedTrip, onSelect, onAll }) {
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        onClick={onAll}
+        className={`w-full rounded-[10px] border px-2.5 py-2 text-left text-[10px] font-semibold transition-colors ${
+          selectedTrip === null
+            ? 'border-sky-400/60 bg-sky-500/10 text-slate-900 dark:text-white'
+            : 'border-transparent text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-white/5'
+        }`}
+      >
+        All trips · {trips.length}
+      </button>
+      {trips.map((trip) => (
+        <button
+          key={trip.index}
+          type="button"
+          onClick={() => onSelect(trip.index)}
+          className={`w-full rounded-[10px] border px-2.5 py-2 text-left transition-colors ${
+            selectedTrip === trip.index
+              ? 'border-sky-400/60 bg-sky-500/10'
+              : 'border-transparent hover:bg-slate-200/60 dark:hover:bg-white/5'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: trip.color, boxShadow: `0 0 5px ${trip.color}88` }}
+            />
+            <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+              Trip {trip.index + 1}{trip.isReturn ? ' · Return' : ''}
+            </span>
+            <span className="ml-auto text-[9px] font-mono text-slate-500 shrink-0">
+              {trip.distance.toFixed(1)} km
+            </span>
+          </div>
+          <div className="mt-1 pl-[18px] text-[9px] text-slate-500 dark:text-slate-400 flex items-center justify-between gap-2">
+            <span className="truncate">
+              {formatTime(trip.start)} → {formatTime(trip.end)}
+            </span>
+            <span className="shrink-0">{trip.points.length} pts</span>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options });
   const data = await response.json().catch(() => ({}));
@@ -235,6 +390,10 @@ export default function HistoryApp() {
   const [selectedId, setSelectedId] = useState('');
   const [points, setPoints] = useState([]);
   const [drawnCount, setDrawnCount] = useState(0);
+  const trips = useMemo(() => buildTrips(points), [points]);
+  const [selectedTrip, setSelectedTrip] = useState(null);
+  const [tripsOpen, setTripsOpen] = useState(true);
+  const [mobileTripsOpen, setMobileTripsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
   const [error, setError] = useState('');
@@ -338,6 +497,10 @@ export default function HistoryApp() {
   }, [authed, selectedId, appliedFrom, appliedTo, refreshKey]);
 
   useEffect(() => {
+    setSelectedTrip(null);
+  }, [selectedId, appliedFrom, appliedTo]);
+
+  useEffect(() => {
     if (authed !== true || !mapContainerRef.current) return undefined;
 
     if (mapRef.current) {
@@ -362,6 +525,7 @@ export default function HistoryApp() {
     const handleResize = () => map.resize();
     window.addEventListener('resize', handleResize);
     mapRef.current = map;
+    if (typeof window !== 'undefined') window.__historyMap = map;
 
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -389,78 +553,127 @@ export default function HistoryApp() {
       endMarkerRef.current = null;
     }
 
-    const coordinates = points
-      .map((point) => [Number(point.lon), Number(point.lat)])
-      .filter(([lon, lat]) => Number.isFinite(lon) && Number.isFinite(lat));
-
-    const segments = { valid: [], gap: [], suspect: [] };
-    const suspectIndexes = new Set();
-    const intervals = [];
-
-    for (let index = 1; index < points.length; index += 1) {
-      const dtSeconds = (Number(points[index].device_time) - Number(points[index - 1].device_time)) / 1000;
-      if (Number.isFinite(dtSeconds) && dtSeconds > 0) intervals.push(dtSeconds);
-    }
-    intervals.sort((a, b) => a - b);
-    const medianInterval = intervals.length ? intervals[Math.floor(intervals.length / 2)] : 30;
-    const gapThreshold = Math.max(90, medianInterval * 3);
     const isSampleTrail = String(selectedId).toUpperCase().startsWith('SAMPLE ');
+    const validFeatures = [];
+    const returnFeatures = [];
+    const gapFeatures = [];
+    const suspectFeatures = [];
+    const pointFeatures = [];
+    const haloFeatures = [];
+    const arrowFeatures = [];
 
-    for (let index = 1; index < points.length; index += 1) {
-      const previous = points[index - 1];
-      const current = points[index];
-      const dtSeconds = (Number(current.device_time) - Number(previous.device_time)) / 1000;
-      const distanceKm = preciseDistanceKm(
-        previous.lat,
-        previous.lon,
-        current.lat,
-        current.lon
-      );
-      const speedKmh = dtSeconds > 0 ? distanceKm / (dtSeconds / 3600) : Infinity;
+    for (const trip of trips) {
+      const tripPoints = trip.points;
+      const displayPoints = trip.displayPoints;
+      const suspectLocalIndexes = new Set();
+      const intervals = [];
 
-      let type = 'valid';
-      if (!Number.isFinite(dtSeconds) || dtSeconds > gapThreshold) {
-        type = 'gap';
-      } else if (speedKmh > 150) {
-        type = 'suspect';
-        suspectIndexes.add(index);
+      for (let index = 1; index < tripPoints.length; index += 1) {
+        const dt = (Number(tripPoints[index].device_time) - Number(tripPoints[index - 1].device_time)) / 1000;
+        if (Number.isFinite(dt) && dt > 0) intervals.push(dt);
+      }
+      intervals.sort((a, b) => a - b);
+      const median = intervals.length ? intervals[Math.floor(intervals.length / 2)] : 30;
+      const gapThreshold = Math.max(90, median * 3);
+      let arrowDistance = 0;
+      let arrowCount = 0;
+
+      for (let index = 1; index < tripPoints.length; index += 1) {
+        const previous = tripPoints[index - 1];
+        const current = tripPoints[index];
+        const a = displayPoints[index - 1];
+        const b = displayPoints[index];
+        const dtSeconds = (Number(current.device_time) - Number(previous.device_time)) / 1000;
+        const distanceKm = preciseDistanceKm(previous.lat, previous.lon, current.lat, current.lon);
+        const speedKmh = dtSeconds > 0 ? distanceKm / (dtSeconds / 3600) : Infinity;
+
+        let type = 'valid';
+        if (!Number.isFinite(dtSeconds) || dtSeconds > gapThreshold) {
+          type = 'gap';
+        } else if (speedKmh > 150) {
+          type = 'suspect';
+          suspectLocalIndexes.add(index);
+        }
+
+        const feature = {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [[a.lon, a.lat], [b.lon, b.lat]],
+          },
+          properties: {
+            i: previous.globalIndex,
+            tripIndex: trip.index,
+            color: trip.color,
+            isReturn: trip.isReturn,
+          },
+        };
+
+        if (type === 'gap') gapFeatures.push(feature);
+        else if (type === 'suspect') suspectFeatures.push(feature);
+        else if (trip.isReturn) returnFeatures.push(feature);
+        else validFeatures.push(feature);
+
+        arrowDistance += distanceKm;
+        if (arrowDistance >= 2) {
+          arrowFeatures.push({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [b.lon, b.lat] },
+            properties: {
+              i: previous.globalIndex,
+              tripIndex: trip.index,
+              bearing: tripBearing(a, b),
+            },
+          });
+          arrowDistance = 0;
+          arrowCount += 1;
+        }
       }
 
-      segments[type].push({
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: [
-            [Number(previous.lon), Number(previous.lat)],
-            [Number(current.lon), Number(current.lat)],
-          ],
-        },
-        properties: { i: index - 1 },
+      if (arrowCount === 0 && displayPoints.length > 1) {
+        const middle = Math.floor(displayPoints.length / 2);
+        const a = displayPoints[middle - 1];
+        const b = displayPoints[middle];
+        arrowFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [b.lon, b.lat] },
+          properties: {
+            i: tripPoints[middle - 1].globalIndex,
+            tripIndex: trip.index,
+            bearing: tripBearing(a, b),
+          },
+        });
+      }
+
+      tripPoints.forEach((point, index) => {
+        const display = displayPoints[index] || {
+          lon: Number(point.lon),
+          lat: Number(point.lat),
+        };
+        const accuracy = Number(point.accuracy) || 0;
+        const bufferedMs = Number(point.received_at) - Number(point.device_time);
+        let kind = 'normal';
+        if (suspectLocalIndexes.has(index)) kind = 'suspect';
+        else if (accuracy > 50) kind = 'low';
+        else if (!isSampleTrail && Number.isFinite(bufferedMs) && bufferedMs > 5 * 60 * 1000) {
+          kind = 'buffered';
+        }
+        const feature = {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [display.lon, display.lat] },
+          properties: {
+            i: point.globalIndex,
+            tripIndex: trip.index,
+            color: trip.color,
+            kind,
+          },
+        };
+        pointFeatures.push(feature);
+        if (kind === 'low') haloFeatures.push(feature);
       });
     }
 
-    const pointFeatures = points.map((point, index) => {
-      const accuracy = Number(point.accuracy) || 0;
-      const bufferedMs = Number(point.received_at) - Number(point.device_time);
-      let kind = 'normal';
-      if (suspectIndexes.has(index)) kind = 'suspect';
-      else if (accuracy > 50) kind = 'low';
-      else if (!isSampleTrail && Number.isFinite(bufferedMs) && bufferedMs > 5 * 60 * 1000) {
-        kind = 'buffered';
-      }
-      return {
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [Number(point.lon), Number(point.lat)],
-        },
-        properties: { i: index, kind },
-      };
-    });
-
-    const haloFeatures = pointFeatures.filter((feature) => feature.properties.kind === 'low');
     const collection = (features) => ({ type: 'FeatureCollection', features });
-
     const ensureSource = (id, data, layerId, layer) => {
       if (map.getSource(id)) {
         map.getSource(id).setData(data);
@@ -470,18 +683,30 @@ export default function HistoryApp() {
       }
     };
 
-    ensureSource('history-valid', collection(segments.valid), 'history-valid-line', {
+    ensureSource('history-valid', collection(validFeatures), 'history-valid-line', {
       type: 'line',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       filter: ['<=', ['get', 'i'], -2],
       paint: {
-        'line-color': '#0ea5e9',
+        'line-color': ['get', 'color'],
         'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2.5, 10, 4.5, 14, 6],
         'line-opacity': 0.9,
       },
     });
 
-    ensureSource('history-gap', collection(segments.gap), 'history-gap-line', {
+    ensureSource('history-return', collection(returnFeatures), 'history-return-line', {
+      type: 'line',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      filter: ['<=', ['get', 'i'], -2],
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2.5, 10, 4.5, 14, 6],
+        'line-dasharray': [4, 4],
+        'line-opacity': 0.9,
+      },
+    });
+
+    ensureSource('history-gap', collection(gapFeatures), 'history-gap-line', {
       type: 'line',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       filter: ['<=', ['get', 'i'], -2],
@@ -493,7 +718,7 @@ export default function HistoryApp() {
       },
     });
 
-    ensureSource('history-suspect', collection(segments.suspect), 'history-suspect-line', {
+    ensureSource('history-suspect', collection(suspectFeatures), 'history-suspect-line', {
       type: 'line',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       filter: ['<=', ['get', 'i'], -2],
@@ -530,7 +755,7 @@ export default function HistoryApp() {
           ['==', ['get', 'kind'], 'low'], '#f59e0b',
           ['==', ['get', 'kind'], 'buffered'], 'rgba(14,165,233,0.15)',
           ['==', ['get', 'kind'], 'suspect'], '#f59e0b',
-          '#0ea5e9',
+          ['get', 'color'],
         ],
         'circle-stroke-color': [
           'case',
@@ -543,22 +768,59 @@ export default function HistoryApp() {
       },
     });
 
-    if (coordinates.length === 0) {
+    if (!map.hasImage('history-arrow')) {
+      const size = 28;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(size / 2, 5);
+      ctx.lineTo(size - 6, size - 7);
+      ctx.lineTo(size / 2, size - 10);
+      ctx.lineTo(6, size - 7);
+      ctx.closePath();
+      ctx.fillStyle = '#e0f2fe';
+      ctx.strokeStyle = '#0ea5e9';
+      ctx.lineWidth = 1.5;
+      ctx.fill();
+      ctx.stroke();
+      map.addImage('history-arrow', ctx.getImageData(0, 0, size, size));
+    }
+
+    ensureSource('history-arrows', collection(arrowFeatures), 'history-arrow-layer', {
+      type: 'symbol',
+      filter: ['<=', ['get', 'i'], -1],
+      layout: {
+        'icon-image': 'history-arrow',
+        'icon-size': 0.8,
+        'icon-rotate': ['get', 'bearing'],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+        'icon-padding': 0,
+      },
+      paint: {
+        'icon-opacity': 0.85,
+      },
+    });
+
+    if (points.length === 0) {
       setDrawnCount(0);
       return undefined;
     }
 
-    const firstCoordinate = [Number(points[0].lon), Number(points[0].lat)];
-    const lastCoordinate = [
-      Number(points[points.length - 1].lon),
-      Number(points[points.length - 1].lat),
-    ];
+    const start = points[0];
+    const end = points[points.length - 1];
 
     const startEl = document.createElement('div');
     startEl.style.cssText =
       'width:14px;height:14px;border-radius:9999px;background:#30d158;border:3px solid #052e16;box-shadow:0 0 0 4px rgba(48,209,88,.18);';
     startMarkerRef.current = new maplibregl.Marker({ element: startEl })
-      .setLngLat(firstCoordinate)
+      .setLngLat([Number(start.lon), Number(start.lat)])
       .addTo(map);
 
     if (points.length > 1) {
@@ -566,15 +828,9 @@ export default function HistoryApp() {
       endEl.style.cssText =
         'width:14px;height:14px;border-radius:9999px;background:#ff453a;border:3px solid #450a0a;box-shadow:0 0 0 4px rgba(255,69,58,.18);display:none;';
       endMarkerRef.current = new maplibregl.Marker({ element: endEl })
-        .setLngLat(lastCoordinate)
+        .setLngLat([Number(end.lon), Number(end.lat)])
         .addTo(map);
     }
-
-    const bounds = coordinates.reduce(
-      (acc, coordinate) => acc.extend(coordinate),
-      new maplibregl.LngLatBounds(coordinates[0], coordinates[0])
-    );
-    map.fitBounds(bounds, { padding: 70, maxZoom: 14, duration: 500 });
 
     setDrawnCount(0);
     let cancelled = false;
@@ -601,7 +857,7 @@ export default function HistoryApp() {
         drawRafRef.current = null;
       }
     };
-  }, [points, mapReady, selectedId]);
+  }, [points, mapReady, selectedId, trips]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -614,7 +870,10 @@ export default function HistoryApp() {
     if (map.getLayer('history-halo')) {
       map.setFilter('history-halo', ['all', ['==', ['get', 'kind'], 'low'], pointFilter]);
     }
-    ['history-valid-line', 'history-gap-line', 'history-suspect-line'].forEach((id) => {
+    if (map.getLayer('history-arrow-layer')) {
+      map.setFilter('history-arrow-layer', pointFilter);
+    }
+    ['history-valid-line', 'history-return-line', 'history-gap-line', 'history-suspect-line'].forEach((id) => {
       if (map.getLayer(id)) map.setFilter(id, segmentFilter);
     });
 
@@ -626,6 +885,50 @@ export default function HistoryApp() {
         points.length > 0 && drawnCount >= points.length ? '' : 'none';
     }
   }, [drawnCount, mapReady, points.length]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const opacity = selectedTrip === null
+      ? 0.9
+      : ['case', ['==', ['get', 'tripIndex'], selectedTrip], 1, 0.18];
+    const pointOpacity = selectedTrip === null
+      ? 0.95
+      : ['case', ['==', ['get', 'tripIndex'], selectedTrip], 1, 0.15];
+
+    ['history-valid-line', 'history-return-line', 'history-suspect-line'].forEach((id) => {
+      if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', opacity);
+    });
+    if (map.getLayer('history-point-layer')) {
+      map.setPaintProperty('history-point-layer', 'circle-opacity', pointOpacity);
+      map.setPaintProperty('history-point-layer', 'circle-stroke-opacity', pointOpacity);
+    }
+    if (map.getLayer('history-halo')) {
+      map.setPaintProperty('history-halo', 'circle-opacity', selectedTrip === null ? 0.8 : 0.25);
+    }
+    if (map.getLayer('history-arrow-layer')) {
+      map.setPaintProperty('history-arrow-layer', 'icon-opacity', selectedTrip === null ? 0.85 : 0.4);
+    }
+  }, [selectedTrip, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const trip = selectedTrip !== null ? trips[selectedTrip] : null;
+    const sourcePoints = trip ? trip.points : points;
+    const coordinates = sourcePoints
+      .map((point) => [Number(point.lon), Number(point.lat)])
+      .filter(([lon, lat]) => Number.isFinite(lon) && Number.isFinite(lat));
+    if (coordinates.length === 0) return;
+
+    const bounds = coordinates.reduce(
+      (acc, coordinate) => acc.extend(coordinate),
+      new maplibregl.LngLatBounds(coordinates[0], coordinates[0])
+    );
+    map.fitBounds(bounds, { padding: 70, maxZoom: 14, duration: 500 });
+  }, [selectedTrip, trips, mapReady, points.length]);
 
   const applyPreset = (key) => {
     const now = Date.now();
@@ -966,6 +1269,31 @@ export default function HistoryApp() {
             <div ref={mapContainerRef} className="history-map h-full w-full" />
           </div>
 
+          {trips.length > 0 && (
+            <div className="hidden md:flex absolute left-3 top-3 z-20 w-[290px] max-h-[46vh] flex-col rounded-[16px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 shadow-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setTripsOpen((value) => !value)}
+                className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-white/10"
+              >
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Trips · {trips.length}
+                </span>
+                <span className="text-[10px] text-slate-500">{tripsOpen ? 'Hide' : 'Show'}</span>
+              </button>
+              {tripsOpen && (
+                <div className="overflow-y-auto p-2">
+                  <TripList
+                    trips={trips}
+                    selectedTrip={selectedTrip}
+                    onSelect={setSelectedTrip}
+                    onAll={() => setSelectedTrip(null)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="md:hidden absolute top-3 left-3 right-3 z-10">
             <div className="flex gap-2">
               <select
@@ -997,6 +1325,14 @@ export default function HistoryApp() {
               >
                 <Info className="w-4 h-4" />
               </button>
+              <button
+                type="button"
+                onClick={() => setMobileTripsOpen(true)}
+                aria-label="Trips"
+                className="rounded-[10px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 p-2 text-slate-700 dark:text-slate-200"
+              >
+                <Route className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -1008,6 +1344,9 @@ export default function HistoryApp() {
               />
               <span className="font-mono text-sm font-bold truncate">{selectedId || 'No vehicle'}</span>
               <span className="text-[11px] text-slate-500 dark:text-slate-400">· {rangeLabel}</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                · {selectedTrip === null ? `${trips.length} trips` : `Trip ${selectedTrip + 1} of ${trips.length}`}
+              </span>
             </div>
 
             <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-1.5 text-[11px]">
@@ -1153,6 +1492,41 @@ export default function HistoryApp() {
             <div className="mt-3 pt-3 border-t border-slate-200 dark:border-white/10 text-[10px] text-slate-500">
               Green start · Red end · 30-second samples
             </div>
+          </div>
+        </>
+      )}
+
+      {mobileTripsOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-[1px]"
+            aria-hidden="true"
+            onClick={() => setMobileTripsOpen(false)}
+          />
+          <div className="md:hidden fixed left-0 right-0 bottom-0 z-50 max-h-[70vh] overflow-y-auto rounded-t-[24px] border-t border-slate-200 dark:border-white/10 bg-white dark:bg-[#0b1728] p-4 pb-[calc(1rem+var(--safe-bottom))] shadow-2xl">
+            <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600 mx-auto mb-3" />
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">Trips · {trips.length}</h2>
+              <button
+                type="button"
+                onClick={() => setMobileTripsOpen(false)}
+                className="rounded-full px-3 py-1 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:bg-sky-500/10"
+              >
+                Done
+              </button>
+            </div>
+            <TripList
+              trips={trips}
+              selectedTrip={selectedTrip}
+              onSelect={(index) => {
+                setSelectedTrip(index);
+                setMobileTripsOpen(false);
+              }}
+              onAll={() => {
+                setSelectedTrip(null);
+                setMobileTripsOpen(false);
+              }}
+            />
           </div>
         </>
       )}
