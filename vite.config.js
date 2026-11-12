@@ -354,6 +354,7 @@ export default defineConfig({
       input: {
         main: 'index.html',
         history: 'history.html',
+        'history-demo': 'history-demo.html',
       },
       output: {
         banner: DEVELOPER_BANNER,

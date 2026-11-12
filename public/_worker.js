@@ -2658,6 +2658,19 @@ var worker_default = {
         headers
       });
     }
+    if (url.pathname === "/history-demo" || url.pathname === "/history-demo/") {
+      const assetUrl = new URL(request.url);
+      assetUrl.pathname = "/history-demo.html";
+      const demoAsset = await env.ASSETS.fetch(new Request(assetUrl, request));
+      const headers = new Headers(demoAsset.headers);
+      headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+      headers.set("X-Robots-Tag", "noindex, nofollow");
+      return new Response(demoAsset.body, {
+        status: demoAsset.status,
+        statusText: demoAsset.statusText,
+        headers
+      });
+    }
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get("content-type") || "";
     const isHtml = contentType.includes("text/html") || url.pathname === "/" || url.pathname.endsWith(".html");
