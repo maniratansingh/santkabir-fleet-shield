@@ -3,7 +3,6 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import {
-  Calendar,
   Clock,
   Eye,
   EyeOff,
@@ -19,12 +18,17 @@ import {
 } from 'lucide-react';
 import { calculateDistanceKm } from '../data/mockData';
 import { getUniqueVehicleColor } from '../utils/colors';
+import AppleRangePicker from './AppleRangePicker';
+import {
+  DAY_MS,
+  MAX_RANGE_MS,
+  fromLocalInput,
+  toLocalInput,
+} from './dateRange';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 const BASE = { lat: 26.797313, lon: 82.718401 };
-const DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_RANGE_MS = 7 * DAY_MS;
 
 const DARK_STYLE = {
   version: 8,
@@ -110,30 +114,6 @@ const LIGHT_STYLE = {
   ],
 };
 
-const PRESETS = [
-  { key: '24h', label: '24 hours' },
-  { key: '7d', label: '7 days' },
-  { key: 'today', label: 'Today' },
-  { key: 'yesterday', label: 'Yesterday' },
-];
-
-function pad(value) {
-  return String(value).padStart(2, '0');
-}
-
-function toLocalInput(timestamp) {
-  if (!Number.isFinite(Number(timestamp))) return '';
-  const date = new Date(Number(timestamp));
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
-    date.getHours()
-  )}:${pad(date.getMinutes())}`;
-}
-
-function fromLocalInput(value) {
-  if (!value) return NaN;
-  return new Date(value).getTime();
-}
-
 function formatAge(timestamp) {
   if (!timestamp) return '—';
   const seconds = Math.max(1, Math.round((Date.now() - Number(timestamp)) / 1000));
@@ -155,11 +135,6 @@ function formatTime(timestamp) {
     minute: '2-digit',
     hour12: true,
   });
-}
-
-function formatRange(from, to) {
-  if (!from || !to) return '—';
-  return `${formatTime(from)} → ${formatTime(to)}`;
 }
 
 async function api(path, options = {}) {
@@ -184,83 +159,6 @@ function ThemeButton({ theme, onToggle }) {
     >
       {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-sky-600" />}
     </button>
-  );
-}
-
-function RangePicker({
-  preset,
-  fromInput,
-  toInput,
-  minInput,
-  maxInput,
-  onFromChange,
-  onToChange,
-  onPreset,
-  onApply,
-  compact = false,
-}) {
-  const inputClass = `w-full rounded-[10px] border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 px-2.5 ${
-    compact ? 'py-2' : 'py-2.5'
-  } text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20`;
-
-  return (
-    <div>
-      <div className="grid grid-cols-2 gap-1.5">
-        {PRESETS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => onPreset(item.key)}
-            className={`min-h-9 rounded-[10px] text-xs font-semibold transition-colors ${
-              preset === item.key
-                ? 'bg-sky-500 text-white dark:text-slate-950 shadow-sm'
-                : 'bg-slate-200/70 dark:bg-white/5 text-slate-700 dark:text-slate-300 hover:bg-slate-300/60 dark:hover:bg-white/10'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-3 space-y-2">
-        <div>
-          <label className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1">
-            <Calendar className="w-3 h-3" />
-            From
-          </label>
-          <input
-            type="datetime-local"
-            value={fromInput}
-            min={minInput}
-            max={maxInput}
-            onChange={(event) => onFromChange(event.target.value)}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1">
-            <Clock className="w-3 h-3" />
-            To
-          </label>
-          <input
-            type="datetime-local"
-            value={toInput}
-            min={minInput}
-            max={maxInput}
-            onChange={(event) => onToChange(event.target.value)}
-            className={inputClass}
-          />
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={onApply}
-        className="mt-2 w-full min-h-9 rounded-[10px] bg-sky-500 hover:bg-sky-400 text-white dark:text-slate-950 text-xs font-semibold transition-colors"
-      >
-        Apply range
-      </button>
-    </div>
   );
 }
 
@@ -517,6 +415,7 @@ export default function HistoryApp() {
     setRangeLabel(label);
     setError('');
     setRefreshKey((value) => value + 1);
+    setMobileRangeOpen(false);
   };
 
   const applyCustom = () => {
@@ -615,8 +514,6 @@ export default function HistoryApp() {
   }, 0);
   const firstPoint = points[0];
   const lastPoint = points[points.length - 1];
-  const minInput = toLocalInput(Date.now() - MAX_RANGE_MS);
-  const maxInput = toLocalInput(Date.now());
 
   if (authed === null) {
     return (
@@ -738,20 +635,19 @@ export default function HistoryApp() {
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
               Select period
             </div>
-            <RangePicker
+            <AppleRangePicker
               preset={preset}
-              fromInput={fromInput}
-              toInput={toInput}
-              minInput={minInput}
-              maxInput={maxInput}
+              rangeLabel={rangeLabel}
+              fromValue={fromInput}
+              toValue={toInput}
+              minMs={Date.now() - MAX_RANGE_MS}
+              maxMs={Date.now()}
               onFromChange={setFromInput}
               onToChange={setToInput}
               onPreset={applyPreset}
               onApply={applyCustom}
+              error={error}
             />
-            <div className="mt-2 text-[10px] text-slate-500 leading-relaxed">
-              {rangeLabel} · {formatRange(appliedFrom, appliedTo)}
-            </div>
           </div>
 
           <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -812,10 +708,10 @@ export default function HistoryApp() {
 
         <main className="relative flex-1 min-w-0 overflow-hidden">
           <div className="absolute inset-0">
-            <div ref={mapContainerRef} className="h-full w-full" />
+            <div ref={mapContainerRef} className="history-map h-full w-full" />
           </div>
 
-          <div className="md:hidden absolute top-3 left-3 right-3 z-10 space-y-2">
+          <div className="md:hidden absolute top-3 left-3 right-3 z-10">
             <div className="flex gap-2">
               <select
                 value={selectedId}
@@ -830,35 +726,18 @@ export default function HistoryApp() {
               </select>
               <button
                 type="button"
-                onClick={() => setMobileRangeOpen((value) => !value)}
+                onClick={() => {
+                  setError('');
+                  setMobileRangeOpen(true);
+                }}
                 className="rounded-[10px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 font-semibold"
               >
                 {rangeLabel}
               </button>
             </div>
-
-            {mobileRangeOpen && (
-              <div className="rounded-[16px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 p-3 shadow-xl">
-                <RangePicker
-                  compact
-                  preset={preset}
-                  fromInput={fromInput}
-                  toInput={toInput}
-                  minInput={minInput}
-                  maxInput={maxInput}
-                  onFromChange={setFromInput}
-                  onToChange={setToInput}
-                  onPreset={applyPreset}
-                  onApply={applyCustom}
-                />
-                <div className="mt-2 text-[10px] text-slate-500">
-                  {formatRange(appliedFrom, appliedTo)}
-                </div>
-              </div>
-            )}
           </div>
 
-          <div className="absolute left-3 bottom-3 z-10 max-w-[calc(100%-1.5rem)] rounded-[16px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 backdrop-blur px-3.5 py-3 shadow-xl">
+          <div className="absolute left-3 bottom-10 md:bottom-3 z-10 max-w-[calc(100%-1.5rem)] rounded-[16px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 backdrop-blur px-3.5 py-3 shadow-xl">
             <div className="flex items-center gap-2">
               <span
                 className="w-2.5 h-2.5 rounded-full"
@@ -915,12 +794,52 @@ export default function HistoryApp() {
           )}
 
           {error && (
-            <div className="absolute top-3 left-3 right-3 md:left-3 md:right-auto md:max-w-sm z-30 rounded-[10px] border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
+            <div className="absolute top-[4.5rem] md:top-3 left-3 right-3 md:left-3 md:right-auto md:max-w-sm z-30 rounded-[10px] border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300 backdrop-blur">
               {error}
             </div>
           )}
         </main>
       </div>
+
+      {mobileRangeOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-[1px]"
+            aria-hidden="true"
+            onClick={() => {
+              setMobileRangeOpen(false);
+              setError('');
+            }}
+          />
+          <div className="md:hidden fixed left-0 right-0 bottom-0 z-50 max-h-[88vh] overflow-y-auto rounded-t-[24px] border-t border-slate-200 dark:border-white/10 bg-white dark:bg-[#0b1728] p-4 pb-[calc(1rem+var(--safe-bottom))] shadow-2xl">
+            <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600 mx-auto mb-3" />
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-semibold">Select period</h2>
+              <button
+                type="button"
+                onClick={applyCustom}
+                className="rounded-full px-3 py-1 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:bg-sky-500/10"
+              >
+                Apply
+              </button>
+            </div>
+            <AppleRangePicker
+              inline
+              preset={preset}
+              rangeLabel={rangeLabel}
+              fromValue={fromInput}
+              toValue={toInput}
+              minMs={Date.now() - MAX_RANGE_MS}
+              maxMs={Date.now()}
+              onFromChange={setFromInput}
+              onToChange={setToInput}
+              onPreset={applyPreset}
+              onApply={applyCustom}
+              error={error}
+            />
+          </div>
+        </>
+      )}
 
       {selectedVehicle && (
         <div className="md:hidden shrink-0 border-t border-slate-200 dark:border-white/10 bg-white dark:bg-[#081321] px-4 py-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">

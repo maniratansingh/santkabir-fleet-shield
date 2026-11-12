@@ -684,3 +684,10 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
 }
 
 
+
+/* History page: keep MapLibre controls clear of the mobile period bar. */
+@media (max-width: 767px) {
+  .history-map .maplibregl-ctrl-top-right {
+    top: 4.25rem;
+  }
+}
