@@ -426,7 +426,7 @@ const HISTORY_LEGEND = [
     label: 'Return trip · offset (inferred)',
   },
   {
-    symbol: <span className="block w-5 border-t border-dotted border-slate-400/70" />,
+    symbol: <span className="block w-5 border-t-2 border-dotted border-violet-500" />,
     label: 'No data',
   },
   {
@@ -821,10 +821,10 @@ export default function HistoryApp() {
       type: 'line',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': '#94a3b8',
-        'line-width': 1.5,
-        'line-dasharray': [1, 4],
-        'line-opacity': 0.5,
+        'line-color': '#8b5cf6',
+        'line-width': 2,
+        'line-dasharray': [1, 3],
+        'line-opacity': 0.8,
       },
     });
 
@@ -856,10 +856,10 @@ export default function HistoryApp() {
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       filter: ['<=', ['get', 'i'], -2],
       paint: {
-        'line-color': '#94a3b8',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 10, 2.5, 14, 3.5],
-        'line-dasharray': [1, 4],
-        'line-opacity': 0.45,
+        'line-color': '#8b5cf6',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2, 10, 3, 14, 4],
+        'line-dasharray': [1, 3],
+        'line-opacity': 0.7,
       },
     });
 

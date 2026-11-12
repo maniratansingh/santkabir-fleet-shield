@@ -355,7 +355,7 @@ export default function HistoryDemo() {
       source: 'demo-gap',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': '#94a3b8',
+        'line-color': '#8b5cf6',
         'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 10, 2.5, 14, 3.5],
         'line-dasharray': [1, 4],
         'line-opacity': 0.45,
@@ -527,7 +527,7 @@ export default function HistoryDemo() {
         note: 'Dotted; only between plausible points',
       },
       {
-        symbol: <span className="block w-5 border-t border-dotted border-slate-400/60" />,
+        symbol: <span className="block w-5 border-t-2 border-dotted border-violet-500/80" />,
         label: 'Faint gap link',
         note: 'No data; direction only',
       },
