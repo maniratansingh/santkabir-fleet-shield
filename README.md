@@ -58,6 +58,32 @@ The board no longer forgets a driver when the phone goes quiet.
 Verified on 12 November 2026: build pass, master contract 28/28, route anchors
 240/240, Kalman 8/8, map matching 6/6, Durable Object / WebSocket 13/13.
 
+### Fleet History (experimental, not deployed)
+
+A separate history service is now on `experimental` only. It does **not** change
+the live board and is **not deployed** to `fleet.mrps.in` yet.
+
+- A second SQLite-backed Durable Object, `FleetHistory`, stores **30-minute
+  snapshots** for **7 days** in a fixed ring buffer. Old slots are overwritten;
+  there is no purge job.
+- The live telemetry path writes to it asynchronously with `ctx.waitUntil`.
+  A history failure cannot delay or block the live dashboard.
+- All vehicles are currently allowed. An allowlist can be added later.
+- The separate page is at `/history` and is password-protected. Login sets an
+  HMAC-signed, HttpOnly, SameSite=Strict session cookie (8 hours).
+- Ingest events, logins and history deletes are recorded in `history_audit`.
+- History deletion is separate from the live record. You can delete one
+  vehicle's history, a range, or all history without touching the live fleet.
+- Required secrets for deployment:
+
+```bash
+npx wrangler secret put HISTORY_PASSWORD
+npx wrangler secret put HISTORY_SESSION_SECRET
+```
+
+The local `.dev.vars` uses a test password. The real password is never stored in
+the repository. `HISTORY_DB` is bound in `wrangler.toml` with migration `v2`.
+
 ---
 
 ## 🌟 Current Architecture & Capabilities
@@ -339,6 +365,7 @@ npm test                  # master contract + route anchor guard
 npm run test:kalman
 npm run test:map-matching
 npm run test:do-ws        # requires wrangler dev on :8787
+npm run test:history      # requires wrangler dev on :8787
 npm run test:routes       # route origin guard only
 ```
 

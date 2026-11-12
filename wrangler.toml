@@ -10,9 +10,17 @@ binding = "ASSETS"
 name = "FLEET_HUB"
 class_name = "PurvanchalFleetHub"
 
+[[durable_objects.bindings]]
+name = "HISTORY_DB"
+class_name = "FleetHistory"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["PurvanchalFleetHub"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["FleetHistory"]
 
 # Engineered by Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)
 

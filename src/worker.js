@@ -37,6 +37,136 @@ async function safeEqual(a, b) {
   return diff === 0;
 }
 
+// ── History service ────────────────────────────────────────────────────────
+// The history store is a separate SQLite-backed Durable Object. The live
+// telemetry path writes to it asynchronously, so a history failure can never
+// delay or block the live dashboard.
+const HISTORY_NAME = 'fleet-history';
+const HISTORY_COOKIE = 'history_session';
+const HISTORY_SESSION_SECONDS = 8 * 60 * 60;
+const HISTORY_BUCKET_MS = 30 * 60 * 1000; // 30-minute snapshots
+const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS); // 336
+const historyLoginAttempts = new Map();
+
+function historyJson(data, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': 'noindex, nofollow',
+      'Access-Control-Allow-Origin': '*',
+      ...extraHeaders,
+    },
+  });
+}
+
+function getCookie(request, name) {
+  const header = request.headers.get('Cookie') || '';
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index === -1) continue;
+    if (part.slice(0, index).trim() === name) {
+      return decodeURIComponent(part.slice(index + 1).trim());
+    }
+  }
+  return '';
+}
+
+function toBase64Url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function fromBase64Url(value) {
+  const padded = value + '='.repeat((4 - (value.length % 4)) % 4);
+  const binary = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function hmacSha256(secret, data) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(String(secret)),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  return new Uint8Array(
+    await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(String(data)))
+  );
+}
+
+async function createHistorySession(secret, ttlSeconds = HISTORY_SESSION_SECONDS) {
+  const payload = toBase64Url(
+    new TextEncoder().encode(JSON.stringify({ exp: Date.now() + ttlSeconds * 1000 }))
+  );
+  const signature = toBase64Url(await hmacSha256(secret, payload));
+  return `${payload}.${signature}`;
+}
+
+async function verifyHistorySession(token, secret) {
+  if (!token || !token.includes('.')) return null;
+  const [payload, signature] = token.split('.');
+  const expected = await hmacSha256(secret, payload);
+  const supplied = fromBase64Url(signature);
+  if (supplied.length !== expected.length) return null;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= supplied[i] ^ expected[i];
+  if (diff !== 0) return null;
+  try {
+    const data = JSON.parse(new TextDecoder().decode(fromBase64Url(payload)));
+    if (!data?.exp || data.exp < Date.now()) return null;
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function historyStub(env) {
+  if (!env.HISTORY_DB) return null;
+  return env.HISTORY_DB.get(env.HISTORY_DB.idFromName(HISTORY_NAME));
+}
+
+function auditHistory(env, action, vehicleId = '', detail = '', actor = 'admin') {
+  const stub = historyStub(env);
+  if (!stub) return null;
+  return stub
+    .fetch('https://history/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, vehicleId, detail, actor }),
+    })
+    .catch(() => null);
+}
+
+async function requireHistoryAuth(request, env) {
+  if (!env.HISTORY_SESSION_SECRET) {
+    return historyJson({ error: 'History authentication is not configured' }, 503);
+  }
+  const token = getCookie(request, HISTORY_COOKIE);
+  const session = await verifyHistorySession(token, env.HISTORY_SESSION_SECRET);
+  if (!session) return historyJson({ error: 'Unauthorized' }, 401);
+  return null;
+}
+
+function writeHistory(env, record) {
+  const stub = historyStub(env);
+  if (!stub || !record) return null;
+  return stub
+    .fetch('https://history/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record),
+    })
+    .catch((error) => {
+      console.error('history write failed', error?.message || error);
+      return null;
+    });
+}
+
 const BASE_LAT = 26.797313;
 const BASE_LON = 82.718401;
 
@@ -194,6 +324,13 @@ export default {
 
       // Store in edge memory cache
       liveVehicles.set(vehId, record);
+
+      // Write to the separate history store. This is intentionally async:
+      // a history failure must never delay or block the live response.
+      if (env.HISTORY_DB) {
+        const historyPush = writeHistory(env, record);
+        if (ctx?.waitUntil) ctx.waitUntil(historyPush);
+      }
 
       // Mirror the processed record into the global Durable Object hub.
       // HTTP ingestion is throttled to one forward per vehicle per 30 s so the
@@ -519,6 +656,102 @@ export default {
       }
     }
 
+    // 4b. History service (separate store, separate admin gate)
+    if (url.pathname === '/api/history/login' && request.method === 'POST') {
+      if (!env.HISTORY_PASSWORD || !env.HISTORY_SESSION_SECRET) {
+        return historyJson({ error: 'History authentication is not configured' }, 503);
+      }
+
+      const ip = request.headers.get('CF-Connecting-IP') || 'local';
+      const now = Date.now();
+      const attempts = (historyLoginAttempts.get(ip) || []).filter(
+        (time) => now - time < 10 * 60 * 1000
+      );
+      if (attempts.length >= 5) {
+        return historyJson({ error: 'Too many attempts. Try again later.' }, 429);
+      }
+
+      let password = '';
+      try {
+        const body = await request.json();
+        password = String(body?.password || '');
+      } catch (e) {
+        password = '';
+      }
+
+      if (!(await safeEqual(password, env.HISTORY_PASSWORD))) {
+        attempts.push(now);
+        historyLoginAttempts.set(ip, attempts);
+        if (ctx?.waitUntil) ctx.waitUntil(auditHistory(env, 'login_failed', '', '', 'unknown'));
+        return historyJson({ error: 'Invalid password' }, 401);
+      }
+
+      historyLoginAttempts.delete(ip);
+      const token = await createHistorySession(env.HISTORY_SESSION_SECRET);
+      const secure = url.protocol === 'https:' ? '; Secure' : '';
+      if (ctx?.waitUntil) ctx.waitUntil(auditHistory(env, 'login', '', '', 'admin'));
+      return historyJson({ success: true }, 200, {
+        'Set-Cookie': `${HISTORY_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${HISTORY_SESSION_SECONDS}${secure}`,
+      });
+    }
+
+    if (url.pathname === '/api/history/logout' && request.method === 'POST') {
+      if (ctx?.waitUntil) ctx.waitUntil(auditHistory(env, 'logout', '', '', 'admin'));
+      const secure = url.protocol === 'https:' ? '; Secure' : '';
+      return historyJson({ success: true }, 200, {
+        'Set-Cookie': `${HISTORY_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure}`,
+      });
+    }
+
+    if (url.pathname === '/api/history/vehicles') {
+      const unauthorized = await requireHistoryAuth(request, env);
+      if (unauthorized) return unauthorized;
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: 'History store is not configured' }, 503);
+      const response = await stub.fetch('https://history/vehicles');
+      const data = await response.json().catch(() => ({ error: 'History store error' }));
+      return historyJson(data, response.status);
+    }
+
+    if (url.pathname === '/api/history/delete' && request.method === 'POST') {
+      const unauthorized = await requireHistoryAuth(request, env);
+      if (unauthorized) return unauthorized;
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: 'History store is not configured' }, 503);
+      const body = await request.json().catch(() => ({}));
+      const response = await stub.fetch('https://history/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => ({ error: 'History store error' }));
+      return historyJson(data, response.status);
+    }
+
+    if (url.pathname === '/api/history') {
+      const unauthorized = await requireHistoryAuth(request, env);
+      if (unauthorized) return unauthorized;
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: 'History store is not configured' }, 503);
+      const response = await stub.fetch(`https://history/history${url.search}`);
+      const data = await response.json().catch(() => ({ error: 'History store error' }));
+      return historyJson(data, response.status);
+    }
+
+    if (url.pathname === '/history' || url.pathname === '/history/') {
+      const assetUrl = new URL(request.url);
+      assetUrl.pathname = '/history.html';
+      const historyAsset = await env.ASSETS.fetch(new Request(assetUrl, request));
+      const headers = new Headers(historyAsset.headers);
+      headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+      headers.set('X-Robots-Tag', 'noindex, nofollow');
+      return new Response(historyAsset.body, {
+        status: historyAsset.status,
+        statusText: historyAsset.statusText,
+        headers,
+      });
+    }
+
     // 5. Fallback: Serve static assets with strict Zero-Cache for HTML & Live App
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get('content-type') || '';
@@ -625,6 +858,7 @@ export class PurvanchalFleetHub {
         if (id && !this.wsTrackerIds.has(id)) {
           const stored = { ...record, id, name: id };
           this.vehicles.set(id, stored);
+          this.pushHistory(stored);
           this.broadcast({ type: 'delta', vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
           this.persistSnapshotIfDue();
         }
@@ -719,6 +953,7 @@ export class PurvanchalFleetHub {
 
       this.vehicles.set(record.id, record);
       this.wsTrackerIds.add(record.id);
+      this.pushHistory(record);
       try { ws.serializeAttachment({ role: 'tracker', id: record.id }); } catch (e) {}
       this.broadcast({ type: 'delta', vehicle: { ...record, ...computeVehicleAgeState(record) } });
       this.persistSnapshotIfDue();
@@ -743,6 +978,7 @@ export class PurvanchalFleetHub {
         if (!id) return;
         const stored = { ...data.vehicle, id, name: id };
         this.vehicles.set(id, stored);
+        this.pushHistory(stored);
         this.broadcast({ type: 'delta', vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
         this.persistSnapshotIfDue();
       }
@@ -763,6 +999,22 @@ export class PurvanchalFleetHub {
 
   webSocketError(ws, error) {
     try { ws.close(1011, 'Hub socket error'); } catch (e) {}
+  }
+
+  pushHistory(record) {
+    if (!this.env?.HISTORY_DB || !record) return;
+    const stub = this.env.HISTORY_DB.get(this.env.HISTORY_DB.idFromName(HISTORY_NAME));
+    const task = stub
+      .fetch('https://history/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(record),
+      })
+      .catch((error) => {
+        console.error('history write failed', error?.message || error);
+        return null;
+      });
+    if (this.state.waitUntil) this.state.waitUntil(task);
   }
 
   broadcast(message) {
@@ -792,5 +1044,228 @@ export class PurvanchalFleetHub {
     } else {
       this.state.storage.put('fleet_snapshot', snapshot).catch(() => {});
     }
+  }
+}
+
+// Separate history store. One SQLite-backed Durable Object with a fixed
+// 7-day, 30-minute ring buffer. It never blocks the live telemetry path.
+export class FleetHistory {
+  constructor(ctx, env) {
+    this.ctx = ctx;
+    this.state = ctx;
+    this.env = env;
+
+    this.state.blockConcurrencyWhile(async () => {
+      this.state.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS history (
+          vehicle_id TEXT NOT NULL,
+          slot INTEGER NOT NULL,
+          device_time INTEGER NOT NULL,
+          received_at INTEGER NOT NULL,
+          lat REAL NOT NULL,
+          lon REAL NOT NULL,
+          speed REAL,
+          bearing REAL,
+          accuracy REAL,
+          battery INTEGER,
+          PRIMARY KEY (vehicle_id, slot)
+        )
+      `);
+      this.state.storage.sql.exec(
+        'CREATE INDEX IF NOT EXISTS history_time ON history(vehicle_id, device_time)'
+      );
+      this.state.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS history_audit (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          at INTEGER NOT NULL,
+          action TEXT NOT NULL,
+          vehicle_id TEXT,
+          detail TEXT,
+          actor TEXT
+        )
+      `);
+    });
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+
+    if (url.pathname.endsWith('/write') && request.method === 'POST') {
+      return this.write(request);
+    }
+    if (url.pathname.endsWith('/vehicles')) {
+      return this.vehicles();
+    }
+    if (url.pathname.endsWith('/history')) {
+      return this.history(url);
+    }
+    if (url.pathname.endsWith('/delete') && request.method === 'POST') {
+      return this.remove(request);
+    }
+    if (url.pathname.endsWith('/audit') && request.method === 'POST') {
+      return this.audit(request);
+    }
+
+    return historyJson({ error: 'Not found' }, 404);
+  }
+
+  async write(request) {
+    const record = await request.json().catch(() => null);
+    if (!record) return historyJson({ error: 'Invalid body' }, 400);
+
+    const id = canonicalVehicleId(record.id);
+    const lat = Number(record.lat);
+    const lon = Number(record.lon);
+    if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return historyJson({ error: 'Invalid vehicle' }, 400);
+    }
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      return historyJson({ error: 'Invalid coordinates' }, 400);
+    }
+
+    const now = Date.now();
+    let deviceTime = Number(record.lastSeen ?? record.updatedAt ?? now);
+    if (!Number.isFinite(deviceTime)) deviceTime = now;
+
+    // Drop a backlog older than the ring window. A future clock is clamped to
+    // server time so a bad device clock cannot poison the ring.
+    if (deviceTime < now - HISTORY_RETENTION_MS) {
+      return historyJson({ success: true, skipped: 'too-old' });
+    }
+    if (deviceTime > now + 5 * 60 * 1000) deviceTime = now;
+
+    const slot = Math.floor(deviceTime / HISTORY_BUCKET_MS) % HISTORY_SLOTS;
+    const speed = Number(record.speed);
+    const bearing = Number(record.bearing);
+    const accuracy = Number(record.accuracy);
+    const battery = Number(record.batt);
+
+    this.state.storage.sql.exec(
+      `INSERT INTO history (
+         vehicle_id, slot, device_time, received_at,
+         lat, lon, speed, bearing, accuracy, battery
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(vehicle_id, slot) DO UPDATE SET
+         device_time = excluded.device_time,
+         received_at = excluded.received_at,
+         lat = excluded.lat,
+         lon = excluded.lon,
+         speed = excluded.speed,
+         bearing = excluded.bearing,
+         accuracy = excluded.accuracy,
+         battery = excluded.battery
+       WHERE excluded.device_time >= history.device_time`,
+      id,
+      slot,
+      deviceTime,
+      now,
+      lat,
+      lon,
+      Number.isFinite(speed) ? speed : 0,
+      Number.isFinite(bearing) ? bearing : 0,
+      Number.isFinite(accuracy) ? accuracy : 0,
+      Number.isFinite(battery) ? Math.round(battery) : null
+    );
+
+    return historyJson({ success: true, id, slot, deviceTime });
+  }
+
+  vehicles() {
+    const rows = this.state.storage.sql
+      .exec(
+        `SELECT vehicle_id AS id,
+                MAX(device_time) AS last_seen,
+                COUNT(*) AS points
+         FROM history
+         GROUP BY vehicle_id
+         ORDER BY last_seen DESC`
+      )
+      .toArray();
+    return historyJson({ success: true, vehicles: rows, count: rows.length });
+  }
+
+  history(url) {
+    const id = canonicalVehicleId(url.searchParams.get('id'));
+    if (!id) return historyJson({ error: 'Missing id' }, 400);
+
+    const now = Date.now();
+    const from = Number(url.searchParams.get('from') || now - HISTORY_RETENTION_MS);
+    const to = Number(url.searchParams.get('to') || now);
+    const limit = Math.min(
+      2000,
+      Math.max(1, Number(url.searchParams.get('limit') || 2000))
+    );
+
+    const points = this.state.storage.sql
+      .exec(
+        `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery
+         FROM history
+         WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
+         ORDER BY device_time ASC
+         LIMIT ?`,
+        id,
+        Number.isFinite(from) ? from : now - HISTORY_RETENTION_MS,
+        Number.isFinite(to) ? to : now,
+        limit
+      )
+      .toArray();
+
+    return historyJson({
+      success: true,
+      id,
+      from,
+      to,
+      count: points.length,
+      points,
+    });
+  }
+
+  async remove(request) {
+    const body = await request.json().catch(() => ({}));
+    const all = Boolean(body.all);
+    const id = canonicalVehicleId(body.id);
+    const from = Number(body.from);
+    const to = Number(body.to);
+
+    if (!all && !id) return historyJson({ error: 'Missing id' }, 400);
+
+    if (all) {
+      this.state.storage.sql.exec('DELETE FROM history');
+    } else if (id && Number.isFinite(from) && Number.isFinite(to) && from > 0 && to > 0) {
+      this.state.storage.sql.exec(
+        'DELETE FROM history WHERE vehicle_id = ? AND device_time BETWEEN ? AND ?',
+        id,
+        from,
+        to
+      );
+    } else {
+      this.state.storage.sql.exec('DELETE FROM history WHERE vehicle_id = ?', id);
+    }
+
+    this.state.storage.sql.exec(
+      `INSERT INTO history_audit (at, action, vehicle_id, detail, actor)
+       VALUES (?, ?, ?, ?, ?)`,
+      Date.now(),
+      'delete',
+      all ? '*' : id,
+      JSON.stringify({ all, from: Number.isFinite(from) ? from : null, to: Number.isFinite(to) ? to : null }),
+      'admin'
+    );
+
+    return historyJson({ success: true, deleted: all ? 'all' : id });
+  }
+
+  async audit(request) {
+    const body = await request.json().catch(() => ({}));
+    this.state.storage.sql.exec(
+      `INSERT INTO history_audit (at, action, vehicle_id, detail, actor)
+       VALUES (?, ?, ?, ?, ?)`,
+      Date.now(),
+      String(body.action || 'event'),
+      String(body.vehicleId || ''),
+      String(body.detail || ''),
+      String(body.actor || '')
+    );
+    return historyJson({ success: true });
   }
 }

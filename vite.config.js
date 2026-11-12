@@ -351,6 +351,10 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
+      input: {
+        main: 'index.html',
+        history: 'history.html',
+      },
       output: {
         banner: DEVELOPER_BANNER,
         manualChunks(id) {
