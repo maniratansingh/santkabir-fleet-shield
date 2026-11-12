@@ -58,16 +58,28 @@ The board no longer forgets a driver when the phone goes quiet.
 Verified on 12 November 2026: build pass, master contract 28/28, route anchors
 240/240, Kalman 8/8, map matching 6/6, Durable Object / WebSocket 13/13.
 
-### Fleet History (experimental, not deployed)
+### Fleet History (live on fleet.mrps.in)
 
-A separate history service is now on `experimental` only. It does **not** change
-the live board and is **not deployed** to `fleet.mrps.in` yet.
+The history service is deployed to `fleet.mrps.in` with Wrangler. It runs
+alongside the live board, which keeps the same vehicle records and
+offline/persistence behaviour.
 
-- A second SQLite-backed Durable Object, `FleetHistory`, stores every
-  **30-second point** for **7 days** in a fixed ring buffer (20,160 slots per
-  vehicle). Old slots are overwritten; there is no purge job.
+- A second SQLite-backed Durable Object, `FleetHistory`, stores one point per
+  **30-second slot** for **7 days** in a fixed ring buffer (20,160 slots per
+  vehicle). Old slots are overwritten; there is no purge job. If a device sends
+  several packets inside one 30-second slot, the newest packet is kept.
+- Points are never filtered by speed or accuracy. Slow movement, 0 km/h and poor
+  GPS fixes are stored and drawn. Poor accuracy appears with an amber halo;
+  suspect speed appears as an orange dashed segment.
+- The history API returns up to 25,000 points, so a full 7-day trail (20,160
+  points) is returned without downsampling.
 - The history page draws the trail progressively in chunks with a visible
   progress bar, so a large 7-day range does not block the page.
+- Sparse trails are drawn as direct point-to-point segments, so a handful of
+  points shows visible jumps. The page does not invent road paths between them;
+  real time gaps use a faint dotted "no data" link.
+- New live points appear on the board immediately over WebSocket. The history
+  page updates when **Refresh** is pressed or the range is re-applied.
 - The live telemetry path writes to it asynchronously with `ctx.waitUntil`.
   A history failure cannot delay or block the live dashboard.
 - All vehicles are currently allowed. An allowlist can be added later.
@@ -411,7 +423,10 @@ npx wrangler deploy
 |---|---|
 | Domain | `https://fleet.mrps.in` |
 | Worker | `purvanchal-fleet-hub` |
-| Durable Object | `PurvanchalFleetHub` / binding `FLEET_HUB` / name `purvanchal-fleet` |
+| Live Durable Object | `PurvanchalFleetHub` / binding `FLEET_HUB` / name `purvanchal-fleet` |
+| History Durable Object | `FleetHistory` / binding `HISTORY_DB` / migration `v2` |
+| History page | `https://fleet.mrps.in/history` (password-protected) |
+| History demo | `https://fleet.mrps.in/history-demo` (synthetic, no real data) |
 | Deployed branch | `experimental` |
 | Storage | Durable Object SQLite only (no D1) |
 

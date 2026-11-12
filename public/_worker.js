@@ -2045,9 +2045,9 @@ var HISTORY_SESSION_SECONDS = 8 * 60 * 60;
 var HISTORY_BUCKET_MS = 30 * 1e3;
 var HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1e3;
 var HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS);
-var HISTORY_PASSWORD_SALT = "rTKeYtOFsbi0PIKaqMs_OA";
-var HISTORY_PASSWORD_HASH = "7bxbsXqTEsfLe4kE61yvx2wcYVXovaOGzFKsSl2pPg8";
-var HISTORY_PASSWORD_ITERATIONS = 21e4;
+var HISTORY_PASSWORD_SALT = "mQ7B7fLda1aEC-GS4-oOIQ";
+var HISTORY_PASSWORD_HASH = "NhEnOhRT75TkiWp-ntanopnnRUL2NXzJFJZZsGL8PwA";
+var HISTORY_PASSWORD_ITERATIONS = 1e5;
 var historyLoginAttempts = /* @__PURE__ */ new Map();
 function historyJson(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
