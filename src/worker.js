@@ -47,9 +47,9 @@ const HISTORY_SESSION_SECONDS = 8 * 60 * 60;
 const HISTORY_BUCKET_MS = 30 * 1000; // 30-second samples
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS); // 20,160
-const HISTORY_PASSWORD_SALT = 'rTKeYtOFsbi0PIKaqMs_OA';
-const HISTORY_PASSWORD_HASH = '7bxbsXqTEsfLe4kE61yvx2wcYVXovaOGzFKsSl2pPg8';
-const HISTORY_PASSWORD_ITERATIONS = 210000;
+const HISTORY_PASSWORD_SALT = 'mQ7B7fLda1aEC-GS4-oOIQ';
+const HISTORY_PASSWORD_HASH = 'NhEnOhRT75TkiWp-ntanopnnRUL2NXzJFJZZsGL8PwA';
+const HISTORY_PASSWORD_ITERATIONS = 100000;
 const historyLoginAttempts = new Map();
 
 function historyJson(data, status = 200, extraHeaders = {}) {

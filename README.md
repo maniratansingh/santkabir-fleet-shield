@@ -91,9 +91,9 @@ the live board and is **not deployed** to `fleet.mrps.in` yet.
 - Ingest events, logins and history deletes are recorded in `history_audit`.
 - History deletion is separate from the live record. You can delete one
   vehicle's history, a range, or all history without touching the live fleet.
-- The history password is stored as a **PBKDF2-SHA256 hash** (210,000
-  iterations, random salt) in `src/worker.js`. The plaintext password is never
-  committed.
+- The history password is stored as a **PBKDF2-SHA256 hash** (100,000
+  iterations, random salt — the Workers runtime caps PBKDF2 at 100,000) in
+  `src/worker.js`. The plaintext password is never committed.
 - Required secret for deployment:
 
 ```bash
