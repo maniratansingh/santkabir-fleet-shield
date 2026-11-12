@@ -12,6 +12,7 @@
 - **Base**: Sant Kabir Eye Hospital, Basti — `26.797313, 82.718401`. One base only. Khalilabad is not a base, hub, or route origin.
 - **Hosting**: Cloudflare Worker with static assets (`wrangler deploy`), not Cloudflare Pages.
 - **Live state**: one SQLite-backed Durable Object, `PurvanchalFleetHub`, with WebSocket Hibernation.
+- **History state**: a second SQLite-backed Durable Object, `FleetHistory`, stores one point per 30-second slot for 7 days and serves the password-protected `/history` page.
 - **Dashboard stream**: `wss://<host>/api/ws` sends a snapshot, then vehicle deltas.
 - **Tracker stream**: `wss://<host>/api/ws?role=tracker` accepts JSON or compact arrays; speed is in knots.
 - **Fallback polling**: the dashboard polls `/api/vehicles` every 10 seconds only when the WebSocket is disconnected.
@@ -61,6 +62,13 @@ The hospital operates a network of outreach ambulances, mobile surgical units, a
 | PurvanchalFleetHub — one SQLite-backed Durable Object         |
 | live fleet state · WebSocket broadcast · 60s snapshot          |
 | hibernating sockets · tracker ack/delta                        |
++---------------------------------------------------------------+
+                 │ async waitUntil (HTTP ingest + tracker WS)
+                 ▼
++---------------------------------------------------------------+
+| FleetHistory — separate SQLite-backed Durable Object          |
+| 30-second ring buffer · 7 days · 20,160 slots/vehicle          |
+| history + history_audit · password-protected /history page     |
 +---------------------------------------------------------------+
 ```
 
@@ -169,6 +177,45 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - **Strict Backward-Only Topology**: In [`src/utils/roadDistance.js`](src/utils/roadDistance.js), forward route projections into unknown future destinations are eliminated. The road ribbon exclusively tracks backward from the current live vehicle GPS position to the Base Hospital in Basti (`26.797313°N, 82.718401°E`).
 - **1-to-1 Vehicle-to-Track Color Binding**: Both the solid road ribbon and ambient glow layer are bound to `v.lineColor` and `v.glowColor`, ensuring instant visual association between each ambulance and its respective route across Uttar Pradesh.
 
+### 3.10. Fleet History Service (`FleetHistory` Durable Object)
+
+**Storage model**
+
+- Separate SQLite-backed Durable Object, binding `HISTORY_DB`, class `FleetHistory`.
+- `history` table: one row per vehicle per 30-second slot, primary key `(vehicle_id, slot)`.
+- `slot = floor(device_time / 30_000) % 20_160`; the ring covers exactly 7 days. A newer packet in the same slot replaces the older one.
+- `history_audit` table records logins, failed logins and history deletes.
+- No purge job and no D1. Points older than the 7-day window are overwritten by the ring.
+
+**Write path**
+
+- HTTP `/api/track` writes to history asynchronously with `ctx.waitUntil`; a history failure never delays the live response.
+- WebSocket tracker packets call `pushHistory(record)` from the hub after processing, so both ingestion paths populate the same store.
+- Invalid coordinates and points older than 7 days are rejected; slow speed, zero speed and poor accuracy are stored as-is.
+- Stored fields: `device_time`, `received_at`, `lat`, `lon`, `speed`, `bearing`, `accuracy`, `battery`.
+
+**Read path**
+
+- `GET /api/history` returns up to 25,000 points; a full 7-day trail is 20,160 points, so nothing is downsampled.
+- The page draws in progressive chunks with a progress bar and never drops a point.
+- Quality rendering: poor accuracy halos, buffered uploads, suspect-speed dashed segments, adaptive no-data gaps.
+- Trips split at an IST day boundary or a gap over 15 minutes. Each trip gets a colour from an 8-colour palette.
+- A trip is tagged `Return` when it starts within 2 km of the previous trip’s end and ends within 2 km of its start. The tag is an inference, not GPS truth; return paths are drawn 55 m offset.
+- Display modes: **Both** (unified backbone + coloured trips), **Trips**, and **Unified**. The unified layer draws one path across the range and joins trip boundaries only with faint dotted no-data connectors.
+- Desktop controls are collapsible: vehicle picker and period at the top, map key and management actions collapsed by default.
+
+**Authentication**
+
+- Password is stored only as a PBKDF2-SHA256 hash with a random salt. Iterations are 100,000 because the Workers runtime rejects counts above that limit.
+- Login sets an HMAC-signed, HttpOnly, SameSite=Strict cookie valid for 8 hours.
+- Required deployment secret: `HISTORY_SESSION_SECRET`. `HISTORY_PASSWORD` is not used.
+
+**Latency**
+
+- Live board: about 1 second after a packet arrives, over WebSocket.
+- History write: asynchronous, normally well under a second after ingestion.
+- History page: reads on load/range apply; the user presses **Refresh** to pull newly stored points. There is no automatic polling on the history page.
+
 ---
 
 ## 4. API Endpoints Reference
@@ -227,6 +274,16 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - **Auth**: Requires `X-Admin-Key` matching the `ADMIN_SECRET_KEY` deployment secret.
 - **Action**: Clears the in-memory vehicle cache immediately.
 - **Responses**: `200` on success, `401` on missing/invalid key, `405` for any other method, `503` if the secret is not provisioned.
+
+### 4.4. History API
+
+- `POST /api/history/login` — `{ "password": "..." }`; sets the 8-hour HMAC session cookie.
+- `POST /api/history/logout` — clears the cookie.
+- `GET /api/history/vehicles` — authenticated; returns `id`, `last_seen`, `points` per vehicle.
+- `GET /api/history?id=...&from=...&to=...&limit=...` — authenticated; returns points in time order, up to 25,000.
+- `POST /api/history/delete` — authenticated; `{ "id": "..." }`, `{ "id": "...", "from": ..., "to": ... }`, or `{ "all": true }`.
+
+All history routes except login/logout require a valid session cookie. Unauthenticated calls return `401`.
 
 ---
 

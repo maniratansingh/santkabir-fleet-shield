@@ -62,7 +62,8 @@ Verified on 12 November 2026: build pass, master contract 28/28, route anchors
 
 The history service is deployed to `fleet.mrps.in` with Wrangler. It runs
 alongside the live board, which keeps the same vehicle records and
-offline/persistence behaviour.
+offline/persistence behaviour. See `ARCHITECTURE.md` §3.10 for the storage,
+write/read paths, and authentication design.
 
 - A second SQLite-backed Durable Object, `FleetHistory`, stores one point per
   **30-second slot** for **7 days** in a fixed ring buffer (20,160 slots per
