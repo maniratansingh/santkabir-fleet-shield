@@ -1,17 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import {
+  Calendar,
   Clock,
   Eye,
   EyeOff,
   Lock,
   LogOut,
   MapPin,
+  Moon,
   RefreshCw,
   Route,
   ShieldCheck,
+  Sun,
   Trash2,
 } from 'lucide-react';
 import { calculateDistanceKm } from '../data/mockData';
@@ -20,6 +23,8 @@ import { getUniqueVehicleColor } from '../utils/colors';
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
 const BASE = { lat: 26.797313, lon: 82.718401 };
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_RANGE_MS = 7 * DAY_MS;
 
 const DARK_STYLE = {
   version: 8,
@@ -63,10 +68,71 @@ const DARK_STYLE = {
   ],
 };
 
-const RANGES = [
-  { key: '24h', label: '24 hours', ms: 24 * 60 * 60 * 1000 },
-  { key: '7d', label: '7 days', ms: 7 * 24 * 60 * 60 * 1000 },
+const LIGHT_STYLE = {
+  version: 8,
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+  sources: {
+    'esri-light-base': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      maxzoom: 16,
+      attribution: 'Esri, HERE, Garmin, © OpenStreetMap contributors',
+    },
+    'esri-light-labels': {
+      type: 'raster',
+      tiles: [
+        'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      maxzoom: 16,
+    },
+  },
+  layers: [
+    {
+      id: 'esri-light-base-layer',
+      type: 'raster',
+      source: 'esri-light-base',
+      minzoom: 0,
+      maxzoom: 22,
+      paint: { 'raster-fade-duration': 0 },
+    },
+    {
+      id: 'esri-light-labels-layer',
+      type: 'raster',
+      source: 'esri-light-labels',
+      minzoom: 0,
+      maxzoom: 22,
+      paint: { 'raster-fade-duration': 0 },
+    },
+  ],
+};
+
+const PRESETS = [
+  { key: '24h', label: '24 hours' },
+  { key: '7d', label: '7 days' },
+  { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
 ];
+
+function pad(value) {
+  return String(value).padStart(2, '0');
+}
+
+function toLocalInput(timestamp) {
+  if (!Number.isFinite(Number(timestamp))) return '';
+  const date = new Date(Number(timestamp));
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+}
+
+function fromLocalInput(value) {
+  if (!value) return NaN;
+  return new Date(value).getTime();
+}
 
 function formatAge(timestamp) {
   if (!timestamp) return '—';
@@ -91,6 +157,11 @@ function formatTime(timestamp) {
   });
 }
 
+function formatRange(from, to) {
+  if (!from || !to) return '—';
+  return `${formatTime(from)} → ${formatTime(to)}`;
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options });
   const data = await response.json().catch(() => ({}));
@@ -102,26 +173,155 @@ async function api(path, options = {}) {
   return data;
 }
 
+function ThemeButton({ theme, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10 transition-colors"
+    >
+      {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-sky-600" />}
+    </button>
+  );
+}
+
+function RangePicker({
+  preset,
+  fromInput,
+  toInput,
+  minInput,
+  maxInput,
+  onFromChange,
+  onToChange,
+  onPreset,
+  onApply,
+  compact = false,
+}) {
+  const inputClass = `w-full rounded-[10px] border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 px-2.5 ${
+    compact ? 'py-2' : 'py-2.5'
+  } text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20`;
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {PRESETS.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => onPreset(item.key)}
+            className={`min-h-9 rounded-[10px] text-xs font-semibold transition-colors ${
+              preset === item.key
+                ? 'bg-sky-500 text-white dark:text-slate-950 shadow-sm'
+                : 'bg-slate-200/70 dark:bg-white/5 text-slate-700 dark:text-slate-300 hover:bg-slate-300/60 dark:hover:bg-white/10'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 space-y-2">
+        <div>
+          <label className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1">
+            <Calendar className="w-3 h-3" />
+            From
+          </label>
+          <input
+            type="datetime-local"
+            value={fromInput}
+            min={minInput}
+            max={maxInput}
+            onChange={(event) => onFromChange(event.target.value)}
+            className={inputClass}
+          />
+        </div>
+        <div>
+          <label className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1">
+            <Clock className="w-3 h-3" />
+            To
+          </label>
+          <input
+            type="datetime-local"
+            value={toInput}
+            min={minInput}
+            max={maxInput}
+            onChange={(event) => onToChange(event.target.value)}
+            className={inputClass}
+          />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onApply}
+        className="mt-2 w-full min-h-9 rounded-[10px] bg-sky-500 hover:bg-sky-400 text-white dark:text-slate-950 text-xs font-semibold transition-colors"
+      >
+        Apply range
+      </button>
+    </div>
+  );
+}
+
 export default function HistoryApp() {
-  const [authed, setAuthed] = useState(null); // null checking, false login, true ready
+  const [authed, setAuthed] = useState(null);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
 
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === 'undefined') return 'dark';
+    try {
+      return localStorage.getItem('sk_history_theme') === 'light' ? 'light' : 'dark';
+    } catch (e) {
+      return 'dark';
+    }
+  });
+
   const [vehicles, setVehicles] = useState([]);
   const [selectedId, setSelectedId] = useState('');
-  const [range, setRange] = useState('7d');
   const [points, setPoints] = useState([]);
   const [loading, setLoading] = useState(false);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
   const [error, setError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
 
+  const [preset, setPreset] = useState('7d');
+  const [rangeLabel, setRangeLabel] = useState('Last 7 days');
+  const [fromInput, setFromInput] = useState('');
+  const [toInput, setToInput] = useState('');
+  const [appliedFrom, setAppliedFrom] = useState(0);
+  const [appliedTo, setAppliedTo] = useState(0);
+  const [mobileRangeOpen, setMobileRangeOpen] = useState(false);
+
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
   const [mapReady, setMapReady] = useState(false);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') root.classList.add('dark');
+    else root.classList.remove('dark');
+    try {
+      localStorage.setItem('sk_history_theme', theme);
+    } catch (e) {
+      // ignore storage errors
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    const to = Date.now();
+    const from = to - MAX_RANGE_MS;
+    setFromInput(toLocalInput(from));
+    setToInput(toLocalInput(to));
+    setAppliedFrom(from);
+    setAppliedTo(to);
+    setPreset('7d');
+    setRangeLabel('Last 7 days');
+  }, []);
 
   const loadVehicles = useCallback(async () => {
     setVehiclesLoading(true);
@@ -152,13 +352,8 @@ export default function HistoryApp() {
     loadVehicles();
   }, [loadVehicles]);
 
-  const rangeMs = useMemo(
-    () => RANGES.find((item) => item.key === range)?.ms || RANGES[1].ms,
-    [range]
-  );
-
   useEffect(() => {
-    if (authed !== true || !selectedId) {
+    if (authed !== true || !selectedId || !appliedFrom || !appliedTo) {
       setPoints([]);
       return undefined;
     }
@@ -167,10 +362,8 @@ export default function HistoryApp() {
       setLoading(true);
       setError('');
       try {
-        const to = Date.now();
-        const from = to - rangeMs;
         const data = await api(
-          `/api/history?id=${encodeURIComponent(selectedId)}&from=${from}&to=${to}`
+          `/api/history?id=${encodeURIComponent(selectedId)}&from=${appliedFrom}&to=${appliedTo}`
         );
         if (!cancelled) setPoints(Array.isArray(data.points) ? data.points : []);
       } catch (err) {
@@ -187,13 +380,20 @@ export default function HistoryApp() {
     return () => {
       cancelled = true;
     };
-  }, [authed, selectedId, rangeMs, refreshKey]);
+  }, [authed, selectedId, appliedFrom, appliedTo, refreshKey]);
 
   useEffect(() => {
-    if (authed !== true || !mapContainerRef.current || mapRef.current) return undefined;
+    if (authed !== true || !mapContainerRef.current) return undefined;
+
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+      setMapReady(false);
+    }
+
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: DARK_STYLE,
+      style: theme === 'dark' ? DARK_STYLE : LIGHT_STYLE,
       center: [BASE.lon, BASE.lat],
       zoom: 7.2,
       attributionControl: false,
@@ -207,13 +407,14 @@ export default function HistoryApp() {
     const handleResize = () => map.resize();
     window.addEventListener('resize', handleResize);
     mapRef.current = map;
+
     return () => {
       window.removeEventListener('resize', handleResize);
       map.remove();
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [authed]);
+  }, [authed, theme]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -245,9 +446,9 @@ export default function HistoryApp() {
         source: 'history-trail',
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
-          'line-color': '#38bdf8',
+          'line-color': '#0ea5e9',
           'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3, 10, 5, 14, 7],
-          'line-opacity': 0.92,
+          'line-opacity': 0.95,
         },
       });
     }
@@ -279,6 +480,75 @@ export default function HistoryApp() {
       map.fitBounds(bounds, { padding: 70, maxZoom: 14, duration: 500 });
     }
   }, [points, mapReady]);
+
+  const applyPreset = (key) => {
+    const now = Date.now();
+    let from = now - MAX_RANGE_MS;
+    let to = now;
+    let label = 'Last 7 days';
+
+    if (key === '24h') {
+      from = now - DAY_MS;
+      to = now;
+      label = 'Last 24 hours';
+    } else if (key === '7d') {
+      from = now - MAX_RANGE_MS;
+      to = now;
+      label = 'Last 7 days';
+    } else if (key === 'today') {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      from = start.getTime();
+      to = now;
+      label = 'Today';
+    } else if (key === 'yesterday') {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      to = start.getTime() - 1;
+      from = to - DAY_MS + 1;
+      label = 'Yesterday';
+    }
+
+    setFromInput(toLocalInput(from));
+    setToInput(toLocalInput(to));
+    setAppliedFrom(from);
+    setAppliedTo(to);
+    setPreset(key);
+    setRangeLabel(label);
+    setError('');
+    setRefreshKey((value) => value + 1);
+  };
+
+  const applyCustom = () => {
+    const from = fromLocalInput(fromInput);
+    const to = fromLocalInput(toInput);
+    const now = Date.now();
+
+    if (!Number.isFinite(from) || !Number.isFinite(to)) {
+      setError('Choose a valid date and time');
+      return;
+    }
+    if (from >= to) {
+      setError('“From” must be before “To”');
+      return;
+    }
+    if (from < now - MAX_RANGE_MS - 60 * 1000) {
+      setError('History is limited to the last 7 days');
+      return;
+    }
+    if (to > now + 60 * 1000) {
+      setError('“To” cannot be in the future');
+      return;
+    }
+
+    setAppliedFrom(from);
+    setAppliedTo(to);
+    setPreset('custom');
+    setRangeLabel('Custom range');
+    setError('');
+    setMobileRangeOpen(false);
+    setRefreshKey((value) => value + 1);
+  };
 
   const handleLogin = async (event) => {
     event.preventDefault();
@@ -329,7 +599,7 @@ export default function HistoryApp() {
   };
 
   const selectedVehicle = vehicles.find((vehicle) => vehicle.id === selectedId);
-  const vColor = selectedId ? getUniqueVehicleColor(selectedId).line : '#38bdf8';
+  const vColor = selectedId ? getUniqueVehicleColor(selectedId).line : '#0ea5e9';
   const distanceKm = points.reduce((total, point, index) => {
     if (index === 0) return total;
     const previous = points[index - 1];
@@ -345,12 +615,14 @@ export default function HistoryApp() {
   }, 0);
   const firstPoint = points[0];
   const lastPoint = points[points.length - 1];
+  const minInput = toLocalInput(Date.now() - MAX_RANGE_MS);
+  const maxInput = toLocalInput(Date.now());
 
   if (authed === null) {
     return (
-      <div className="min-h-screen w-screen bg-[#060d17] text-slate-200 flex items-center justify-center">
-        <div className="flex items-center gap-3 text-sm text-slate-400">
-          <ShieldCheck className="w-5 h-5 text-sky-400" />
+      <div className="min-h-screen w-screen bg-slate-100 dark:bg-[#060d17] text-slate-700 dark:text-slate-200 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+          <ShieldCheck className="w-5 h-5 text-sky-500" />
           Checking history access…
         </div>
       </div>
@@ -359,20 +631,26 @@ export default function HistoryApp() {
 
   if (authed === false) {
     return (
-      <div className="min-h-screen w-screen bg-[#060d17] text-slate-100 flex items-center justify-center p-5">
+      <div className="relative min-h-screen w-screen bg-slate-100 dark:bg-[#060d17] text-slate-900 dark:text-slate-100 flex items-center justify-center p-5">
+        <div className="absolute top-4 right-4">
+          <ThemeButton theme={theme} onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
+        </div>
         <form
           onSubmit={handleLogin}
-          className="w-full max-w-sm rounded-[26px] border border-white/10 bg-[#0b1728]/95 p-6 shadow-2xl"
+          className="w-full max-w-sm rounded-[26px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 p-6 shadow-2xl"
         >
-          <div className="w-12 h-12 rounded-[16px] bg-sky-500/15 text-sky-400 flex items-center justify-center mb-4">
+          <div className="w-12 h-12 rounded-[16px] bg-sky-500/15 text-sky-500 dark:text-sky-400 flex items-center justify-center mb-4">
             <Lock className="w-6 h-6" />
           </div>
           <h1 className="text-xl font-semibold tracking-tight">Fleet History</h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Restricted access. Enter the history password to continue.
           </p>
 
-          <label htmlFor="history-password" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mt-5 mb-1.5">
+          <label
+            htmlFor="history-password"
+            className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 mt-5 mb-1.5"
+          >
             Password
           </label>
           <div className="relative">
@@ -383,21 +661,21 @@ export default function HistoryApp() {
               onChange={(event) => setPassword(event.target.value)}
               autoComplete="current-password"
               autoFocus
-              className="w-full rounded-[12px] border border-white/10 bg-white/5 px-3 py-2.5 pr-11 text-sm text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20"
+              className="w-full rounded-[12px] border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 px-3 py-2.5 pr-11 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20"
               placeholder="Enter password"
             />
             <button
               type="button"
               onClick={() => setShowPassword((value) => !value)}
               aria-label={showPassword ? 'Hide password' : 'Show password'}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-full text-slate-400 hover:text-slate-200"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
 
           {loginError && (
-            <div className="mt-3 rounded-[10px] border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            <div className="mt-3 rounded-[10px] border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
               {loginError}
             </div>
           )}
@@ -405,12 +683,12 @@ export default function HistoryApp() {
           <button
             type="submit"
             disabled={loggingIn || !password}
-            className="mt-4 w-full min-h-11 rounded-[12px] bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 font-semibold text-sm transition-colors"
+            className="mt-4 w-full min-h-11 rounded-[12px] bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white dark:text-slate-950 font-semibold text-sm transition-colors"
           >
             {loggingIn ? 'Checking…' : 'Open history'}
           </button>
 
-          <div className="mt-5 pt-4 border-t border-white/10 text-[11px] text-slate-500 flex items-center gap-1.5">
+          <div className="mt-5 pt-4 border-t border-slate-200 dark:border-white/10 text-[11px] text-slate-500 flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5" />
             Sant Kabir Eye Hospital · Basti · 30-minute snapshots
           </div>
@@ -420,22 +698,23 @@ export default function HistoryApp() {
   }
 
   return (
-    <div className="h-screen w-screen bg-[#060d17] text-slate-100 flex flex-col overflow-hidden">
-      <header className="shrink-0 border-b border-white/10 bg-[#081321]/95 px-4 sm:px-5 py-3 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-[12px] bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0">
+    <div className="h-screen w-screen bg-slate-100 dark:bg-[#060d17] text-slate-900 dark:text-slate-100 flex flex-col overflow-hidden">
+      <header className="shrink-0 border-b border-slate-200 dark:border-white/10 bg-white/90 dark:bg-[#081321]/95 px-4 sm:px-5 py-3 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-[12px] bg-sky-500/15 text-sky-500 dark:text-sky-400 flex items-center justify-center shrink-0">
           <Route className="w-5 h-5" />
         </div>
         <div className="min-w-0">
           <h1 className="text-base font-semibold tracking-tight leading-tight">Fleet History</h1>
-          <p className="text-[11px] text-slate-400 leading-tight mt-0.5">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
             30-minute snapshots · 7 days · {vehicles.length} vehicles
           </p>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
+          <ThemeButton theme={theme} onToggle={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
           <button
             type="button"
             onClick={() => setRefreshKey((value) => value + 1)}
-            className="ui-press p-2.5 rounded-full text-slate-300 hover:bg-white/5"
+            className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10"
             aria-label="Refresh history"
             title="Refresh history"
           >
@@ -444,7 +723,7 @@ export default function HistoryApp() {
           <button
             type="button"
             onClick={handleLogout}
-            className="ui-press p-2.5 rounded-full text-slate-300 hover:bg-white/5"
+            className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-white/10"
             aria-label="Lock history"
             title="Lock history"
           >
@@ -454,26 +733,24 @@ export default function HistoryApp() {
       </header>
 
       <div className="flex-1 min-h-0 flex">
-        <aside className="hidden md:flex w-[290px] shrink-0 border-r border-white/10 bg-[#081321]/70 flex-col min-h-0">
-          <div className="p-3 border-b border-white/10">
+        <aside className="hidden md:flex w-[300px] shrink-0 border-r border-slate-200 dark:border-white/10 bg-white/80 dark:bg-[#081321]/70 flex-col min-h-0">
+          <div className="p-3 border-b border-slate-200 dark:border-white/10">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
-              Range
+              Select period
             </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {RANGES.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setRange(item.key)}
-                  className={`min-h-9 rounded-[10px] text-xs font-semibold transition-colors ${
-                    range === item.key
-                      ? 'bg-sky-500 text-slate-950'
-                      : 'bg-white/5 text-slate-300 hover:bg-white/10'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
+            <RangePicker
+              preset={preset}
+              fromInput={fromInput}
+              toInput={toInput}
+              minInput={minInput}
+              maxInput={maxInput}
+              onFromChange={setFromInput}
+              onToChange={setToInput}
+              onPreset={applyPreset}
+              onApply={applyCustom}
+            />
+            <div className="mt-2 text-[10px] text-slate-500 leading-relaxed">
+              {rangeLabel} · {formatRange(appliedFrom, appliedTo)}
             </div>
           </div>
 
@@ -482,9 +759,7 @@ export default function HistoryApp() {
           </div>
           <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-1">
             {vehicles.length === 0 && !vehiclesLoading && (
-              <div className="px-3 py-6 text-xs text-slate-500 text-center">
-                No history yet.
-              </div>
+              <div className="px-3 py-6 text-xs text-slate-500 text-center">No history yet.</div>
             )}
             {vehicles.map((vehicle) => {
               const color = getUniqueVehicleColor(vehicle.id).line;
@@ -496,8 +771,8 @@ export default function HistoryApp() {
                   onClick={() => setSelectedId(vehicle.id)}
                   className={`w-full text-left rounded-[12px] border px-3 py-2.5 transition-colors ${
                     isSelected
-                      ? 'border-sky-400/50 bg-sky-500/10'
-                      : 'border-transparent hover:bg-white/5'
+                      ? 'border-sky-400/60 bg-sky-500/10'
+                      : 'border-transparent hover:bg-slate-200/60 dark:hover:bg-white/5'
                   }`}
                 >
                   <div className="flex items-center gap-2">
@@ -507,7 +782,7 @@ export default function HistoryApp() {
                     />
                     <span className="text-sm font-mono font-semibold truncate">{vehicle.id}</span>
                   </div>
-                  <div className="mt-1 pl-[18px] text-[11px] text-slate-400 flex items-center gap-1.5">
+                  <div className="mt-1 pl-[18px] text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                     <Clock className="w-3 h-3" />
                     {formatAge(vehicle.last_seen)} · {vehicle.points} points
                   </div>
@@ -516,19 +791,19 @@ export default function HistoryApp() {
             })}
           </div>
 
-          <div className="p-3 border-t border-white/10 space-y-1.5">
+          <div className="p-3 border-t border-slate-200 dark:border-white/10 space-y-1.5">
             <button
               type="button"
               onClick={() => handleDelete(false)}
               disabled={!selectedId}
-              className="w-full min-h-9 rounded-[10px] border border-rose-500/25 bg-rose-500/10 text-rose-300 text-xs font-semibold disabled:opacity-40"
+              className="w-full min-h-9 rounded-[10px] border border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300 text-xs font-semibold disabled:opacity-40"
             >
               Delete this vehicle
             </button>
             <button
               type="button"
               onClick={() => handleDelete(true)}
-              className="w-full min-h-9 rounded-[10px] border border-white/10 text-slate-400 hover:text-rose-300 hover:border-rose-500/25 text-xs font-semibold"
+              className="w-full min-h-9 rounded-[10px] border border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 hover:border-rose-500/25 text-xs font-semibold"
             >
               Delete all history
             </button>
@@ -540,57 +815,75 @@ export default function HistoryApp() {
             <div ref={mapContainerRef} className="h-full w-full" />
           </div>
 
-          <div className="md:hidden absolute top-3 left-3 right-3 z-10 flex gap-2">
-            <select
-              value={selectedId}
-              onChange={(event) => setSelectedId(event.target.value)}
-              className="flex-1 min-w-0 rounded-[10px] border border-white/10 bg-[#0b1728]/95 px-3 py-2 text-xs text-slate-100"
-            >
-              {vehicles.map((vehicle) => (
-                <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.id}
-                </option>
-              ))}
-            </select>
-            <select
-              value={range}
-              onChange={(event) => setRange(event.target.value)}
-              className="rounded-[10px] border border-white/10 bg-[#0b1728]/95 px-3 py-2 text-xs text-slate-100"
-            >
-              {RANGES.map((item) => (
-                <option key={item.key} value={item.key}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+          <div className="md:hidden absolute top-3 left-3 right-3 z-10 space-y-2">
+            <div className="flex gap-2">
+              <select
+                value={selectedId}
+                onChange={(event) => setSelectedId(event.target.value)}
+                className="flex-1 min-w-0 rounded-[10px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+              >
+                {vehicles.map((vehicle) => (
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {vehicle.id}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setMobileRangeOpen((value) => !value)}
+                className="rounded-[10px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 font-semibold"
+              >
+                {rangeLabel}
+              </button>
+            </div>
+
+            {mobileRangeOpen && (
+              <div className="rounded-[16px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 p-3 shadow-xl">
+                <RangePicker
+                  compact
+                  preset={preset}
+                  fromInput={fromInput}
+                  toInput={toInput}
+                  minInput={minInput}
+                  maxInput={maxInput}
+                  onFromChange={setFromInput}
+                  onToChange={setToInput}
+                  onPreset={applyPreset}
+                  onApply={applyCustom}
+                />
+                <div className="mt-2 text-[10px] text-slate-500">
+                  {formatRange(appliedFrom, appliedTo)}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="absolute left-3 bottom-3 z-10 max-w-[calc(100%-1.5rem)] rounded-[16px] border border-white/10 bg-[#0b1728]/95 backdrop-blur px-3.5 py-3 shadow-xl">
+          <div className="absolute left-3 bottom-3 z-10 max-w-[calc(100%-1.5rem)] rounded-[16px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 backdrop-blur px-3.5 py-3 shadow-xl">
             <div className="flex items-center gap-2">
               <span
                 className="w-2.5 h-2.5 rounded-full"
                 style={{ backgroundColor: vColor, boxShadow: `0 0 6px ${vColor}88` }}
               />
               <span className="font-mono text-sm font-bold truncate">{selectedId || 'No vehicle'}</span>
-              <span className="text-[11px] text-slate-400">· {range === '24h' ? '24 hours' : '7 days'}</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">· {rangeLabel}</span>
             </div>
 
             <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-1.5 text-[11px]">
               <div>
                 <div className="text-slate-500">Points</div>
-                <div className="font-mono font-semibold text-slate-200">{points.length}</div>
+                <div className="font-mono font-semibold">{points.length}</div>
               </div>
               <div>
                 <div className="text-slate-500">Distance</div>
-                <div className="font-mono font-semibold text-slate-200">{distanceKm.toFixed(1)} km</div>
+                <div className="font-mono font-semibold">{distanceKm.toFixed(1)} km</div>
               </div>
               <div>
                 <div className="text-slate-500">First</div>
-                <div className="font-mono font-semibold text-slate-200">{formatTime(firstPoint?.device_time)}</div>
+                <div className="font-mono font-semibold">{formatTime(firstPoint?.device_time)}</div>
               </div>
               <div>
                 <div className="text-slate-500">Last</div>
-                <div className="font-mono font-semibold text-slate-200">{formatTime(lastPoint?.device_time)}</div>
+                <div className="font-mono font-semibold">{formatTime(lastPoint?.device_time)}</div>
               </div>
             </div>
 
@@ -601,9 +894,9 @@ export default function HistoryApp() {
           </div>
 
           {loading && (
-            <div className="absolute inset-0 z-20 bg-[#060d17]/40 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
-              <div className="rounded-full border border-white/10 bg-[#0b1728]/95 px-4 py-2 text-xs text-slate-300 flex items-center gap-2">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-400" />
+            <div className="absolute inset-0 z-20 bg-slate-100/40 dark:bg-[#060d17]/40 backdrop-blur-[1px] flex items-center justify-center pointer-events-none">
+              <div className="rounded-full border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 px-4 py-2 text-xs text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-500" />
                 Loading history…
               </div>
             </div>
@@ -611,18 +904,18 @@ export default function HistoryApp() {
 
           {!loading && points.length === 0 && (
             <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none px-6">
-              <div className="max-w-xs text-center rounded-[18px] border border-white/10 bg-[#0b1728]/95 px-5 py-4 shadow-xl">
-                <Route className="w-6 h-6 text-slate-500 mx-auto" />
-                <p className="mt-2 text-sm font-semibold text-slate-200">No history in this range</p>
+              <div className="max-w-xs text-center rounded-[18px] border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#0b1728]/95 px-5 py-4 shadow-xl">
+                <Route className="w-6 h-6 text-slate-400 dark:text-slate-500 mx-auto" />
+                <p className="mt-2 text-sm font-semibold">No history in this range</p>
                 <p className="mt-1 text-[11px] text-slate-500 leading-relaxed">
-                  The 30-minute collector stores one point per vehicle per bucket. Try the 7-day range.
+                  The 30-minute collector stores one point per vehicle per bucket. Try a wider period.
                 </p>
               </div>
             </div>
           )}
 
           {error && (
-            <div className="absolute top-3 left-3 right-3 md:left-3 md:right-auto md:max-w-sm z-30 rounded-[10px] border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            <div className="absolute top-3 left-3 right-3 md:left-3 md:right-auto md:max-w-sm z-30 rounded-[10px] border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
               {error}
             </div>
           )}
@@ -630,15 +923,15 @@ export default function HistoryApp() {
       </div>
 
       {selectedVehicle && (
-        <div className="md:hidden shrink-0 border-t border-white/10 bg-[#081321] px-4 py-2 flex items-center justify-between text-[11px] text-slate-400">
+        <div className="md:hidden shrink-0 border-t border-slate-200 dark:border-white/10 bg-white dark:bg-[#081321] px-4 py-2 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
           <span className="flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
             Last point {formatAge(selectedVehicle.last_seen)}
           </span>
           <button
             type="button"
             onClick={() => handleDelete(false)}
-            className="flex items-center gap-1 text-rose-300 font-semibold"
+            className="flex items-center gap-1 text-rose-600 dark:text-rose-300 font-semibold"
           >
             <Trash2 className="w-3.5 h-3.5" />
             Delete

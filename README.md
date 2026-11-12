@@ -71,6 +71,8 @@ the live board and is **not deployed** to `fleet.mrps.in` yet.
 - All vehicles are currently allowed. An allowlist can be added later.
 - The separate page is at `/history` and is password-protected. Login sets an
   HMAC-signed, HttpOnly, SameSite=Strict session cookie (8 hours).
+- The page has 24-hour, 7-day, Today and Yesterday presets, plus a custom
+  calendar + time range, and a light/dark theme toggle.
 - Ingest events, logins and history deletes are recorded in `history_audit`.
 - History deletion is separate from the live record. You can delete one
   vehicle's history, a range, or all history without touching the live fleet.
