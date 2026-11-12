@@ -96,6 +96,11 @@ offline/persistence behaviour.
   drawn as a **55 m offset dashed line**, so outbound and return are both
   visible instead of hiding each other. Selecting the return trip shows it as
   a solid offset line while the other trip fades.
+- The trail has three display modes: **Both** (default — a faint unified
+  backbone under the coloured trips), **Trips** (coloured segments only), and
+  **Unified** (one continuous line for the whole range). Trip boundaries are
+  joined by a faint dotted connector, never a solid invented path, so sparse
+  data still reads as one picture without pretending the road was recorded.
 - Sample trails can be seeded locally at several densities: `SAMPLE OUT AND
   BACK`, `EXCELLENT`, `VERY GOOD`, `GOOD`, `MEDIUM`, `POOR` and `BAD`. They
   use real road coordinates from `src/data/allVillagesRoadRoutes.json`; sparse

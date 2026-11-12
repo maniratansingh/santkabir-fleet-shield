@@ -261,6 +261,37 @@ function TripSwatch({ trip }) {
   );
 }
 
+function TrailModeControl({ value, onChange }) {
+  const options = [
+    ['both', 'Both'],
+    ['trips', 'Trips'],
+    ['unified', 'Unified'],
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="Trail display mode"
+      className="grid grid-cols-3 gap-0.5 rounded-[10px] bg-slate-500/10 p-0.5"
+    >
+      {options.map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          aria-pressed={value === key}
+          onClick={() => onChange(key)}
+          className={`rounded-[8px] px-2 py-1 text-[10px] font-semibold transition-all duration-200 ${
+            value === key
+              ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
+              : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function TripList({ trips, selectedTrip, onSelect, onAll }) {
   return (
     <div className="space-y-0.5">
@@ -382,6 +413,11 @@ const HISTORY_LEGEND = [
     label: 'Buffered upload',
   },
   {
+    id: 'unified',
+    symbol: <span className="block w-5 border-t-2 border-sky-400/70" />,
+    label: 'Unified trail · all trips',
+  },
+  {
     symbol: <span className="block w-5 border-t-2 border-sky-500" />,
     label: 'Measured link',
   },
@@ -399,10 +435,13 @@ const HISTORY_LEGEND = [
   },
 ];
 
-function HistoryLegend() {
+function HistoryLegend({ trailMode = 'both' }) {
+  const items = HISTORY_LEGEND.filter(
+    (item) => !(item.id === 'unified' && trailMode === 'trips')
+  );
   return (
     <div className="space-y-1.5">
-      {HISTORY_LEGEND.map((item) => (
+      {items.map((item) => (
         <div key={item.label} className="flex items-center gap-2">
           <span className="w-5 shrink-0 flex justify-center">{item.symbol}</span>
           <span className="text-[10px] text-slate-600 dark:text-slate-300">{item.label}</span>
@@ -436,6 +475,15 @@ export default function HistoryApp() {
   const [selectedTrip, setSelectedTrip] = useState(null);
   const selectedTripData = selectedTrip === null ? null : trips[selectedTrip] || null;
   const [tripsOpen, setTripsOpen] = useState(true);
+  const [trailMode, setTrailMode] = useState(() => {
+    if (typeof window === 'undefined') return 'both';
+    try {
+      const stored = localStorage.getItem('sk_history_trail_mode');
+      return stored === 'trips' || stored === 'unified' ? stored : 'both';
+    } catch (e) {
+      return 'both';
+    }
+  });
   const [mobileTripsOpen, setMobileTripsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [vehiclesLoading, setVehiclesLoading] = useState(false);
@@ -468,6 +516,14 @@ export default function HistoryApp() {
       // ignore storage errors
     }
   }, [theme]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sk_history_trail_mode', trailMode);
+    } catch (e) {
+      // ignore storage errors
+    }
+  }, [trailMode]);
 
   useEffect(() => {
     const to = Date.now();
@@ -603,6 +659,50 @@ export default function HistoryApp() {
     const pointFeatures = [];
     const haloFeatures = [];
 
+    // Unified backbone: one continuous path across the whole range, with
+    // dotted connectors only where the data actually jumps.
+    const unifiedRuns = [];
+    const unifiedGaps = [];
+    {
+      const unifiedIntervals = [];
+      for (let index = 1; index < points.length; index += 1) {
+        const dt =
+          (Number(points[index].device_time) - Number(points[index - 1].device_time)) / 1000;
+        if (Number.isFinite(dt) && dt > 0) unifiedIntervals.push(dt);
+      }
+      unifiedIntervals.sort((a, b) => a - b);
+      const unifiedMedian = unifiedIntervals.length
+        ? unifiedIntervals[Math.floor(unifiedIntervals.length / 2)]
+        : 30;
+      const unifiedGapThreshold = Math.max(90, unifiedMedian * 3);
+
+      let run = [];
+      let previous = null;
+      for (const point of points) {
+        const lon = Number(point.lon);
+        const lat = Number(point.lat);
+        if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+        const coordinate = [lon, lat];
+        if (previous) {
+          const dt = (Number(point.device_time) - Number(previous.device_time)) / 1000;
+          if (!Number.isFinite(dt) || dt > unifiedGapThreshold) {
+            if (run.length > 1) unifiedRuns.push(run);
+            unifiedGaps.push([
+              [Number(previous.lon), Number(previous.lat)],
+              coordinate,
+            ]);
+            run = [coordinate];
+          } else {
+            run.push(coordinate);
+          }
+        } else {
+          run = [coordinate];
+        }
+        previous = point;
+      }
+      if (run.length > 1) unifiedRuns.push(run);
+    }
+
     for (const trip of trips) {
       const tripPoints = trip.points;
       const displayPoints = trip.displayPoints;
@@ -691,6 +791,42 @@ export default function HistoryApp() {
         map.addLayer({ id: layerId, source: id, ...layer });
       }
     };
+
+    const unifiedFeature = unifiedRuns.length
+      ? [{
+          type: 'Feature',
+          geometry: { type: 'MultiLineString', coordinates: unifiedRuns },
+          properties: {},
+        }]
+      : [];
+    const unifiedGapFeature = unifiedGaps.length
+      ? [{
+          type: 'Feature',
+          geometry: { type: 'MultiLineString', coordinates: unifiedGaps },
+          properties: {},
+        }]
+      : [];
+
+    ensureSource('history-unified', collection(unifiedFeature), 'history-unified-line', {
+      type: 'line',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#38bdf8',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 10, 2, 14, 2.5],
+        'line-opacity': 0.55,
+      },
+    });
+
+    ensureSource('history-unified-gaps', collection(unifiedGapFeature), 'history-unified-gap', {
+      type: 'line',
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#94a3b8',
+        'line-width': 1.5,
+        'line-dasharray': [1, 4],
+        'line-opacity': 0.5,
+      },
+    });
 
     ensureSource('history-valid', collection(validFeatures), 'history-valid-line', {
       type: 'line',
@@ -827,6 +963,24 @@ export default function HistoryApp() {
       }
     };
   }, [points, mapReady, selectedId, trips]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const showUnified = trailMode !== 'trips';
+    const showTrips = trailMode !== 'unified';
+    ['history-unified-line', 'history-unified-gap'].forEach((id) => {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, 'visibility', showUnified ? 'visible' : 'none');
+      }
+    });
+    ['history-valid-line', 'history-return-line', 'history-gap-line', 'history-suspect-line'].forEach((id) => {
+      if (map.getLayer(id)) {
+        map.setLayoutProperty(id, 'visibility', showTrips ? 'visible' : 'none');
+      }
+    });
+  }, [trailMode, mapReady, points.length]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1173,7 +1327,7 @@ export default function HistoryApp() {
             <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
               Map key
             </div>
-            <HistoryLegend />
+            <HistoryLegend trailMode={trailMode} />
           </div>
 
           <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -1256,6 +1410,9 @@ export default function HistoryApp() {
                   {tripsOpen ? 'Hide' : 'Show'}
                 </span>
               </button>
+              <div className="px-2 pt-2">
+                <TrailModeControl value={trailMode} onChange={setTrailMode} />
+              </div>
               {tripsOpen && (
                 <div className="overflow-y-auto p-2">
                   <TripList
@@ -1471,7 +1628,7 @@ export default function HistoryApp() {
                 Done
               </button>
             </div>
-            <HistoryLegend />
+            <HistoryLegend trailMode={trailMode} />
             <div className="mt-3 pt-3 border-t border-slate-200 dark:border-white/10 text-[10px] text-slate-500">
               Green start · Red end · 30-second samples
             </div>
@@ -1502,6 +1659,9 @@ export default function HistoryApp() {
               >
                 Done
               </button>
+            </div>
+            <div className="mb-3">
+              <TrailModeControl value={trailMode} onChange={setTrailMode} />
             </div>
             <TripList
               trips={trips}
