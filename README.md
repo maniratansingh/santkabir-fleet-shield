@@ -77,15 +77,17 @@ the live board and is **not deployed** to `fleet.mrps.in` yet.
 - Ingest events, logins and history deletes are recorded in `history_audit`.
 - History deletion is separate from the live record. You can delete one
   vehicle's history, a range, or all history without touching the live fleet.
-- Required secrets for deployment:
+- The history password is stored as a **PBKDF2-SHA256 hash** (210,000
+  iterations, random salt) in `src/worker.js`. The plaintext password is never
+  committed.
+- Required secret for deployment:
 
 ```bash
-npx wrangler secret put HISTORY_PASSWORD
 npx wrangler secret put HISTORY_SESSION_SECRET
 ```
 
-The local `.dev.vars` uses a test password. The real password is never stored in
-the repository. `HISTORY_DB` is bound in `wrangler.toml` with migration `v2`.
+`HISTORY_PASSWORD` is no longer required. `HISTORY_DB` is bound in
+`wrangler.toml` with migration `v2`.
 
 ---
 
@@ -368,7 +370,7 @@ npm test                  # master contract + route anchor guard
 npm run test:kalman
 npm run test:map-matching
 npm run test:do-ws        # requires wrangler dev on :8787
-npm run test:history      # requires wrangler dev on :8787
+HISTORY_TEST_PASSWORD='...' npm run test:history  # requires wrangler dev on :8787
 npm run test:routes       # route origin guard only
 ```
 

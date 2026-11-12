@@ -47,6 +47,9 @@ const HISTORY_SESSION_SECONDS = 8 * 60 * 60;
 const HISTORY_BUCKET_MS = 30 * 60 * 1000; // 30-minute snapshots
 const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS); // 336
+const HISTORY_PASSWORD_SALT = 'rTKeYtOFsbi0PIKaqMs_OA';
+const HISTORY_PASSWORD_HASH = '7bxbsXqTEsfLe4kE61yvx2wcYVXovaOGzFKsSl2pPg8';
+const HISTORY_PASSWORD_ITERATIONS = 210000;
 const historyLoginAttempts = new Map();
 
 function historyJson(data, status = 200, extraHeaders = {}) {
@@ -84,6 +87,33 @@ function fromBase64Url(value) {
   const padded = value + '='.repeat((4 - (value.length % 4)) % 4);
   const binary = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+async function verifyHistoryPassword(password) {
+  const salt = fromBase64Url(HISTORY_PASSWORD_SALT);
+  const expected = fromBase64Url(HISTORY_PASSWORD_HASH);
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(String(password)),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations: HISTORY_PASSWORD_ITERATIONS,
+      hash: 'SHA-256',
+    },
+    key,
+    256
+  );
+  const actual = new Uint8Array(bits);
+  if (actual.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= actual[i] ^ expected[i];
+  return diff === 0;
 }
 
 async function hmacSha256(secret, data) {
@@ -658,7 +688,7 @@ export default {
 
     // 4b. History service (separate store, separate admin gate)
     if (url.pathname === '/api/history/login' && request.method === 'POST') {
-      if (!env.HISTORY_PASSWORD || !env.HISTORY_SESSION_SECRET) {
+      if (!env.HISTORY_SESSION_SECRET) {
         return historyJson({ error: 'History authentication is not configured' }, 503);
       }
 
@@ -679,7 +709,7 @@ export default {
         password = '';
       }
 
-      if (!(await safeEqual(password, env.HISTORY_PASSWORD))) {
+      if (!(await verifyHistoryPassword(password))) {
         attempts.push(now);
         historyLoginAttempts.set(ip, attempts);
         if (ctx?.waitUntil) ctx.waitUntil(auditHistory(env, 'login_failed', '', '', 'unknown'));

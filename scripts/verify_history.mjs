@@ -5,11 +5,16 @@
 // Then run:
 //   node scripts/verify_history.mjs
 //
-// The local .dev.vars uses HISTORY_PASSWORD=test-history. The real production
-// password is a Cloudflare secret and is never stored in the repository.
+// The history password is stored only as a PBKDF2 hash in the Worker. Pass the
+// plaintext only for this test, for example:
+//   HISTORY_TEST_PASSWORD='...' node scripts/verify_history.mjs
 
 const BASE = 'http://localhost:8787';
-const PASSWORD = process.env.HISTORY_PASSWORD || 'test-history';
+const PASSWORD = process.env.HISTORY_TEST_PASSWORD;
+if (!PASSWORD) {
+  console.error('Set HISTORY_TEST_PASSWORD to the configured history password.');
+  process.exit(1);
+}
 const ID = `HISTORY-CHECK-${Date.now()}`;
 
 let passed = 0;
