@@ -138,6 +138,13 @@ Re-rendering markers on every telemetry tick causes flicker and wasted SVG work:
 - **Auto-tour loop in [`src/App.jsx`](src/App.jsx)**:
   - **Close-up (8.5 s)**: flies to a vehicle at zoom 13.2 on desktop or 12.2 on mobile, pitch 28, bearing 0. Signal-gap vehicles get 5 s.
   - **Fleet overview (6 s)**: fits all reporting vehicles and the base. `fitBounds` is capped at zoom 12.8 on desktop and 10.8 on mobile, pitch 22, bearing 0.
+  - **Pinned tour**: when one or more vehicles are pinned, only the pinned reporting vehicles are visited and the fleet-overview step is skipped. If the pinned set is offline, the tour stays on pinned standby instead of choosing another vehicle. Removing all pins restores the normal full-fleet loop. Pins persist in browser storage.
+
+### 3.6a. Per-vehicle live sharing
+- Each fleet row and selected-vehicle panel has a Share action.
+- The link is `https://fleet.mrps.in/?vehicle=<ID>`; opening it filters the same live board to that vehicle, auto-selects it and disables the auto-tour.
+- Mobile uses the native share sheet (WhatsApp and others); desktop falls back to copying the link.
+- Not a time-limited token: no expiry, no server-side share store. Access is controlled by who receives the link, as decided for operational simplicity.
   - **Sheet-aware padding**: when the sheet is in its peek state, camera padding keeps vehicle markers centred on wide displays.
 - **North-up camera**: `focusVehicle` keeps `bearing: 0` and `pitch: 28`, so switching between vehicles heading in opposite directions does not spin the map.
 
