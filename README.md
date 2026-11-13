@@ -70,8 +70,8 @@ write/read paths, and authentication design.
   vehicle). Old slots are overwritten; there is no purge job. If a device sends
   several packets inside one 30-second slot, the newest packet is kept.
 - Points are never filtered by speed or accuracy. Slow movement, 0 km/h and poor
-  GPS fixes are stored and drawn. Poor accuracy appears with an amber halo;
-  suspect speed appears as an orange dashed segment.
+  GPS fixes are stored and drawn. Accuracy is shown as high (≤20 m), medium
+  (20–50 m) or low (>50 m); suspect speed appears as an orange dashed segment.
 - The history API returns up to 25,000 points, so a full 7-day trail (20,160
   points) is returned without downsampling.
 - The history page draws the trail progressively in chunks with a visible
@@ -89,22 +89,24 @@ write/read paths, and authentication design.
 - The page has 24-hour, 7-day, Today and Yesterday presets, plus a custom
   Apple-style calendar + time range, a mobile bottom sheet, and a light/dark
   theme toggle.
-- On desktop the control sidebar is collapsible. Vehicle selection and the
-  period picker sit at the top; the map key and history-management actions are
-  collapsed by default, leaving more room for the map.
+- On desktop the control sidebar is collapsible. A vehicle dropdown and the
+  period picker sit at the top, followed by the high/medium/low accuracy key.
+  The map key and history-management actions are collapsed by default, leaving
+  more room for the map.
 - Points are split into trips at a day boundary or after a gap longer than
-  15 minutes. Each trip gets its own colour from an 8-colour palette, with a
-  desktop trip panel and a mobile trips sheet. Selecting a trip highlights it
-  and fits the map to it.
+  15 minutes. Each trip gets its own colour from an 8-colour palette. A trip
+  ribbon gives every trip a proportional block with a minimum width, and short
+  trips also appear as numbered beads on the map. A horizontal trip chip row
+  selects a trip and fits the map to it.
 - When a trip returns along the same road, it is detected as a return trip and
   drawn as a **55 m offset dashed line**, so outbound and return are both
   visible instead of hiding each other. Selecting the return trip shows it as
   a solid offset line while the other trip fades.
-- The trail has three display modes: **Both** (default — a faint unified
-  backbone under the coloured trips), **Trips** (coloured segments only), and
-  **Unified** (one continuous line for the whole range). Trip boundaries are
-  joined by a faint dotted connector, never a solid invented path, so sparse
-  data still reads as one picture without pretending the road was recorded.
+- The trail is controlled by one **Colour by trip** switch. On: a faint unified
+  spine stays visible under the coloured trips. Off: one continuous line for the
+  whole range while the trip ribbon and list remain. Trip boundaries are joined
+  by a faint dotted connector, never a solid invented path, so sparse data still
+  reads as one picture without pretending the road was recorded.
 - Sample trails can be seeded locally at several densities: `SAMPLE OUT AND
   BACK`, `EXCELLENT`, `VERY GOOD`, `GOOD`, `MEDIUM`, `POOR` and `BAD`. They
   use real road coordinates from `src/data/allVillagesRoadRoutes.json`; sparse

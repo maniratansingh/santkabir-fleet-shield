@@ -198,10 +198,16 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 
 - `GET /api/history` returns up to 25,000 points; a full 7-day trail is 20,160 points, so nothing is downsampled.
 - The page draws in progressive chunks with a progress bar and never drops a point.
-- Quality rendering: poor accuracy halos, buffered uploads, suspect-speed dashed segments, adaptive no-data gaps.
 - Trips split at an IST day boundary or a gap over 15 minutes. Each trip gets a colour from an 8-colour palette.
 - A trip is tagged `Return` when it starts within 2 km of the previous trip’s end and ends within 2 km of its start. The tag is an inference, not GPS truth; return paths are drawn 55 m offset.
-- Display modes: **Both** (unified backbone + coloured trips), **Trips**, and **Unified**. The unified layer draws one path across the range and joins trip boundaries only with faint dotted no-data connectors.
+- Accuracy rendering: high (≤20 m) as a small point, medium (20–50 m) with an
+  amber ring, low (>50 m) with a red halo. Buffered uploads and suspect-speed
+  segments keep their own styles.
+- Trip presentation: one **Colour by trip** switch; the unified spine stays
+  visible under coloured trips. A trip ribbon gives every trip a proportional
+  block with a minimum width, short trips get numbered map beads, and a
+  horizontal trip chip row selects a trip. Trip boundaries are joined only by
+  faint dotted no-data connectors.
 - Desktop controls are collapsible: vehicle picker and period at the top, map key and management actions collapsed by default.
 
 **Authentication**
