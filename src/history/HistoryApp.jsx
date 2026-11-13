@@ -139,6 +139,16 @@ function formatTime(timestamp) {
   });
 }
 
+function formatClock(timestamp) {
+  if (!timestamp) return '—';
+  return new Date(Number(timestamp)).toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+}
+
 function preciseDistanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((Number(lat2) - Number(lat1)) * Math.PI) / 180;
@@ -263,33 +273,173 @@ function TripSwatch({ trip }) {
   );
 }
 
-function TrailModeControl({ value, onChange }) {
-  const options = [
-    ['both', 'Both'],
-    ['trips', 'Trips'],
-    ['unified', 'Unified'],
-  ];
+function ColourTripSwitch({ checked, onChange }) {
   return (
-    <div
-      role="group"
-      aria-label="Trail display mode"
-      className="grid grid-cols-3 gap-0.5 rounded-[10px] bg-slate-500/10 p-0.5"
-    >
-      {options.map(([key, label]) => (
-        <button
-          key={key}
-          type="button"
-          aria-pressed={value === key}
-          onClick={() => onChange(key)}
-          className={`rounded-[8px] px-2 py-1 text-[10px] font-semibold transition-all duration-200 ${
-            value === key
-              ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
-              : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="text-[12px] font-semibold">Colour by trip</div>
+        <div className="mt-0.5 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+          {checked
+            ? 'Unified spine stays visible underneath'
+            : 'One continuous line; trips stay in the list'}
+        </div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label="Colour by trip"
+        onClick={() => onChange(!checked)}
+        className={`relative h-7 w-12 shrink-0 rounded-full p-0.5 transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 ${
+          checked ? 'bg-emerald-500' : 'bg-slate-500/30 dark:bg-white/15'
+        }`}
+      >
+        <span
+          className={`block h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+            checked ? 'translate-x-5' : 'translate-x-0'
           }`}
-        >
-          {label}
-        </button>
-      ))}
+        />
+      </button>
+    </div>
+  );
+}
+
+function TripRibbon({ trips, selectedTrip, onSelect }) {
+  if (!trips.length) return null;
+  const firstMinutes = (trip) => Math.max(1, (Number(trip.end) - Number(trip.start)) / 60000);
+  const hasShort = trips.some((trip) => firstMinutes(trip) <= 5 || trip.points.length <= 12);
+  return (
+    <div>
+      <div className="flex h-8 items-stretch gap-0.5" role="group" aria-label="Trip ribbon">
+        {trips.map((trip, index) => {
+          const previous = index > 0 ? trips[index - 1] : null;
+          const gapMinutes = previous
+            ? Math.max(1, (Number(trip.start) - Number(previous.end)) / 60000)
+            : 0;
+          return (
+            <React.Fragment key={trip.index}>
+              {previous && (
+                <span
+                  className="relative min-w-[10px]"
+                  style={{ flexGrow: Math.min(gapMinutes, 30), flexBasis: 0 }}
+                  aria-hidden="true"
+                >
+                  <span className="absolute inset-x-0 top-1/2 border-t-2 border-dotted border-violet-400/70" />
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => onSelect(selectedTrip === trip.index ? null : trip.index)}
+                aria-pressed={selectedTrip === trip.index}
+                aria-label={`Trip ${trip.index + 1}, ${formatTime(trip.start)} to ${formatTime(trip.end)}, ${trip.distance.toFixed(1)} km`}
+                title={`Trip ${trip.index + 1} · ${trip.points.length} pts`}
+                className={`relative rounded-[4px] transition-transform duration-200 hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 ${
+                  selectedTrip === trip.index
+                    ? 'z-10 ring-2 ring-slate-900 ring-offset-1 ring-offset-white dark:ring-white dark:ring-offset-[#0b1728]'
+                    : ''
+                }`}
+                style={{
+                  backgroundColor: trip.color,
+                  flexGrow: Math.max(firstMinutes(trip), 2),
+                  flexBasis: 0,
+                  minWidth: 8,
+                }}
+              />
+            </React.Fragment>
+          );
+        })}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between text-[9px] tabular-nums text-slate-500 dark:text-slate-400">
+        <span>{formatTime(trips[0].start)}</span>
+        <span>{formatTime(trips[trips.length - 1].end)}</span>
+      </div>
+      {hasShort && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-[9px] text-slate-500 dark:text-slate-400">
+          <span className="h-2 w-2 rounded-full bg-rose-500" />
+          Short trips stay visible as minimum-width blocks and map beads.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AccuracyKey() {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <div className="rounded-[10px] border border-slate-200/70 dark:border-white/10 px-2 py-1.5">
+        <span className="block h-2 w-2 rounded-full border border-slate-900 bg-sky-400 dark:border-slate-950" />
+        <strong className="mt-1.5 block text-[9px] font-semibold">High</strong>
+        <span className="block text-[8px] text-slate-500">≤ 20 m</span>
+      </div>
+      <div className="rounded-[10px] border border-slate-200/70 dark:border-white/10 px-2 py-1.5">
+        <span className="block h-3 w-3 rounded-full border-2 border-amber-500 bg-amber-500/15" />
+        <strong className="mt-1 block text-[9px] font-semibold">Medium</strong>
+        <span className="block text-[8px] text-slate-500">20–50 m</span>
+      </div>
+      <div className="rounded-[10px] border border-slate-200/70 dark:border-white/10 px-2 py-1.5">
+        <span className="block h-4 w-4 rounded-full border-2 border-rose-500 bg-rose-500/15" />
+        <strong className="mt-0 block text-[9px] font-semibold">Low</strong>
+        <span className="block text-[8px] text-slate-500">&gt; 50 m</span>
+      </div>
+    </div>
+  );
+}
+
+function TripChips({ trips, selectedTrip, onSelect, onAll }) {
+  return (
+    <div className="flex gap-1.5 overflow-x-auto pb-1">
+      <button
+        type="button"
+        onClick={onAll}
+        aria-pressed={selectedTrip === null}
+        className={`shrink-0 rounded-[11px] border px-2.5 py-2 text-left text-[10px] font-semibold transition-colors ${
+          selectedTrip === null
+            ? 'border-sky-400/50 bg-sky-500/10'
+            : 'border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400'
+        }`}
+      >
+        All
+      </button>
+      {trips.map((trip) => {
+        const selected = selectedTrip === trip.index;
+        return (
+          <button
+            key={trip.index}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onSelect(selected ? null : trip.index)}
+            title={`Trip ${trip.index + 1} · ${formatTime(trip.start)} → ${formatTime(trip.end)} · ${trip.points.length} pts`}
+            style={
+              selected
+                ? { borderColor: `${trip.color}66`, backgroundColor: `${trip.color}18` }
+                : undefined
+            }
+            className={`w-[122px] shrink-0 rounded-[11px] border px-2.5 py-2 text-left transition-colors ${
+              selected
+                ? ''
+                : 'border-slate-200 dark:border-white/10 hover:bg-slate-200/50 dark:hover:bg-white/[0.04]'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: trip.color }} />
+              <span className="truncate text-[10px] font-semibold text-slate-800 dark:text-slate-100">
+                Trip {trip.index + 1}
+              </span>
+              {trip.isReturn && (
+                <span className="shrink-0 text-[8px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Ret
+                </span>
+              )}
+            </span>
+            <span className="mt-1 block text-[9px] tabular-nums text-slate-500 dark:text-slate-400">
+              {trip.distance.toFixed(1)} km · {trip.points.length} pts
+            </span>
+            <span className="mt-0.5 block truncate text-[8px] tabular-nums text-slate-500 dark:text-slate-400">
+              {formatClock(trip.start)} → {formatClock(trip.end)}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -403,18 +553,6 @@ function ThemeButton({ theme, onToggle }) {
 
 const HISTORY_LEGEND = [
   {
-    symbol: <span className="block w-2.5 h-2.5 rounded-full bg-sky-500 border border-sky-900" />,
-    label: 'Measured point',
-  },
-  {
-    symbol: <span className="block w-4 h-4 rounded-full bg-amber-500/30 border-2 border-amber-400" />,
-    label: 'Low accuracy (>50 m)',
-  },
-  {
-    symbol: <span className="block w-3.5 h-3.5 rounded-full bg-sky-500/15 border-2 border-sky-400" />,
-    label: 'Buffered upload',
-  },
-  {
     id: 'unified',
     symbol: <span className="block w-5 border-t-2 border-sky-400/70" />,
     label: 'Unified trail · all trips',
@@ -428,6 +566,14 @@ const HISTORY_LEGEND = [
     label: 'Return trip · offset (inferred)',
   },
   {
+    symbol: <span className="block w-3.5 h-3.5 rounded-full bg-sky-500/15 border-2 border-sky-400" />,
+    label: 'Buffered upload',
+  },
+  {
+    symbol: <span className="block h-3 w-3 rounded-full border-2 border-rose-500 bg-rose-500/20" />,
+    label: 'Short trip bead',
+  },
+  {
     symbol: <span className="block w-5 border-t-2 border-dotted border-violet-500" />,
     label: 'No data',
   },
@@ -437,13 +583,10 @@ const HISTORY_LEGEND = [
   },
 ];
 
-function HistoryLegend({ trailMode = 'both' }) {
-  const items = HISTORY_LEGEND.filter(
-    (item) => !(item.id === 'unified' && trailMode === 'trips')
-  );
+function HistoryLegend() {
   return (
     <div className="space-y-1.5">
-      {items.map((item) => (
+      {HISTORY_LEGEND.map((item) => (
         <div key={item.label} className="flex items-center gap-2">
           <span className="w-5 shrink-0 flex justify-center">{item.symbol}</span>
           <span className="text-[10px] text-slate-600 dark:text-slate-300">{item.label}</span>
@@ -476,14 +619,15 @@ export default function HistoryApp() {
   const trips = useMemo(() => buildTrips(points), [points]);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const selectedTripData = selectedTrip === null ? null : trips[selectedTrip] || null;
-  const [tripsOpen, setTripsOpen] = useState(true);
-  const [trailMode, setTrailMode] = useState(() => {
-    if (typeof window === 'undefined') return 'both';
+  const [colourByTrip, setColourByTrip] = useState(() => {
+    if (typeof window === 'undefined') return true;
     try {
-      const stored = localStorage.getItem('sk_history_trail_mode');
-      return stored === 'trips' || stored === 'unified' ? stored : 'both';
+      const stored = localStorage.getItem('sk_history_colour_trips');
+      if (stored === 'off') return false;
+      if (stored === 'on') return true;
+      return localStorage.getItem('sk_history_trail_mode') !== 'unified';
     } catch (e) {
-      return 'both';
+      return true;
     }
   });
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -529,11 +673,11 @@ export default function HistoryApp() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('sk_history_trail_mode', trailMode);
+      localStorage.setItem('sk_history_colour_trips', colourByTrip ? 'on' : 'off');
     } catch (e) {
       // ignore storage errors
     }
-  }, [trailMode]);
+  }, [colourByTrip]);
 
   useEffect(() => {
     try {
@@ -678,6 +822,7 @@ export default function HistoryApp() {
     const suspectFeatures = [];
     const pointFeatures = [];
     const haloFeatures = [];
+    const shortTripFeatures = [];
 
     // Unified backbone: one continuous path across the whole range, with
     // dotted connectors only where the data actually jumps.
@@ -784,6 +929,7 @@ export default function HistoryApp() {
         let kind = 'normal';
         if (suspectLocalIndexes.has(index)) kind = 'suspect';
         else if (accuracy > 50) kind = 'low';
+        else if (accuracy > 20) kind = 'medium';
         else if (!isSampleTrail && Number.isFinite(bufferedMs) && bufferedMs > 5 * 60 * 1000) {
           kind = 'buffered';
         }
@@ -800,6 +946,26 @@ export default function HistoryApp() {
         pointFeatures.push(feature);
         if (kind === 'low') haloFeatures.push(feature);
       });
+
+      const durationMinutes = (Number(trip.end) - Number(trip.start)) / 60000;
+      if (tripPoints.length <= 12 || durationMinutes <= 5) {
+        const middle = Math.floor(tripPoints.length / 2);
+        const point = tripPoints[middle] || tripPoints[0];
+        const display = displayPoints[middle] || {
+          lon: Number(point.lon),
+          lat: Number(point.lat),
+        };
+        shortTripFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [display.lon, display.lat] },
+          properties: {
+            i: point.globalIndex,
+            tripIndex: trip.index,
+            color: trip.color,
+            label: String(trip.index + 1),
+          },
+        });
+      }
     }
 
     const collection = (features) => ({ type: 'FeatureCollection', features });
@@ -900,7 +1066,7 @@ export default function HistoryApp() {
       filter: ['all', ['==', ['get', 'kind'], 'low'], ['<=', ['get', 'i'], -1]],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 10, 14, 22],
-        'circle-color': 'rgba(245, 158, 11, 0.16)',
+        'circle-color': 'rgba(255, 69, 58, 0.16)',
         'circle-stroke-width': 0,
       },
     });
@@ -913,25 +1079,65 @@ export default function HistoryApp() {
           'case',
           ['==', ['get', 'kind'], 'normal'],
           ['interpolate', ['linear'], ['zoom'], 6, 2, 12, 3.5, 16, 5],
+          ['==', ['get', 'kind'], 'medium'],
+          ['interpolate', ['linear'], ['zoom'], 6, 3, 12, 4.4, 16, 6],
           ['interpolate', ['linear'], ['zoom'], 6, 4, 12, 5.5, 16, 7],
         ],
         'circle-color': [
           'case',
-          ['==', ['get', 'kind'], 'low'], '#f59e0b',
+          ['==', ['get', 'kind'], 'low'], '#ffffff',
           ['==', ['get', 'kind'], 'buffered'], 'rgba(14,165,233,0.15)',
           ['==', ['get', 'kind'], 'suspect'], '#f59e0b',
           ['get', 'color'],
         ],
         'circle-stroke-color': [
           'case',
-          ['==', ['get', 'kind'], 'low'], '#fbbf24',
+          ['==', ['get', 'kind'], 'low'], '#ff453a',
+          ['==', ['get', 'kind'], 'medium'], '#f59e0b',
           ['==', ['get', 'kind'], 'buffered'], '#38bdf8',
           ['==', ['get', 'kind'], 'suspect'], '#ef4444',
           '#082f49',
         ],
-        'circle-stroke-width': 1.5,
+        'circle-stroke-width': [
+          'case',
+          ['==', ['get', 'kind'], 'medium'], 2,
+          ['==', ['get', 'kind'], 'low'], 2,
+          1.5,
+        ],
       },
     });
+
+    ensureSource('history-short-trips', collection(shortTripFeatures), 'history-short-trip-bead', {
+      type: 'circle',
+      filter: ['<=', ['get', 'i'], -1],
+      paint: {
+        'circle-radius': 9,
+        'circle-color': ['get', 'color'],
+        'circle-stroke-color': '#04101e',
+        'circle-stroke-width': 2,
+        'circle-opacity': 0.98,
+      },
+    });
+    if (!map.getLayer('history-short-trip-label')) {
+      map.addLayer({
+        id: 'history-short-trip-label',
+        type: 'symbol',
+        source: 'history-short-trips',
+        filter: ['<=', ['get', 'i'], -1],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-font': ['Open Sans Semibold'],
+          'text-size': 9,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': '#ffffff',
+          'text-halo-color': 'rgba(4, 16, 30, 0.9)',
+          'text-halo-width': 1,
+        },
+      });
+    }
 
     if (points.length === 0) {
       setDrawnCount(0);
@@ -988,34 +1194,31 @@ export default function HistoryApp() {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    const showUnified = trailMode !== 'trips';
-    const showTrips = trailMode !== 'unified';
+    const showTrips = colourByTrip;
     ['history-unified-line', 'history-unified-gap'].forEach((id) => {
       if (map.getLayer(id)) {
-        map.setLayoutProperty(id, 'visibility', showUnified ? 'visible' : 'none');
+        map.setLayoutProperty(id, 'visibility', 'visible');
       }
     });
-    ['history-valid-line', 'history-return-line', 'history-gap-line', 'history-suspect-line'].forEach((id) => {
+    ['history-valid-line', 'history-return-line', 'history-gap-line', 'history-suspect-line', 'history-short-trip-bead', 'history-short-trip-label'].forEach((id) => {
       if (map.getLayer(id)) {
         map.setLayoutProperty(id, 'visibility', showTrips ? 'visible' : 'none');
       }
     });
 
-    // In Both, the unified path is a wider, faint casing under the coloured
-    // trips so the mode is visibly different from Trips. In Unified it is the
-    // single route line and should stay crisp.
+    // With trip colour on, the unified path is a wider, faint casing under the
+    // coloured trips. With it off, the same path becomes the single crisp line.
     if (map.getLayer('history-unified-line')) {
-      const both = trailMode === 'both';
       map.setPaintProperty(
         'history-unified-line',
         'line-width',
-        both
+        showTrips
           ? ['interpolate', ['linear'], ['zoom'], 5, 4.5, 10, 8.5, 14, 11.5]
           : ['interpolate', ['linear'], ['zoom'], 5, 1.5, 10, 2.2, 14, 2.8]
       );
-      map.setPaintProperty('history-unified-line', 'line-opacity', both ? 0.32 : 0.68);
+      map.setPaintProperty('history-unified-line', 'line-opacity', showTrips ? 0.32 : 0.68);
     }
-  }, [trailMode, mapReady, points.length]);
+  }, [colourByTrip, mapReady, points.length]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1028,6 +1231,8 @@ export default function HistoryApp() {
     if (map.getLayer('history-halo')) {
       map.setFilter('history-halo', ['all', ['==', ['get', 'kind'], 'low'], pointFilter]);
     }
+    if (map.getLayer('history-short-trip-bead')) map.setFilter('history-short-trip-bead', pointFilter);
+    if (map.getLayer('history-short-trip-label')) map.setFilter('history-short-trip-label', pointFilter);
     ['history-valid-line', 'history-return-line', 'history-gap-line', 'history-suspect-line'].forEach((id) => {
       if (map.getLayer(id)) map.setFilter(id, segmentFilter);
     });
@@ -1066,6 +1271,12 @@ export default function HistoryApp() {
     }
     if (map.getLayer('history-halo')) {
       map.setPaintProperty('history-halo', 'circle-opacity', selectedTrip === null ? 0.8 : 0.2);
+    }
+    if (map.getLayer('history-short-trip-bead')) {
+      map.setPaintProperty('history-short-trip-bead', 'circle-opacity', selectedTrip === null ? 1 : opacity);
+    }
+    if (map.getLayer('history-short-trip-label')) {
+      map.setPaintProperty('history-short-trip-label', 'text-opacity', selectedTrip === null ? 1 : opacity);
     }
   }, [selectedTrip, mapReady, trips]);
 
@@ -1354,7 +1565,7 @@ export default function HistoryApp() {
       <div className="flex-1 min-h-0 flex">
         <aside
           id="history-sidebar"
-          className={`${sidebarOpen ? 'hidden md:flex' : 'hidden'} w-[300px] shrink-0 border-r border-slate-200 dark:border-white/10 bg-white/80 dark:bg-[#081321]/70 flex-col min-h-0`}
+          className={`${sidebarOpen ? 'hidden md:flex' : 'hidden'} w-[340px] shrink-0 border-r border-slate-200 dark:border-white/10 bg-white/80 dark:bg-[#081321]/70 flex-col min-h-0`}
         >
           <div className="flex-1 overflow-y-auto min-h-0">
             <section className="p-3 border-b border-slate-200 dark:border-white/10" aria-labelledby="history-vehicle-label">
@@ -1414,6 +1625,43 @@ export default function HistoryApp() {
               />
             </section>
 
+            <section className="px-3 py-2 border-b border-slate-200 dark:border-white/10" aria-labelledby="history-accuracy-label">
+              <div id="history-accuracy-label" className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-2">
+                GPS accuracy
+              </div>
+              <AccuracyKey />
+            </section>
+
+            <section className="px-3 py-2.5 border-b border-slate-200 dark:border-white/10">
+              <ColourTripSwitch checked={colourByTrip} onChange={setColourByTrip} />
+            </section>
+
+            {trips.length > 0 && (
+              <section className="px-3 py-2 border-b border-slate-200 dark:border-white/10">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                    Trips
+                  </span>
+                  <span className="rounded-full bg-slate-500/10 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-slate-500 dark:text-slate-300">
+                    {trips.length}
+                  </span>
+                </div>
+                <TripRibbon
+                  trips={trips}
+                  selectedTrip={selectedTrip}
+                  onSelect={setSelectedTrip}
+                />
+                <div className="mt-2">
+                  <TripChips
+                    trips={trips}
+                    selectedTrip={selectedTrip}
+                    onSelect={setSelectedTrip}
+                    onAll={() => setSelectedTrip(null)}
+                  />
+                </div>
+              </section>
+            )}
+
             <details className="history-details group border-b border-slate-200 dark:border-white/10">
               <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-400/70">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -1422,7 +1670,7 @@ export default function HistoryApp() {
                 <ChevronDown className="history-chevron h-3.5 w-3.5 text-slate-400 transition-transform" />
               </summary>
               <div className="px-3 pb-3">
-                <HistoryLegend trailMode={trailMode} />
+                <HistoryLegend />
               </div>
             </details>
           </div>
@@ -1458,41 +1706,6 @@ export default function HistoryApp() {
           <div className="absolute inset-0">
             <div ref={mapContainerRef} className="history-map h-full w-full" />
           </div>
-
-          {trips.length > 0 && (
-            <div className="hidden md:flex absolute left-3 top-3 z-20 w-[300px] max-h-[48vh] flex-col rounded-[18px] border border-slate-200/80 dark:border-white/10 bg-white/90 dark:bg-[#0b1728]/85 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_40px_-12px_rgba(2,6,23,0.45)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_40px_-12px_rgba(2,6,23,0.65)] overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setTripsOpen((value) => !value)}
-                className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200/70 dark:border-white/[0.06]"
-              >
-                <span className="flex items-center gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                    Trips
-                  </span>
-                  <span className="rounded-full bg-slate-500/10 px-1.5 py-0.5 text-[9px] font-semibold tabular-nums text-slate-500 dark:text-slate-300">
-                    {trips.length}
-                  </span>
-                </span>
-                <span className="text-[10px] font-medium text-slate-500">
-                  {tripsOpen ? 'Hide' : 'Show'}
-                </span>
-              </button>
-              <div className="px-2 pt-2">
-                <TrailModeControl value={trailMode} onChange={setTrailMode} />
-              </div>
-              {tripsOpen && (
-                <div className="overflow-y-auto p-2">
-                  <TripList
-                    trips={trips}
-                    selectedTrip={selectedTrip}
-                    onSelect={setSelectedTrip}
-                    onAll={() => setSelectedTrip(null)}
-                  />
-                </div>
-              )}
-            </div>
-          )}
 
           <div className="md:hidden absolute top-3 left-3 right-3 z-10">
             <div className="flex gap-2">
@@ -1696,7 +1909,13 @@ export default function HistoryApp() {
                 Done
               </button>
             </div>
-            <HistoryLegend trailMode={trailMode} />
+            <div className="mb-3">
+              <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                GPS accuracy
+              </div>
+              <AccuracyKey />
+            </div>
+            <HistoryLegend />
             <div className="mt-3 pt-3 border-t border-slate-200 dark:border-white/10 text-[10px] text-slate-500">
               Green start · Red end · 30-second samples
             </div>
@@ -1729,8 +1948,17 @@ export default function HistoryApp() {
               </button>
             </div>
             <div className="mb-3">
-              <TrailModeControl value={trailMode} onChange={setTrailMode} />
+              <ColourTripSwitch checked={colourByTrip} onChange={setColourByTrip} />
             </div>
+            {trips.length > 0 && (
+              <div className="mb-3">
+                <TripRibbon
+                  trips={trips}
+                  selectedTrip={selectedTrip}
+                  onSelect={setSelectedTrip}
+                />
+              </div>
+            )}
             <TripList
               trips={trips}
               selectedTrip={selectedTrip}
