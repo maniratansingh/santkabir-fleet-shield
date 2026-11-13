@@ -1000,6 +1000,21 @@ export default function HistoryApp() {
         map.setLayoutProperty(id, 'visibility', showTrips ? 'visible' : 'none');
       }
     });
+
+    // In Both, the unified path is a wider, faint casing under the coloured
+    // trips so the mode is visibly different from Trips. In Unified it is the
+    // single route line and should stay crisp.
+    if (map.getLayer('history-unified-line')) {
+      const both = trailMode === 'both';
+      map.setPaintProperty(
+        'history-unified-line',
+        'line-width',
+        both
+          ? ['interpolate', ['linear'], ['zoom'], 5, 4.5, 10, 8.5, 14, 11.5]
+          : ['interpolate', ['linear'], ['zoom'], 5, 1.5, 10, 2.2, 14, 2.8]
+      );
+      map.setPaintProperty('history-unified-line', 'line-opacity', both ? 0.32 : 0.68);
+    }
   }, [trailMode, mapReady, points.length]);
 
   useEffect(() => {
