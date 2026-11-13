@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import MapView from './components/MapView';
 import DynamicIsland from './components/DynamicIsland';
 import FloatingControls from './components/FloatingControls';
@@ -51,6 +51,15 @@ export default function App() {
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
   const [detent, setDetent] = useState('peek'); // Default minimized to peek capsule
   const [fleetFilter, setFleetFilter] = useState('all');
+  const [sharedVehicleId, setSharedVehicleId] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('vehicle') || '';
+  });
+  const sharedId = canonicalVehicleId(sharedVehicleId);
+  const displayVehicles = useMemo(
+    () => (sharedId ? vehicles.filter((v) => canonicalVehicleId(v.id) === sharedId) : vehicles),
+    [vehicles, sharedId]
+  );
   const [isAutoTour, setIsAutoTour] = useState(true); // Default TV Wallboard Auto-Tour ON
   const [fitTrigger, setFitTrigger] = useState(0);
   const [actionTrigger, setActionTrigger] = useState(null);
@@ -553,6 +562,66 @@ export default function App() {
     }
   }, []);
 
+  const sharedAutoSelectedRef = useRef(false);
+
+
+  useEffect(() => {
+    if (!sharedId) {
+      sharedAutoSelectedRef.current = false;
+      return;
+    }
+    setIsAutoTour(false);
+    setDetent('peek');
+  }, [sharedId]);
+
+  useEffect(() => {
+    if (!sharedId) return;
+    const match = vehicles.find((v) => canonicalVehicleId(v.id) === sharedId);
+    if (match && !sharedAutoSelectedRef.current) {
+      sharedAutoSelectedRef.current = true;
+      setSelectedVehicleId(match.id);
+      setFitTrigger((prev) => prev + 1);
+    }
+  }, [sharedId, vehicles]);
+
+  const handleShareVehicle = useCallback(async (id) => {
+    const target = canonicalVehicleId(id);
+    if (!target) return;
+    const url = `${window.location.origin}/?vehicle=${encodeURIComponent(target)}`;
+    const shareData = {
+      title: `${target} — live tracking`,
+      text: `Track ${target} live — Sant Kabir Fleet Shield`,
+      url,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Tracking link copied — paste it in WhatsApp', 'info');
+    } catch (error) {
+      window.prompt('Copy this tracking link', url);
+    }
+  }, []);
+
+  const handleExitSharedView = useCallback(() => {
+    setSharedVehicleId('');
+    setSelectedVehicleId(null);
+    setFitTrigger((prev) => prev + 1);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('vehicle');
+      window.history.replaceState({}, '', url);
+    } catch (error) {
+      // ignore URL update errors
+    }
+  }, []);
+
   const handleToggleDistanceLines = useCallback(() => {
     setShowDistanceLines(prev => !prev);
   }, []);
@@ -648,7 +717,7 @@ export default function App() {
     <div className="relative w-screen h-screen overflow-hidden bg-slate-100 dark:bg-slate-900 select-none">
       {/* 1. Full-Bleed Edge-to-Edge Map Canvas */}
       <MapView
-        vehicles={vehicles}
+        vehicles={displayVehicles}
         selectedVehicleId={selectedVehicleId}
         onSelectVehicle={handleSelectVehicle}
         fitTrigger={fitTrigger}
@@ -664,7 +733,7 @@ export default function App() {
 
       {/* 2. Top-Center Dynamic Island Status Capsule */}
       <DynamicIsland
-        vehicles={vehicles}
+        vehicles={displayVehicles}
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenDriverModal={() => setIsDriverModalOpen(true)}
@@ -691,7 +760,7 @@ export default function App() {
 
       {/* Mobile-only bottom navigation and More sheet */}
       <MobileNav
-        vehicleCount={vehicles.length}
+        vehicleCount={displayVehicles.length}
         onOpenMap={handleOpenMap}
         onOpenFleet={handleOpenFleet}
         onOpenAlerts={handleOpenAlerts}
@@ -710,7 +779,7 @@ export default function App() {
 
       {/* 4. Bottom-Left Floating Apple Sheet */}
       <AppleSheet
-        vehicles={vehicles}
+        vehicles={displayVehicles}
         selectedVehicleId={selectedVehicleId}
         onSelectVehicle={handleSelectVehicle}
         onFocusRoute={handleFocusRoute}
@@ -719,6 +788,9 @@ export default function App() {
         onFocusDistance={handleFocusDistance}
         onOpenProvisionModal={handleOpenProvisionModal}
         onRemoveVehicle={handleRemoveVehicle}
+        onShareVehicle={handleShareVehicle}
+        sharedView={Boolean(sharedId)}
+        onExitSharedView={handleExitSharedView}
         detent={detent}
         onChangeDetent={setDetent}
         filter={fleetFilter}

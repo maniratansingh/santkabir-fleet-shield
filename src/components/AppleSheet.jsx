@@ -16,7 +16,8 @@ import {
   Clock,
   ShieldCheck,
   QrCode,
-  Trash2
+  Trash2,
+  Share2
 } from 'lucide-react';
 import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
 import { getNearestRuralLocation } from '../utils/ruralLocator';
@@ -60,6 +61,7 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
   onSelectVehicle,
   openProvision,
   onRemoveVehicle,
+  onShareVehicle,
 }) {
   const uniqueColors = getUniqueVehicleColor(v.id);
   const vColor = v.lineColor || uniqueColors.line;
@@ -129,6 +131,20 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
 
       {/* Right: quick actions */}
       <div className="flex items-center gap-1.5 shrink-0">
+        {onShareVehicle && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onShareVehicle(v.id);
+            }}
+            aria-label={`Share ${v.id} live tracking`}
+            title="Share live tracking link"
+            className="touch-target ui-press w-9 h-9 rounded-[10px] bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/50 dark:hover:bg-sky-900/70 text-sky-600 dark:text-sky-400 flex items-center justify-center transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={(e) => {
@@ -194,6 +210,9 @@ function AppleSheet({
   onFocusDistance,
   onOpenProvisionModal,
   onRemoveVehicle,
+  onShareVehicle,
+  sharedView = false,
+  onExitSharedView,
   detent = 'peek', // 'peek', 'half', 'full'
   onChangeDetent,
   filter: controlledFilter,
@@ -310,20 +329,31 @@ function AppleSheet({
               <div className="flex items-center justify-between pb-2 border-b border-slate-200/80 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => onSelectVehicle(null)}
+                  onClick={sharedView ? onExitSharedView : () => onSelectVehicle(null)}
                   className="touch-target ui-press flex items-center gap-1 type-footnote font-semibold text-sky-600 dark:text-cyan-400 hover:underline cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" />
-                  All ambulances
+                  {sharedView ? 'Full fleet' : 'All ambulances'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onSelectVehicle(null)}
-                  aria-label="Close vehicle details"
-                  className="touch-target ui-press p-1.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onShareVehicle?.(selectedVehicle.id)}
+                    aria-label={`Share ${selectedVehicle.id} live tracking`}
+                    title="Share live tracking link"
+                    className="touch-target ui-press p-1.5 rounded-full text-slate-500 hover:text-sky-600 dark:text-slate-300 dark:hover:text-cyan-400 hover:bg-slate-500/10 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sharedView ? onExitSharedView : () => onSelectVehicle(null)}
+                    aria-label="Close vehicle details"
+                    className="touch-target ui-press p-1.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Vehicle hero */}
@@ -364,6 +394,12 @@ function AppleSheet({
                       {selectedVehicle.highwayName || selectedVehicle.sector || 'Rural outreach sector'}
                     </span>
                   </div>
+                  {sharedView && (
+                    <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold text-sky-600 dark:text-sky-400">
+                      <Share2 className="w-2.5 h-2.5" />
+                      Shared live view
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -694,6 +730,7 @@ function AppleSheet({
                       onSelectVehicle={onSelectVehicle}
                       openProvision={openProvision}
                       onRemoveVehicle={onRemoveVehicle}
+                      onShareVehicle={onShareVehicle}
                     />
                   ))
                 )}
