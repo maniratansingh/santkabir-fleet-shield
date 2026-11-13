@@ -313,8 +313,24 @@ function AppleSheet({
               </span>
             </div>
           </div>
-          <span className="type-footnote font-semibold text-sky-600 dark:text-cyan-400 flex items-center shrink-0">
-            View <ChevronRight className="w-4 h-4 ml-0.5" />
+          <span className="flex items-center gap-1 shrink-0">
+            {selectedVehicle && onShareVehicle && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onShareVehicle(selectedVehicle.id);
+                }}
+                aria-label={`Share ${selectedVehicle.id} live tracking`}
+                title="Share live tracking link"
+                className="touch-target ui-press flex h-8 w-8 items-center justify-center rounded-full text-sky-600 hover:bg-sky-500/10 dark:text-cyan-400"
+              >
+                <Share2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <span className="type-footnote font-semibold text-sky-600 dark:text-cyan-400 flex items-center">
+              View <ChevronRight className="w-4 h-4 ml-0.5" />
+            </span>
           </span>
         </div>
       )}
