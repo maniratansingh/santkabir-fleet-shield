@@ -354,15 +354,6 @@ function AppleSheet({
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => onShareVehicle?.(selectedVehicle.id)}
-                    aria-label={`Share ${selectedVehicle.id} live tracking`}
-                    title="Share live tracking link"
-                    className="touch-target ui-press p-1.5 rounded-full text-slate-500 hover:text-sky-600 dark:text-slate-300 dark:hover:text-cyan-400 hover:bg-slate-500/10 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
-                  >
-                    <Share2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
                     onClick={sharedView ? onExitSharedView : () => onSelectVehicle(null)}
                     aria-label="Close vehicle details"
                     className="touch-target ui-press p-1.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
@@ -569,7 +560,7 @@ function AppleSheet({
               )}
 
               {/* Quick actions */}
-              <div className="grid grid-cols-4 gap-1.5 my-2 py-2.5 px-2 ui-card-muted">
+              <div className={`grid ${selectedVehicle.driverPhone ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5 my-2 py-2.5 px-2 ui-card-muted`}>
                 <button
                   type="button"
                   onClick={onLocateVehicle || onFocusRoute}
@@ -616,6 +607,18 @@ function AppleSheet({
                     <QrCode className="w-4 h-4" />
                   </span>
                   <span className="type-caption font-medium text-slate-600 dark:text-slate-300">QR</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onShareVehicle?.(selectedVehicle.id)}
+                  className="ui-press flex flex-col items-center gap-1.5 text-center cursor-pointer group"
+                  title="Share this vehicle's live tracking link"
+                >
+                  <span className="w-9 h-9 rounded-full bg-white dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 group-hover:scale-105 transition-transform">
+                    <Share2 className="w-4 h-4" />
+                  </span>
+                  <span className="type-caption font-medium text-slate-600 dark:text-slate-300">Share</span>
                 </button>
               </div>
 
