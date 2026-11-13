@@ -19,7 +19,8 @@ Allowed:
 
 - Basti → Lucknow City
 - Basti → Sitapur → Shahjahanpur → Tilhar
-- Later, when explicitly requested: Basti → Bihar
+- Basti → Parsa, Bihar (via Gorakhpur)
+- Basti → Parsa, Bihar (via Ballia–Buxar)
 - Later, when explicitly requested: Basti → Delhi
 - Other fixed paths only when explicitly requested
 
@@ -61,6 +62,21 @@ Approximate size:
 - Basti → Lucknow City: ~17 KB minified, ~6 KB gzip
 - Basti → Tilhar: ~38 KB minified, ~13 KB gzip
 - Total: ~55 KB minified, ~19 KB gzip
+
+---
+
+## Basti → Parsa, Bihar
+
+Two major fixed alternatives are stored:
+
+| Corridor key | Route | Distance | Points | Minified | Gzip |
+|---|---|---:|---:|---:|---:|
+| `HIGHWAY-BASTI-PARSA-GORAKHPUR` | Basti → Parsa via Gorakhpur | 522.6 km | 3,104 | 67.8 KB | 22.4 KB |
+| `HIGHWAY-BASTI-PARSA-BALLIA` | Basti → Parsa via Ballia–Buxar | 591.2 km | 2,897 | 63.3 KB | 21.4 KB |
+| | **Total** | | **6,001** | **131.0 KB** | **43.8 KB** |
+
+`Parsa` is a route-selector place near the destination, not a camp. The actual
+corridor endpoints are the Parsa coordinates `25.0987437, 86.6220546`.
 
 ---
 
