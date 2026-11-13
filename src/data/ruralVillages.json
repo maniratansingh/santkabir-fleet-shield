@@ -1558,5 +1558,21 @@
     "lat": 26.03,
     "lon": 82.12,
     "type": "block_tehsil"
+  },
+  {
+    "name": "Lucknow City",
+    "block": "Lucknow",
+    "district": "Lucknow",
+    "lat": 26.875,
+    "lon": 80.945,
+    "type": "urban_center"
+  },
+  {
+    "name": "Tilhar",
+    "block": "Tilhar",
+    "district": "Shahjahanpur",
+    "lat": 27.9667,
+    "lon": 79.7333,
+    "type": "block_tehsil"
   }
 ]
