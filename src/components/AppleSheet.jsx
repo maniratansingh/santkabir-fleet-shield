@@ -236,7 +236,6 @@ function AppleSheet({
   pinnedVehicleIds = [],
   onTogglePin,
   sharedView = false,
-  onExitSharedView,
   detent = 'peek', // 'peek', 'half', 'full'
   onChangeDetent,
   filter: controlledFilter,
@@ -368,14 +367,21 @@ function AppleSheet({
             <div className="flex-1 flex flex-col overflow-y-auto">
               {/* Top Navigation Row */}
               <div className="flex items-center justify-between pb-2 border-b border-slate-200/80 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={sharedView ? onExitSharedView : () => onSelectVehicle(null)}
-                  className="touch-target ui-press flex items-center gap-1 type-footnote font-semibold text-sky-600 dark:text-cyan-400 hover:underline cursor-pointer"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  {sharedView ? 'Full fleet' : 'All ambulances'}
-                </button>
+                {sharedView ? (
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-sky-600 dark:text-cyan-400">
+                    <Share2 className="w-3.5 h-3.5" />
+                    Shared live view
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onSelectVehicle(null)}
+                    className="touch-target ui-press flex items-center gap-1 type-footnote font-semibold text-sky-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    All ambulances
+                  </button>
+                )}
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -392,7 +398,7 @@ function AppleSheet({
                   </button>
                   <button
                     type="button"
-                    onClick={sharedView ? onExitSharedView : () => onSelectVehicle(null)}
+                    onClick={() => onSelectVehicle(null)}
                     aria-label="Close vehicle details"
                     className="touch-target ui-press p-1.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
                   >

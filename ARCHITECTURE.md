@@ -145,6 +145,7 @@ Re-rendering markers on every telemetry tick causes flicker and wasted SVG work:
 - The link is `https://fleet.mrps.in/?vehicle=<ID>`; opening it filters the same live board to that vehicle, auto-selects it and disables the auto-tour.
 - Mobile uses the native share sheet (WhatsApp and others); desktop falls back to copying the link.
 - Not a time-limited token: no expiry, no server-side share store. Access is controlled by who receives the link, as decided for operational simplicity.
+- A shared view has no fleet-navigation escape: “Full fleet” / “All ambulances” is hidden, and closing the vehicle sheet keeps the single-vehicle filter. This prevents casual leakage through the UI. The live fleet HTTP/WebSocket endpoints remain public by design, so strict isolation would require a separate authenticated data path.
   - **Sheet-aware padding**: when the sheet is in its peek state, camera padding keeps vehicle markers centred on wide displays.
 - **North-up camera**: `focusVehicle` keeps `bearing: 0` and `pitch: 28`, so switching between vehicles heading in opposite directions does not spin the map.
 

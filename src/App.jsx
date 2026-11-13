@@ -652,19 +652,6 @@ export default function App() {
     }
   }, []);
 
-  const handleExitSharedView = useCallback(() => {
-    setSharedVehicleId('');
-    setSelectedVehicleId(null);
-    setFitTrigger((prev) => prev + 1);
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.delete('vehicle');
-      window.history.replaceState({}, '', url);
-    } catch (error) {
-      // ignore URL update errors
-    }
-  }, []);
-
   const handleToggleDistanceLines = useCallback(() => {
     setShowDistanceLines(prev => !prev);
   }, []);
@@ -833,7 +820,6 @@ export default function App() {
         onRemoveVehicle={handleRemoveVehicle}
         onShareVehicle={handleShareVehicle}
         sharedView={Boolean(sharedId)}
-        onExitSharedView={handleExitSharedView}
         pinnedVehicleIds={pinnedVehicleIds}
         onTogglePin={handleTogglePin}
         detent={detent}
