@@ -220,6 +220,7 @@ npx wrangler secret put HISTORY_SESSION_SECRET
 - **Fleet states:** Moving, On scene, Returning, At base, No signal and Offline. Filters: All, En route, On scene, No signal, Offline.
 - **Offline rows:** grey marker, “Last seen X ago”, no road trail, excluded from live counts and the TV auto-tour. A Remove action is available with the admin key.
 - **TV auto-tour:** close-up at zoom 13.2 on desktop and 12.2 on mobile (pitch 28); overview fit capped at 12.8 / 10.8 (pitch 22). 8.5 seconds per moving vehicle, 5 seconds for a signal-gap vehicle, 6 seconds for the overview. Offline vehicles are skipped.
+- **Pinned TV tour:** pin one or more vehicles from the fleet row or selected-vehicle panel. While any vehicle is pinned, the TV auto-tour follows only the pinned reporting vehicles and skips the fleet-overview cut-away. Remove all pins to restore the normal full-fleet tour. Pins are remembered in the browser.
 - **Mobile:** bottom navigation with Map, Fleet, Alerts and More. The desktop dock and layout are unchanged; the fleet sheet sits above the bottom bar.
 - **Accessibility:** rem type ramp, optical sizing, `prefers-reduced-motion`, `prefers-reduced-transparency`, `prefers-contrast`, 44 px coarse-pointer hit areas and press states.
 - **Themes:** dark and light, with compact map attribution.

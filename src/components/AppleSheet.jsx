@@ -17,7 +17,9 @@ import {
   ShieldCheck,
   QrCode,
   Trash2,
-  Share2
+  Share2,
+  Pin,
+  PinOff
 } from 'lucide-react';
 import { BASE_HOSPITAL, calculateDistanceKm } from '../data/mockData';
 import { getNearestRuralLocation } from '../utils/ruralLocator';
@@ -62,6 +64,8 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
   openProvision,
   onRemoveVehicle,
   onShareVehicle,
+  isPinned = false,
+  onTogglePin,
 }) {
   const uniqueColors = getUniqueVehicleColor(v.id);
   const vColor = v.lineColor || uniqueColors.line;
@@ -131,6 +135,24 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
 
       {/* Right: quick actions */}
       <div className="flex items-center gap-1.5 shrink-0">
+        {onTogglePin && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin(v.id);
+            }}
+            aria-label={isPinned ? `Unpin ${v.id} from TV tour` : `Pin ${v.id} to TV tour`}
+            title={isPinned ? 'Pinned to TV auto-tour — tap to unpin' : 'Pin to TV auto-tour'}
+            className={`touch-target ui-press w-9 h-9 rounded-[10px] flex items-center justify-center transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 ${
+              isPinned
+                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+          </button>
+        )}
         {onShareVehicle && (
           <button
             type="button"
@@ -211,6 +233,8 @@ function AppleSheet({
   onOpenProvisionModal,
   onRemoveVehicle,
   onShareVehicle,
+  pinnedVehicleIds = [],
+  onTogglePin,
   sharedView = false,
   onExitSharedView,
   detent = 'peek', // 'peek', 'half', 'full'
@@ -233,6 +257,7 @@ function AppleSheet({
   };
 
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
+  const selectedVehiclePinned = Boolean(selectedVehicle && pinnedVehicleIds.includes(selectedVehicle.id));
   const selectedDriverName = selectedVehicle?.driverName?.trim() || '';
   const showSelectedDriver = Boolean(selectedDriverName) && selectedDriverName.toUpperCase() !== String(selectedVehicle?.id || '').toUpperCase();
   const selectedState = selectedVehicle ? getFleetState(selectedVehicle) : null;
@@ -354,6 +379,19 @@ function AppleSheet({
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
+                    onClick={() => onTogglePin?.(selectedVehicle.id)}
+                    aria-label={selectedVehiclePinned ? `Unpin ${selectedVehicle.id} from TV tour` : `Pin ${selectedVehicle.id} to TV tour`}
+                    title={selectedVehiclePinned ? 'Pinned to TV auto-tour — tap to unpin' : 'Pin to TV auto-tour'}
+                    className={`touch-target ui-press p-1.5 rounded-full transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 ${
+                      selectedVehiclePinned
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                        : 'text-slate-500 hover:text-amber-600 dark:text-slate-300 dark:hover:text-amber-300 hover:bg-slate-500/10'
+                    }`}
+                  >
+                    {selectedVehiclePinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                  </button>
+                  <button
+                    type="button"
                     onClick={sharedView ? onExitSharedView : () => onSelectVehicle(null)}
                     aria-label="Close vehicle details"
                     className="touch-target ui-press p-1.5 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-500/10 transition-colors cursor-pointer"
@@ -405,6 +443,12 @@ function AppleSheet({
                     <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold text-sky-600 dark:text-sky-400">
                       <Share2 className="w-2.5 h-2.5" />
                       Shared live view
+                    </div>
+                  )}
+                  {selectedVehiclePinned && (
+                    <div className="mt-1 ml-1 inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold text-amber-600 dark:text-amber-400">
+                      <Pin className="w-2.5 h-2.5" />
+                      Pinned to TV tour
                     </div>
                   )}
                 </div>
@@ -750,6 +794,8 @@ function AppleSheet({
                       openProvision={openProvision}
                       onRemoveVehicle={onRemoveVehicle}
                       onShareVehicle={onShareVehicle}
+                      isPinned={pinnedVehicleIds.includes(v.id)}
+                      onTogglePin={onTogglePin}
                     />
                   ))
                 )}

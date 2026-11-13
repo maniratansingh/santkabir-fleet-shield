@@ -61,6 +61,16 @@ export default function App() {
     [vehicles, sharedId]
   );
   const [isAutoTour, setIsAutoTour] = useState(true); // Default TV Wallboard Auto-Tour ON
+  const [pinnedVehicleIds, setPinnedVehicleIds] = useState(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = JSON.parse(localStorage.getItem('sk_pinned_vehicles') || '[]');
+      return Array.isArray(saved) ? saved.map((id) => canonicalVehicleId(id)).filter(Boolean) : [];
+    } catch (error) {
+      return [];
+    }
+  });
+  const pinnedVehiclesRef = useRef(new Set(pinnedVehicleIds));
   const [fitTrigger, setFitTrigger] = useState(0);
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
@@ -126,6 +136,25 @@ export default function App() {
     vehiclesRef.current = vehicles;
   }, [vehicles]);
 
+  useEffect(() => {
+    pinnedVehiclesRef.current = new Set(pinnedVehicleIds);
+    try {
+      localStorage.setItem('sk_pinned_vehicles', JSON.stringify(pinnedVehicleIds));
+    } catch (error) {
+      // ignore storage errors
+    }
+  }, [pinnedVehicleIds]);
+
+  const handleTogglePin = useCallback((id) => {
+    const target = canonicalVehicleId(id);
+    if (!target) return;
+    setPinnedVehicleIds((previous) =>
+      previous.includes(target)
+        ? previous.filter((item) => item !== target)
+        : [...previous, target]
+    );
+  }, []);
+
   // Keep age-derived state fresh while the wallboard sits idle. This moves a
   // quiet vehicle from live -> no signal -> parked -> offline without needing
   // a new GPS packet.
@@ -165,19 +194,31 @@ export default function App() {
 
     const runTourStep = () => {
       const allVehicles = vehiclesRef.current || [];
+      const pinned = pinnedVehiclesRef.current;
+      const pinnedActive = pinned.size > 0;
       // Offline records keep their name and last position, but the TV tour
       // should only visit vehicles that are actually reporting.
-      const currentVehicles = allVehicles.filter((v) => !v.isOffline);
+      const reporting = allVehicles.filter((v) => !v.isOffline);
+      const currentVehicles = pinnedActive
+        ? reporting.filter((v) => pinned.has(canonicalVehicleId(v.id)))
+        : reporting;
+
       if (!currentVehicles || currentVehicles.length === 0) {
         setSelectedVehicleId(null);
         setFitTrigger(prev => prev + 1);
         setDetent('peek');
-        showToast('TV auto-tour: hospital base standby', 'info');
+        showToast(
+          pinnedActive
+            ? 'TV auto-tour: pinned vehicle is offline'
+            : 'TV auto-tour: hospital base standby',
+          'info'
+        );
         timeoutId = setTimeout(runTourStep, 8000);
         return;
       }
 
-      // Alternating TV Tour: Dynamic Zoom-In to Ambulance (8.5s) <-> Regional Fleet Overview (6s)
+      // Normal mode alternates vehicle close-up and fleet overview.
+      // Pinned mode follows only the pinned vehicles, with no overview cut-away.
       const tourItems = [];
       currentVehicles.forEach((v) => {
         tourItems.push({
@@ -188,7 +229,9 @@ export default function App() {
           isSignalGap: Boolean(v.isSignalGap),
           gapMinutes: v.gapMinutes || 1,
         });
-        tourItems.push({ type: 'all', name: 'Fleet Overview' });
+        if (!pinnedActive) {
+          tourItems.push({ type: 'all', name: 'Fleet Overview' });
+        }
       });
 
       tourIndexRef.current = (tourIndexRef.current + 1) % tourItems.length;
@@ -212,7 +255,7 @@ export default function App() {
 
     timeoutId = setTimeout(runTourStep, 2000);
     return () => clearTimeout(timeoutId);
-  }, [isAutoTour]);
+  }, [isAutoTour, pinnedVehicleIds]);
 
   // Unified Telemetry Sync & Continuous High-Fidelity Road Cruising Engine
   useEffect(() => {
@@ -791,6 +834,8 @@ export default function App() {
         onShareVehicle={handleShareVehicle}
         sharedView={Boolean(sharedId)}
         onExitSharedView={handleExitSharedView}
+        pinnedVehicleIds={pinnedVehicleIds}
+        onTogglePin={handleTogglePin}
         detent={detent}
         onChangeDetent={setDetent}
         filter={fleetFilter}
