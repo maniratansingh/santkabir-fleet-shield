@@ -1196,7 +1196,7 @@ export default function HistoryAppV2() {
       </header>
 
       <main className="relative flex-1 min-h-0">
-        <div className="absolute inset-0"><div ref={mapContainerRef} className="h-full w-full" /></div>
+        <div className="absolute inset-0 z-0"><div ref={mapContainerRef} className="h-full w-full" /></div>
 
         {loading && (
           <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none px-6">
@@ -1213,7 +1213,7 @@ export default function HistoryAppV2() {
           </div>
         )}
 
-        <div className="fh-controls absolute left-3 right-3 flex flex-wrap items-center gap-2 z-10">
+        <div className="fh-controls absolute left-3 right-3 flex flex-wrap items-center gap-2 z-20">
           <button onClick={() => setVehiclesOpen((v) => !v)} className="h-10 pl-2.5 pr-3 rounded-full border fh2-border fh2-panel backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl">
             <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: `${vehicleColor}22` }}><span className="w-2 h-2 rounded-full" style={{ background: vehicleColor }} /></span>
             <span>{selectedId || 'No vehicle'}</span>
