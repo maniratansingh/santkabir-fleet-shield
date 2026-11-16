@@ -557,8 +557,7 @@ export default function HistoryAppV2() {
   useEffect(() => {
     setSelectedTrip(null);
     setTime(appliedFrom);
-    const span = appliedTo - appliedFrom;
-    setReportTab(span > 2 * DAY_MS ? 'summary' : 'map');
+    setReportTab('map');
   }, [selectedId, appliedFrom, appliedTo]);
 
   useEffect(() => {
@@ -617,35 +616,36 @@ export default function HistoryAppV2() {
     if (!map || !mapReady || !map.isStyleLoaded()) return undefined;
     markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
     markersRef.current = [];
-    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'area-centre', 'speed-line', 'bridges'].forEach((id) => {
+    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'area-centre', 'speed-line', 'bridges', 'unified-line'].forEach((id) => {
       if (map.getLayer(id)) map.removeLayer(id);
     });
-    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'area-centre', 'speed', 'bridges'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
+    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'area-centre', 'speed', 'bridges', 'unified'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
 
     if (!points.length) return undefined;
     if (!advanced && reportTab !== 'map') return undefined;
-    if (appliedTo - appliedFrom > 2 * DAY_MS) return undefined;
 
-    if (confidence.low) {
-      const hull = convexHull(prepared.clean.map((p) => [p.lon, p.lat]));
-      if (hull.length > 2) {
-        map.addSource('hull', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...hull, hull[0]]] } } });
-        map.addLayer({ id: 'hull-fill', type: 'fill', source: 'hull', paint: { 'fill-color': vehicleColor, 'fill-opacity': 0.16 } });
-        map.addLayer({ id: 'hull-line', type: 'line', source: 'hull', paint: { 'line-color': vehicleColor, 'line-width': 1.5, 'line-opacity': 0.4 } });
-      }
-      const cLon = prepared.clean.reduce((s, p) => s + p.lon, 0) / prepared.clean.length;
-      const cLat = prepared.clean.reduce((s, p) => s + p.lat, 0) / prepared.clean.length;
-      map.addSource('area-centre', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [cLon, cLat] } } });
-      map.addLayer({ id: 'area-centre', type: 'circle', source: 'area-centre', paint: { 'circle-radius': 5, 'circle-color': vehicleColor, 'circle-stroke-color': theme === 'dark' ? '#0b1118' : '#ffffff', 'circle-stroke-width': 2.5 } });
-    }
-
-    const runs = confidence.low ? [] : prepared.runs;
+    const runs = prepared.runs;
     const features = runs.map((r) => ({
       type: 'Feature',
       properties: { trip: r.trip, color: viewMode === 'trips' ? TRIP_COLORS[r.trip % TRIP_COLORS.length] : vehicleColor },
       geometry: { type: 'LineString', coordinates: r.coords },
     }));
     map.addSource('runs', { type: 'geojson', data: { type: 'FeatureCollection', features } });
+
+    const orderedRuns = [...prepared.runs].sort((a, b) => a.start - b.start);
+    const unified = [];
+    orderedRuns.forEach((r, i) => {
+      if (i > 0) {
+        const prev = orderedRuns[i - 1];
+        unified.push([prev.coords[prev.coords.length - 1], r.coords[0]]);
+      }
+      for (let j = 0; j < r.coords.length - 1; j++) unified.push([r.coords[j], r.coords[j + 1]]);
+    });
+    if (unified.length) {
+      map.addSource('unified', { type: 'geojson', data: { type: 'FeatureCollection', features: unified.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) } });
+      map.addLayer({ id: 'unified-line', type: 'line', source: 'unified', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': 1.6, 'line-opacity': 0.28 } });
+    }
+
     map.addLayer({
       id: 'casing', type: 'line', source: 'runs',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -701,7 +701,7 @@ export default function HistoryAppV2() {
       const img = ctx.getImageData(0, 0, size, size);
       map.addImage(arrowId, img);
     }
-    if (!confidence.low && prepared.arrows.length) {
+    if (prepared.arrows.length) {
       map.addSource('arrows', { type: 'geojson', data: { type: 'FeatureCollection', features: prepared.arrows.map((a) => ({ type: 'Feature', properties: { bearing: a.bearing }, geometry: { type: 'Point', coordinates: a.coord } })) } });
       map.addLayer({
         id: 'arrows', type: 'symbol', source: 'arrows',
@@ -712,7 +712,7 @@ export default function HistoryAppV2() {
 
     /* quality segments, cleaned */
     const segs = [];
-    for (let i = 1; !confidence.low && i < prepared.clean.length; i++) {
+    for (let i = 1; i < prepared.clean.length; i++) {
       const a = prepared.clean[i - 1];
       const b = prepared.clean[i];
       const dt = b.t - a.t;
@@ -833,7 +833,8 @@ export default function HistoryAppV2() {
     if (!playing) return undefined;
     const id = setInterval(() => {
       setTime((t) => {
-        const next = (t || appliedFrom) + 30000;
+        const step = Math.max(30000, (appliedTo - appliedFrom) / 1200);
+        const next = (t || appliedFrom) + step;
         if (next >= appliedTo) { setPlaying(false); return appliedTo; }
         return next;
       });
@@ -1070,26 +1071,18 @@ export default function HistoryAppV2() {
           </div>
         </div>
 
-        {reportTab === 'map' && appliedTo - appliedFrom > 2 * DAY_MS && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none px-6">
-            <div className="rounded-[16px] border fh2-border fh2-panel px-4 py-3 text-center text-[11px] fh2-muted shadow-2xl">
-              Select a day in <span className="font-semibold" style={{ color: 'var(--text)' }}>Summary</span> to see its route.
-            </div>
-          </div>
-        )}
-
         <section className="absolute left-3 bottom-3 right-3 md:right-auto md:w-[560px] rounded-[22px] border fh2-border fh2-panel backdrop-blur-xl p-4 shadow-2xl z-10">
           <div className="flex items-start gap-4">
             <div>
               <div className="text-[10px] fh2-muted flex items-center gap-1.5">
                 {rangeLabel} · {fmtDate(appliedFrom)}
-                {confidence.low && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/25">Low-confidence area</span>}
+                {confidence.low && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/25">Low-confidence data</span>}
               </div>
               <div className="flex items-baseline gap-1.5 mt-0.5">
-                <b className="text-[30px] tracking-tight tabular-nums">{confidence.low ? confidence.area.toFixed(2) : stats.km.toFixed(1)}</b>
-                <span className="text-xs fh2-muted">{confidence.low ? 'km² area' : 'km'}</span>
+                <b className="text-[30px] tracking-tight tabular-nums">{stats.km.toFixed(1)}</b>
+                <span className="text-xs fh2-muted">km</span>
               </div>
-              <div className="text-[11px] fh2-muted mt-0.5">{confidence.low ? `${prepared.clean.length} fixes · area view` : `${trips.length} trip${trips.length === 1 ? '' : 's'} · ${stats.stops} stop${stats.stops === 1 ? '' : 's'}`}</div>
+              <div className="text-[11px] fh2-muted mt-0.5">{`${trips.length} trip${trips.length === 1 ? '' : 's'} · ${stats.stops} stop${stats.stops === 1 ? '' : 's'}`}</div>
             </div>
             <div className={`ml-auto grid ${advanced ? 'grid-cols-2' : 'grid-cols-1'} gap-x-5 gap-y-2 text-[11px] text-right`}>
               <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Moving</div><div className="font-semibold tabular-nums">{fmtDur(stats.moving)}</div></div>
