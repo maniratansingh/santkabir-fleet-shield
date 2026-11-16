@@ -4,7 +4,7 @@
 // Production Clean: 0 Mock Data. Dynamic live telemetry only.
 
 import { createKinematicFilter } from './utils/kalman.js';
-import { coerceTelemetryPacket, processTelemetryPacket } from './utils/telemetryProcessor.js';
+import { coerceTelemetryPacket, normalizeEpochMs, processTelemetryPacket } from './utils/telemetryProcessor.js';
 import { canonicalVehicleId } from './utils/vehicleId.js';
 import { computeVehicleAgeState } from './utils/vehicleState.js';
 
@@ -291,7 +291,7 @@ export default {
             if (body.accuracy !== undefined) accuracy = parseFloat(body.accuracy);
             if (body.batt !== undefined || body.battery !== undefined) batt = parseFloat(body.batt || body.battery);
             if (body.charge !== undefined) charge = Boolean(body.charge);
-            if (body.timestamp) timestamp = new Date(body.timestamp).getTime() || Date.now();
+            if (body.timestamp) timestamp = normalizeEpochMs(body.timestamp);
           } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
             if (!id) id = formData.get('id') || formData.get('uniqueId') || formData.get('deviceId');
@@ -1160,6 +1160,8 @@ export class FleetHistory {
       this.state.storage.sql.exec(
         'CREATE INDEX IF NOT EXISTS history_points_time ON history_points(vehicle_id, device_time)'
       );
+      try { this.state.storage.sql.exec('ALTER TABLE history_points ADD COLUMN raw_lat REAL'); } catch (e) {}
+      try { this.state.storage.sql.exec('ALTER TABLE history_points ADD COLUMN raw_lon REAL'); } catch (e) {}
       this.state.storage.sql.exec(`
         INSERT OR IGNORE INTO history_points
           (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
@@ -1306,8 +1308,8 @@ export class FleetHistory {
 
     this.state.storage.sql.exec(
       `INSERT INTO history_points (
-         vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(vehicle_id, device_time) DO UPDATE SET
          received_at = excluded.received_at,
          lat = excluded.lat,
@@ -1315,7 +1317,9 @@ export class FleetHistory {
          speed = excluded.speed,
          bearing = excluded.bearing,
          accuracy = excluded.accuracy,
-         battery = excluded.battery`,
+         battery = excluded.battery,
+         raw_lat = excluded.raw_lat,
+         raw_lon = excluded.raw_lon`,
       id,
       deviceTime,
       now,
@@ -1324,7 +1328,9 @@ export class FleetHistory {
       Number.isFinite(speed) ? speed : 0,
       Number.isFinite(bearing) ? bearing : 0,
       Number.isFinite(accuracy) ? accuracy : 0,
-      Number.isFinite(battery) ? Math.round(battery) : null
+      Number.isFinite(battery) ? Math.round(battery) : null,
+      Number.isFinite(Number(record.rawLat)) ? Number(record.rawLat) : lat,
+      Number.isFinite(Number(record.rawLon)) ? Number(record.rawLon) : lon
     );
 
     if (now - (this.lastPruneAt || 0) > 3600000) {
@@ -1485,7 +1491,7 @@ export class FleetHistory {
 
     const points = this.state.storage.sql
       .exec(
-        `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery
+        `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon
          FROM history_points
          WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
          ORDER BY device_time ASC

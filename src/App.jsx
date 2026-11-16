@@ -294,10 +294,11 @@ export default function App() {
       if (serverVehicles && serverVehicles.length > 0) {
         const liveIds = new Set(serverVehicles.map(v => canonicalVehicleId(v.id)));
 
-        // Synchronize store with reported server vehicles
-        for (const storedId of Array.from(store.keys())) {
-          if (!liveIds.has(storedId)) {
-            store.delete(storedId);
+        // Only prune from a poll while the WebSocket is down; a partial poll
+        // must not delete vehicles that are still alive in the DO.
+        if (!wsConnectedRef.current) {
+          for (const storedId of Array.from(store.keys())) {
+            if (!liveIds.has(storedId)) store.delete(storedId);
           }
         }
 
@@ -305,6 +306,8 @@ export default function App() {
           const id = canonicalVehicleId(liveV.id);
           if (!id) return;
           const existing = store.get(id) || {};
+          const incomingSeen = Number(liveV.lastSeen || 0);
+          if (existing.lastSeen && incomingSeen && incomingSeen < Number(existing.lastSeen)) return;
           const colors = getUniqueVehicleColor(id);
 
           const merged = {
@@ -365,9 +368,9 @@ export default function App() {
         return;
       }
 
-      // PRIORITY 3: Production Clean Blank Sheet (0 cars reporting)
-      store.clear();
-      setVehicles([]);
+      // An empty poll is not proof that the fleet is empty. Keep the store
+      // until the DO sends an explicit clear or a remove event.
+      if (!wsConnectedRef.current) setVehicles(Array.from(store.values()));
     };
 
     syncFleet();
@@ -402,6 +405,8 @@ export default function App() {
       if (!id) return;
       const store = fleetStoreRef.current;
       const existing = store.get(id) || {};
+      const incomingSeen = Number(liveV.lastSeen || 0);
+      if (existing.lastSeen && incomingSeen && incomingSeen < Number(existing.lastSeen)) return;
       const colors = getUniqueVehicleColor(id);
 
       const merged = {
@@ -437,8 +442,10 @@ export default function App() {
 
     const handleMessage = (event) => {
       if (isDemoMode) return;
+      if (event.data === 'pong') { lastPongAt = Date.now(); return; }
       let payload;
       try { payload = JSON.parse(event.data); } catch (e) { return; }
+      if (payload?.type === 'pong') { lastPongAt = Date.now(); return; }
       const now = Date.now();
 
       if (payload?.type === 'snapshot' && Array.isArray(payload.vehicles)) {
@@ -466,6 +473,7 @@ export default function App() {
       }
     };
 
+    let lastPongAt = Date.now();
     const connect = () => {
       if (closed) return;
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -473,11 +481,15 @@ export default function App() {
 
       socket.onopen = () => {
         attempt = 0;
+        lastPongAt = Date.now();
         wsConnectedRef.current = true;
         if (!isDemoMode) setConnectionState('live');
         try { socket.send(JSON.stringify({ type: 'subscribe' })); } catch (e) {}
         heartbeatTimer = setInterval(() => {
           try { socket.send('ping'); } catch (e) {}
+          if (Date.now() - lastPongAt > 45000) {
+            try { socket.close(); } catch (e) {}
+          }
         }, 25000);
         // Periodic snapshot reconciliation removes browser-side ghosts: if an
         // id no longer exists in the Durable Object, drop it from the board.

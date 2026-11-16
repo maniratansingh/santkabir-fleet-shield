@@ -3,7 +3,7 @@
 // Vehicles are never deleted for going quiet. Instead the age of the last
 // packet maps to a display/operational state:
 //
-//   < 60 s          live
+//   < 180 s         live
 //   60 s - 15 min   no signal (signal gap)
 //   15 - 35 min     parked / stale
 //   > 35 min        offline (record and last position are kept)
@@ -11,7 +11,7 @@
 // A new packet from the same canonical id moves the record straight back to
 // live, so the name never disappears and never duplicates.
 
-export const LIVE_WINDOW_MS = 60 * 1000;
+export const LIVE_WINDOW_MS = 180 * 1000;
 export const SIGNAL_GAP_WINDOW_MS = 15 * 60 * 1000;
 export const PARKED_WINDOW_MS = 35 * 60 * 1000;
 export const OFFLINE_AFTER_MS = PARKED_WINDOW_MS;

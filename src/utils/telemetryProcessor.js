@@ -9,6 +9,24 @@ import { resolveVillage } from './village.js';
 import { canonicalVehicleId } from './vehicleId.js';
 
 /**
+ * Normalise a device timestamp to epoch milliseconds. Traccar and some JSON
+ * clients send seconds; a future clock is clamped so it cannot poison history.
+ */
+export function normalizeEpochMs(value, now = Date.now()) {
+  let ms = NaN;
+  if (typeof value === 'string' && !/^\d+(\.\d+)?$/.test(value.trim())) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) ms = parsed;
+  } else {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) ms = n < 1e11 ? n * 1000 : n;
+  }
+  if (!Number.isFinite(ms) || ms <= 0) return now;
+  if (ms > now + 5 * 60 * 1000) return now;
+  return ms;
+}
+
+/**
  * Coerce an object, compact array, or JSON string into a telemetry packet.
  * Compact arrays follow [id, lat, lon, speed, bearing, timestamp].
  */
@@ -68,9 +86,7 @@ export function processTelemetryPacket(packet, options = {}) {
   const existing = options.existing || {};
   const filter = options.filter;
   const now = Number.isFinite(options.now) ? options.now : Date.now();
-  const timestamp = Number.isFinite(Number(packet.timestamp))
-    ? Number(packet.timestamp)
-    : now;
+  const timestamp = normalizeEpochMs(packet.timestamp, now);
 
   const fixedLat = Number(rawLat.toFixed(6));
   const fixedLon = Number(rawLon.toFixed(6));
@@ -122,6 +138,8 @@ export function processTelemetryPacket(packet, options = {}) {
     status: speedKmH > 3 ? 'moving' : (distKm < 0.25 ? 'at_base' : 'in_field'),
     lat: filteredLat,
     lon: filteredLon,
+    rawLat: fixedLat,
+    rawLon: fixedLon,
     speed: speedKmH,
     speedKnots: Number(rawSpeed.toFixed(2)),
     bearing: computedBearing,
