@@ -6,9 +6,10 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
-  Info,
   Lock,
   LogOut,
+  Moon,
+  Sun,
   RefreshCw,
   Route,
   ShieldCheck,
@@ -187,6 +188,24 @@ function smoothCoords(coords, iterations = 2) {
   return out;
 }
 
+function speedColorFor(v) {
+  if (v < 10) return '#38bdf8';
+  if (v < 25) return '#30d158';
+  if (v < 45) return '#ffd60a';
+  return '#ff453a';
+}
+
+function nearestByTime(arr, t) {
+  if (!arr.length) return null;
+  let best = arr[0];
+  let bd = Infinity;
+  for (const p of arr) {
+    const d = Math.abs(p.t - t);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+
 function convexHull(coords) {
   if (coords.length < 3) return coords;
   const pts = [...coords].sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
@@ -352,6 +371,8 @@ export default function HistoryAppV2() {
   const [mode, setMode] = useState('maps');
   const [quality, setQuality] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const [speedColor, setSpeedColor] = useState(false);
+  const [playSpeed, setPlaySpeed] = useState(0);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -359,11 +380,11 @@ export default function HistoryAppV2() {
   const [vehiclesOpen, setVehiclesOpen] = useState(false);
   const [vehicleQuery, setVehicleQuery] = useState('');
   const [rangeOpen, setRangeOpen] = useState(false);
-  const [legendOpen, setLegendOpen] = useState(false);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
+  const movingMarkerRef = useRef(null);
   const [mapReady, setMapReady] = useState(false);
 
   const trips = useMemo(() => buildTrips(points), [points]);
@@ -529,13 +550,13 @@ export default function HistoryAppV2() {
   /* draw */
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return undefined;
+    if (!map || !mapReady || !map.isStyleLoaded()) return undefined;
     markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
     markersRef.current = [];
-    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line'].forEach((id) => {
+    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'speed-line'].forEach((id) => {
       if (map.getLayer(id)) map.removeLayer(id);
     });
-    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
+    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'speed'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
 
     if (!points.length) return undefined;
 
@@ -577,7 +598,7 @@ export default function HistoryAppV2() {
     });
     map.addLayer({
       id: 'trail', type: 'line', source: 'runs',
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: speedColor ? 'none' : 'visible' },
       paint: {
         'line-color': ['get', 'color'],
         'line-width': mode === 'trips' ? 3.8 : 4.6,
@@ -633,6 +654,25 @@ export default function HistoryAppV2() {
       paint: { 'line-color': ['get', 'c'], 'line-width': 6, 'line-opacity': 0.95 },
     });
 
+    /* speed-coloured segments (Traccar-style route report) */
+    const speedSegs = [];
+    for (let i = 1; i < prepared.clean.length; i++) {
+      const a = prepared.clean[i - 1];
+      const b = prepared.clean[i];
+      if (b.t - a.t <= 0 || b.t - a.t > prepared.gapMs) continue;
+      speedSegs.push({
+        type: 'Feature',
+        properties: { c: speedColorFor(Number(b.speed) || 0) },
+        geometry: { type: 'LineString', coordinates: [[a.lon, a.lat], [b.lon, b.lat]] },
+      });
+    }
+    map.addSource('speed', { type: 'geojson', data: { type: 'FeatureCollection', features: speedSegs } });
+    map.addLayer({
+      id: 'speed-line', type: 'line', source: 'speed',
+      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: speedColor ? 'visible' : 'none' },
+      paint: { 'line-color': ['get', 'c'], 'line-width': 5, 'line-opacity': 1 },
+    });
+
     /* stops as bubbles, not path */
     if (prepared.stops.length && !confidence.low) {
       map.addSource('stops', {
@@ -663,6 +703,11 @@ export default function HistoryAppV2() {
       map.addLayer({ id: 'gap-caps', type: 'circle', source: 'caps', paint: { 'circle-radius': 4.5, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': theme === 'dark' ? '#eef4fa' : '#0a1119', 'circle-stroke-width': 1.5, 'circle-stroke-opacity': 0.5 } });
     }
 
+    const movingEl = document.createElement('div');
+    movingEl.style.cssText = `width:14px;height:14px;border-radius:99px;background:${vehicleColor};border:3px solid ${theme === 'dark' ? '#04121c' : '#ffffff'};box-shadow:0 0 0 5px ${vehicleColor}33`;
+    movingMarkerRef.current = new maplibregl.Marker({ element: movingEl }).setLngLat([prepared.clean[0].lon, prepared.clean[0].lat]).addTo(map);
+    markersRef.current.push(movingMarkerRef.current);
+
     const startEl = document.createElement('div');
     startEl.style.cssText = 'width:12px;height:12px;border-radius:99px;background:#30d158;border:2.5px solid #04121c;box-shadow:0 0 0 3px rgba(0,0,0,.18)';
     markersRef.current.push(new maplibregl.Marker({ element: startEl }).setLngLat([prepared.clean[0].lon, prepared.clean[0].lat]).addTo(map));
@@ -676,7 +721,15 @@ export default function HistoryAppV2() {
       map.fitBounds(b, { padding: { top: 150, bottom: 280, left: 90, right: 90 }, maxZoom: 14, duration: 400 });
     }
     return undefined;
-  }, [prepared, confidence, mapReady, mode, quality, theme, vehicleColor, selectedTrip]);
+  }, [prepared, confidence, mapReady, mode, quality, speedColor, theme, vehicleColor, selectedTrip]);
+
+  useEffect(() => {
+    const p = nearestByTime(prepared.clean, time || appliedFrom);
+    if (p && movingMarkerRef.current) {
+      movingMarkerRef.current.setLngLat([p.lon, p.lat]);
+      setPlaySpeed(Math.round(Number(p.speed) || 0));
+    }
+  }, [time, prepared, mapReady]);
 
   useEffect(() => {
     if (!playing) return undefined;
@@ -813,6 +866,23 @@ export default function HistoryAppV2() {
         html.light .maplibregl-ctrl-attrib { background: rgba(255,255,255,.86) !important; color: #475569 !important; }
         html.light .maplibregl-ctrl-attrib a { color: #334155 !important; }
         html.light .maplibregl-ctrl-group button span { filter: none; }
+        html.light .maplibregl-ctrl-group { background: rgba(255,255,255,.94) !important; border-color: rgba(15,23,42,.12) !important; }
+
+        .fh2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+        .fh2-panel { -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 18px 50px -22px rgba(0,0,0,.55); }
+        html.light .fh2-panel { box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 18px 50px -26px rgba(15,23,42,.28); }
+        .fh2 button { transition: transform 120ms cubic-bezier(.2,.8,.2,1), background-color 160ms ease, color 160ms ease, border-color 160ms ease, opacity 160ms ease; }
+        .fh2 button:active { transform: scale(.97); }
+        .fh2 button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+        .fh2-pop { animation: fh2-pop 200ms cubic-bezier(.2,.9,.3,1); transform-origin: top left; }
+        @keyframes fh2-pop { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }
+        .fh2 .tabular-nums { font-variant-numeric: tabular-nums; }
+        @media (prefers-reduced-motion: reduce) {
+          .fh2 *, .fh2 *::before, .fh2 *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+        }
+        @media (prefers-reduced-transparency: reduce) {
+          .fh2-panel { background: var(--bg) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+        }
       `}</style>
       <header className="shrink-0 border-b fh2-border fh2-panel px-4 py-2.5 flex items-center gap-3 z-20">
         <div className="w-9 h-9 rounded-[12px] bg-sky-500/15 text-sky-400 flex items-center justify-center"><Route className="w-5 h-5" /></div>
@@ -822,7 +892,7 @@ export default function HistoryAppV2() {
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button onClick={() => setRefreshKey((v) => v + 1)} className="p-2.5 rounded-full fh2-hover fh2-soft" aria-label="Refresh"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
-          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-full fh2-hover fh2-soft" aria-label="Theme">{theme === 'dark' ? '☀' : '☾'}</button>
+          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-full fh2-hover fh2-soft" aria-label="Theme">{theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}</button>
           <button onClick={async () => { await fetch('/api/history/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {}); setAuthed(false); }} className="p-2.5 rounded-full fh2-hover fh2-soft" aria-label="Lock"><LogOut className="w-4 h-4" /></button>
         </div>
       </header>
@@ -845,8 +915,8 @@ export default function HistoryAppV2() {
               <button onClick={() => setMode('trips')} className={`px-3 h-7 rounded-full ${mode === 'trips' ? 'fh2-active' : 'fh2-muted'}`}>Trips</button>
             </div>
             <button onClick={() => setAdvanced((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${advanced ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>{advanced ? 'Advanced on' : 'Advanced'}</button>
-            {advanced && <button onClick={() => setQuality((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-[var(--text)] border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>}
-            <button onClick={() => setLegendOpen((v) => !v)} className="w-9 h-9 rounded-full border fh2-border fh2-panel fh2-soft" aria-label="Key"><Info className="w-4 h-4" /></button>
+            {advanced && <button onClick={() => setQuality((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>}
+            {advanced && <button onClick={() => setSpeedColor((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${speedColor ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Speed</button>}
           </div>
         </div>
 
@@ -875,6 +945,14 @@ export default function HistoryAppV2() {
             </div>
           </div>
 
+          {speedColor && (
+            <div className="mt-2 flex items-center gap-2 text-[9px] fh2-muted">
+              <span>0</span>
+              <span className="h-1.5 flex-1 rounded-full" style={{ background: 'linear-gradient(90deg,#38bdf8,#30d158,#ffd60a,#ff453a)' }} />
+              <span>45+ km/h</span>
+            </div>
+          )}
+
           <div className="mt-3 flex items-center gap-3">
             <button onClick={() => setPlaying((v) => !v)} className="w-8 h-8 rounded-full fh2-active grid place-items-center" aria-label="Play">{playing ? '❚❚' : '▶'}</button>
             <div className="flex-1">
@@ -898,7 +976,10 @@ export default function HistoryAppV2() {
               </div>
               <div className="flex justify-between text-[9px] fh2-muted mt-1 tabular-nums"><span>{fmt(appliedFrom)}</span><span>{fmt((appliedFrom + appliedTo) / 2)}</span><span>{fmt(appliedTo)}</span></div>
             </div>
-            <div className="text-xs font-semibold tabular-nums">{fmt(time || appliedFrom)}</div>
+            <div className="text-right">
+              <div className="text-xs font-semibold tabular-nums">{fmt(time || appliedFrom)}</div>
+              <div className="text-[9px] fh2-muted tabular-nums">{playSpeed} km/h</div>
+            </div>
           </div>
 
           {!confidence.low && <div className="flex gap-1.5 mt-3 overflow-x-auto">
@@ -916,7 +997,7 @@ export default function HistoryAppV2() {
         </section>
 
         {vehiclesOpen && (
-          <div className="absolute left-3 top-14 w-[300px] rounded-[18px] border fh2-border fh2-panel backdrop-blur-xl p-3 shadow-2xl z-30">
+          <div className="fh2-pop absolute left-3 top-14 w-[300px] rounded-[18px] border fh2-border fh2-panel backdrop-blur-xl p-3 shadow-2xl z-30">
             <div className="flex items-center justify-between mb-2"><b className="text-xs">Vehicles</b><button onClick={() => setVehiclesOpen(false)}><X className="w-3.5 h-3.5 fh2-muted" /></button></div>
             <input value={vehicleQuery} onChange={(e) => setVehicleQuery(e.target.value)} placeholder="Search driver or ID" className="w-full h-8 rounded-lg border fh2-border fh2-input px-2.5 text-[11px] outline-none" />
             <div className="mt-2 max-h-[300px] overflow-auto">
@@ -931,22 +1012,12 @@ export default function HistoryAppV2() {
         )}
 
         {rangeOpen && (
-          <div className="absolute left-3 top-14 w-[320px] rounded-[18px] border fh2-border fh2-panel backdrop-blur-xl p-3 shadow-2xl z-30 max-h-[80vh] overflow-auto">
+          <div className="fh2-pop absolute left-3 top-14 w-[320px] rounded-[18px] border fh2-border fh2-panel backdrop-blur-xl p-3 shadow-2xl z-30 max-h-[80vh] overflow-auto">
             <div className="flex items-center justify-between mb-2"><b className="text-xs">Range</b><button onClick={() => setRangeOpen(false)}><X className="w-3.5 h-3.5 fh2-muted" /></button></div>
             <AppleRangePicker preset={preset} rangeLabel={rangeLabel} fromValue={fromInput} toValue={toInput} minMs={Date.now() - MAX_RANGE_MS} maxMs={Date.now()} onFromChange={setFromInput} onToChange={setToInput} onPreset={applyPreset} onApply={applyCustom} error={error} inline />
           </div>
         )}
 
-        {legendOpen && (
-          <div className="absolute right-3 top-16 w-[240px] rounded-[18px] border fh2-border fh2-panel backdrop-blur-xl p-3 shadow-2xl z-30 text-[10px]">
-            <div className="flex items-center justify-between mb-2"><b className="text-[10px] uppercase tracking-wider fh2-muted">Map key</b><button onClick={() => setLegendOpen(false)}><X className="w-3.5 h-3.5 fh2-muted" /></button></div>
-            <div className="flex items-center gap-2 mt-2"><span className="w-6 h-1 rounded" style={{ background: vehicleColor }} /> Trip</div>
-            <div className="flex items-center gap-2 mt-2"><span className="w-2.5 h-2.5 rounded-full border-2" style={{ borderColor: vehicleColor }} /> Stop</div>
-            <div className="flex items-center gap-2 mt-2"><span className="w-6 border-t-2 border-dashed border-slate-400" /> No data</div>
-            {quality && <div className="flex items-center gap-2 mt-2"><span className="w-2.5 h-2.5 rounded-full border-2 border-rose-500" /> Poor fix</div>}
-            <div className="mt-3 pt-2 border-t fh2-border fh2-muted">Esri, HERE, Garmin | Fleet Shield · Mani Ratan Singh</div>
-          </div>
-        )}
       </main>
     </div>
   );
