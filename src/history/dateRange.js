@@ -1,5 +1,5 @@
 export const DAY_MS = 24 * 60 * 60 * 1000;
-export const MAX_RANGE_MS = 7 * DAY_MS;
+export const MAX_RANGE_MS = 30 * DAY_MS;
 
 export function pad(value) {
   return String(value).padStart(2, '0');

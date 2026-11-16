@@ -787,30 +787,35 @@ export default function HistoryAppV2() {
 
     const movingEl = document.createElement('div');
     movingEl.className = 'fh-car';
-    movingEl.innerHTML = `<span class="fh-car-speed">0 km/h</span><span class="fh-car-halo" style="--c:${vehicleColor}"></span>
-      <svg viewBox="0 0 48 48" width="42" height="42" aria-hidden="true">
-        <defs>
-          <filter id="fhShadow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity=".38"/></filter>
-        </defs>
-        <g filter="url(#fhShadow)">
-          <circle cx="24" cy="24" r="19" fill="${vehicleColor}" stroke="${theme === 'dark' ? '#04121c' : '#ffffff'}" stroke-width="2.4"/>
-          <circle cx="24" cy="24" r="15.5" fill="none" stroke="#ffffff" stroke-opacity=".25" stroke-width="1"/>
-          <g transform="rotate(0 24 24)">
-            <rect x="18.5" y="12" width="11" height="24" rx="5" fill="#ffffff"/>
-            <rect x="20.5" y="15.5" width="7" height="5.5" rx="1.8" fill="#0f172a"/>
-            <rect x="20.5" y="23" width="7" height="2.4" rx="1.2" fill="${vehicleColor}" opacity=".75"/>
-            <rect x="20.5" y="30" width="7" height="2.4" rx="1.2" fill="${vehicleColor}" opacity=".45"/>
-          </g>
-        </g>
-      </svg>`;
+    movingEl.style.zIndex = '12';
+    movingEl.innerHTML = `<span class="fh-car-speed">0 km/h</span>
+      <span class="fh-puck" style="--c:${vehicleColor}">
+        <svg class="fh-van" viewBox="0 0 56 40" width="36" height="26" aria-hidden="true">
+          <ellipse cx="28" cy="34" rx="20" ry="3" fill="#000" opacity=".18"/>
+          <rect x="3" y="10" width="50" height="20" rx="6" fill="#f8fafc" stroke="#0b1728" stroke-width="1.2"/>
+          <path d="M40 10 L51 17 V30 H40 Z" fill="#e2e8f0" opacity=".7"/>
+          <rect x="6" y="14" width="13" height="7" rx="1.6" fill="#0f172a"/>
+          <rect x="22" y="14" width="8" height="7" rx="1.6" fill="#0f172a"/>
+          <rect x="6" y="23" width="44" height="3.4" fill="#ff453a"/>
+          <rect x="30" y="14" width="4" height="12" rx="1" fill="#ff453a"/>
+          <rect x="26" y="18" width="12" height="4" rx="1" fill="#ff453a"/>
+          <rect x="21" y="6" width="9" height="3.4" rx="1.7" fill="#ff453a"/>
+          <rect x="23" y="6" width="3" height="3.4" fill="#38bdf8" opacity=".85"/>
+          <circle cx="14" cy="31" r="3.6" fill="#0b1220"/>
+          <circle cx="42" cy="31" r="3.6" fill="#0b1220"/>
+          <circle cx="14" cy="31" r="1.4" fill="#94a3b8"/>
+          <circle cx="42" cy="31" r="1.4" fill="#94a3b8"/>
+        </svg>
+      </span>
+      <span class="fh-dir"><i style="border-bottom-color:${vehicleColor}"></i></span>`;
     movingMarkerRef.current = new maplibregl.Marker({ element: movingEl }).setLngLat([prepared.clean[0].lon, prepared.clean[0].lat]).addTo(map);
     markersRef.current.push(movingMarkerRef.current);
 
     const startEl = document.createElement('div');
-    startEl.style.cssText = 'width:12px;height:12px;border-radius:99px;background:#30d158;border:2.5px solid #04121c;box-shadow:0 0 0 3px rgba(0,0,0,.18)';
+    startEl.style.cssText = 'z-index:2;width:12px;height:12px;border-radius:99px;background:#30d158;border:2.5px solid #04121c;box-shadow:0 0 0 3px rgba(0,0,0,.18)';
     markersRef.current.push(new maplibregl.Marker({ element: startEl }).setLngLat([prepared.clean[0].lon, prepared.clean[0].lat]).addTo(map));
     const endEl = document.createElement('div');
-    endEl.style.cssText = 'width:12px;height:12px;border-radius:99px;background:#ff453a;border:2.5px solid #04121c;box-shadow:0 0 0 3px rgba(0,0,0,.18)';
+    endEl.style.cssText = 'z-index:2;width:12px;height:12px;border-radius:99px;background:#ff453a;border:2.5px solid #04121c;box-shadow:0 0 0 3px rgba(0,0,0,.18)';
     markersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([prepared.clean[prepared.clean.length - 1].lon, prepared.clean[prepared.clean.length - 1].lat]).addTo(map));
 
     const coords = prepared.clean.map((p) => [p.lon, p.lat]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
@@ -826,8 +831,8 @@ export default function HistoryAppV2() {
     if (p && movingMarkerRef.current) {
       movingMarkerRef.current.setLngLat([p.lon, p.lat]);
       const el = movingMarkerRef.current.getElement();
-      const car = el.querySelector('svg');
-      if (car) car.style.transform = `rotate(${p.bearing || 0}deg)`;
+      const dir = el.querySelector('.fh-dir');
+      if (dir) dir.style.transform = `rotate(${p.bearing || 0}deg)`;
       const speed = Math.round(Number(p.speed) || 0);
       setPlaySpeed(speed);
       const pill = el.querySelector('.fh-car-speed');
@@ -850,7 +855,7 @@ export default function HistoryAppV2() {
     let lastPaint = 0;
     const from = (time >= appliedTo ? appliedFrom : time) || appliedFrom;
     const span = Math.max(1, appliedTo - appliedFrom);
-    const duration = Math.max(5000, 45000 / Math.max(1, playRate));
+    const duration = Math.max(8000, 180000 / Math.max(1, playRate));
     const started = performance.now();
     const tick = (now) => {
       if (now - lastPaint > 45) {
@@ -912,7 +917,8 @@ export default function HistoryAppV2() {
     const now = Date.now();
     let from = now - DAY_MS;
     let label = 'Last 24 hours';
-    if (key === '7d') { from = now - MAX_RANGE_MS; label = 'Last 7 days'; }
+    if (key === '7d') { from = now - 7 * DAY_MS; label = 'Last 7 days'; }
+    if (key === '30d') { from = now - MAX_RANGE_MS; label = 'Last 30 days'; }
     if (key === 'today') { const d = new Date(); d.setHours(0, 0, 0, 0); from = d.getTime(); label = 'Today'; }
     if (key === 'yesterday') { const d = new Date(); d.setHours(0, 0, 0, 0); from = d.getTime() - DAY_MS; label = 'Yesterday'; }
     const to = key === 'yesterday' ? (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() - 1; })() : now;
@@ -1048,9 +1054,11 @@ export default function HistoryAppV2() {
         @keyframes fh2-pop { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }
         .fh2 .tabular-nums { font-variant-numeric: tabular-nums; }
         .fh-car { position: relative; width: 42px; height: 42px; will-change: transform; }
-        .fh-car svg { display: block; transition: transform 420ms cubic-bezier(.2,.8,.2,1); overflow: visible; }
-        .fh-car-speed { position: absolute; left: 50%; top: -24px; transform: translateX(-50%); padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 6px 16px -8px rgba(0,0,0,.5); }
-        .fh-car-halo { position: absolute; left: 50%; top: 58%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 99px; background: radial-gradient(circle, var(--c) 0%, transparent 68%); opacity: .12; animation: fh-pulse 2.4s ease-in-out infinite; }
+        .fh-puck { position: absolute; inset: 0; border-radius: 99px; background: var(--c); border: 2.5px solid #ffffff; box-shadow: 0 6px 16px -6px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.9); display: grid; place-items: center; }
+        .fh-van { display: block; }
+        .fh-car-speed { position: absolute; left: 50%; top: -26px; transform: translateX(-50%); padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 6px 16px -8px rgba(0,0,0,.5); }
+        .fh-dir { position: absolute; inset: 0; border-radius: 99px; pointer-events: none; transition: transform 420ms cubic-bezier(.2,.8,.2,1); }
+        .fh-dir i { position: absolute; left: 50%; top: -8px; margin-left: -5px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 9px solid #38bdf8; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
         @keyframes fh-pulse { 0%,100% { transform: scale(.8); opacity: .12; } 50% { transform: scale(1.1); opacity: .26; } }
         @media (prefers-reduced-motion: reduce) {
           .fh2 *, .fh2 *::before, .fh2 *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }

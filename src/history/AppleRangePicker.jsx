@@ -16,6 +16,7 @@ import {
 const PRESETS = [
   { key: '24h', label: '24 hours' },
   { key: '7d', label: '7 days' },
+  { key: '30d', label: '30 days' },
   { key: 'today', label: 'Today' },
   { key: 'yesterday', label: 'Yesterday' },
 ];

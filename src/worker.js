@@ -46,7 +46,7 @@ const HISTORY_NAME = 'fleet-history';
 const HISTORY_COOKIE = 'history_session';
 const HISTORY_SESSION_SECONDS = 8 * 60 * 60;
 const HISTORY_BUCKET_MS = 30 * 1000; // 30-second samples
-const HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS); // 20,160
 const HISTORY_PASSWORD_SALT = 'mQ7B7fLda1aEC-GS4-oOIQ';
 const HISTORY_PASSWORD_HASH = 'NhEnOhRT75TkiWp-ntanopnnRUL2NXzJFJZZsGL8PwA';
@@ -1627,7 +1627,7 @@ export class FleetHistory {
         `SELECT device_time, lat, lon, speed, accuracy
          FROM history_points
          WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
-         ORDER BY device_time ASC LIMIT 25000`,
+         ORDER BY device_time ASC LIMIT 60000`,
         id, from, to
       )
       .toArray();
@@ -1657,6 +1657,7 @@ export class FleetHistory {
       d.distanceKm += trip.distanceKm;
       d.movingMin += trip.movingMin;
       d.trips += 1;
+      d.points += trip.points || 0;
       d.maxSpeed = Math.max(d.maxSpeed, trip.maxSpeed);
       days.set(trip.day, d);
     }
@@ -1684,8 +1685,8 @@ export class FleetHistory {
     const from = Number(url.searchParams.get('from') || now - HISTORY_RETENTION_MS);
     const to = Number(url.searchParams.get('to') || now);
     const limit = Math.min(
-      25000,
-      Math.max(1, Number(url.searchParams.get('limit') || 25000))
+      60000,
+      Math.max(1, Number(url.searchParams.get('limit') || 60000))
     );
 
     const points = this.state.storage.sql
@@ -1702,13 +1703,21 @@ export class FleetHistory {
       )
       .toArray();
 
+    const MAX_MAP_POINTS = 7000;
+    let out = points;
+    if (points.length > MAX_MAP_POINTS) {
+      const step = Math.ceil(points.length / MAX_MAP_POINTS);
+      out = points.filter((_, i) => i % step === 0 || i === points.length - 1);
+    }
     return historyJson({
       success: true,
       id,
       from,
       to,
-      count: points.length,
-      points,
+      count: out.length,
+      total: points.length,
+      downsampled: out.length !== points.length,
+      points: out,
     });
   }
 
