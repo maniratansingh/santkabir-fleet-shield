@@ -1,0 +1,1841 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<meta name="author" content="Mani Ratan Singh (https://mrps.in | https://github.com/maniratansingh)" />
+<meta name="description" content="Sant Kabir Eye Hospital fleet history — engineered by Mani Ratan Singh (mrps.in)" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Fleet History — Sant Kabir Fleet Shield · Mani Ratan Singh</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<style>
+  :root {
+    --bg: #070b11;
+    --glass: rgba(17, 23, 31, 0.74);
+    --glass-strong: rgba(12, 17, 24, 0.9);
+    --stroke: rgba(255, 255, 255, 0.10);
+    --stroke-strong: rgba(255, 255, 255, 0.16);
+    --text: #f4f7fa;
+    --text-2: rgba(236, 242, 248, 0.64);
+    --text-3: rgba(236, 242, 248, 0.42);
+    --accent: #38bdf8;
+    --accent-ink: #04121c;
+    --ok: #30d158;
+    --warn: #ffd60a;
+    --bad: #ff453a;
+    --casing: rgba(3, 8, 14, 0.9);
+    --shadow: 0 24px 60px -18px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  html.light {
+    --bg: #eef1f5;
+    --glass: rgba(255, 255, 255, 0.80);
+    --glass-strong: rgba(255, 255, 255, 0.94);
+    --stroke: rgba(9, 14, 22, 0.10);
+    --stroke-strong: rgba(9, 14, 22, 0.16);
+    --text: #0a1119;
+    --text-2: rgba(10, 17, 25, 0.64);
+    --text-3: rgba(10, 17, 25, 0.42);
+    --accent: #0a84ff;
+    --accent-ink: #ffffff;
+    --ok: #248a3d;
+    --warn: #b25000;
+    --bad: #d70015;
+    --casing: rgba(255, 255, 255, 0.94);
+    --shadow: 0 24px 60px -22px rgba(15, 23, 42, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  #map { position: absolute; inset: 0 0 0 0; background: var(--bg); transition: left 220ms ease; }
+  body.mode-before #map { left: 320px; }
+  .maplibregl-ctrl-attrib { font-size: 10px; }
+  .maplibregl-ctrl-group { border-radius: 12px !important; overflow: hidden; box-shadow: var(--shadow) !important; }
+
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid var(--stroke);
+    box-shadow: var(--shadow);
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 36px; padding: 0 14px; border-radius: 999px;
+    background: var(--glass); border: 1px solid var(--stroke);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: var(--shadow);
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--stroke);
+    background: var(--glass); display: grid; place-items: center;
+    -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: var(--shadow); color: var(--text-2); transition: color 160ms ease, border-color 160ms ease;
+  }
+  .icon-btn:hover { color: var(--text); border-color: var(--stroke-strong); }
+  .icon-btn.is-on { color: var(--accent-ink); background: var(--accent); border-color: transparent; }
+
+  /* ── top chrome ─────────────────────────────────────────── */
+  #chrome { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+  #chrome > * { pointer-events: auto; }
+  .topbar { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; align-items: center; gap: 10px; }
+  body.mode-before .topbar { left: 336px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center;
+    background: linear-gradient(160deg, rgba(56,189,248,.28), rgba(56,189,248,.08));
+    border: 1px solid rgba(56,189,248,.28); color: var(--accent);
+  }
+  .brand h1 { margin: 0; font-size: 14px; letter-spacing: -0.01em; }
+  .brand p { margin: 1px 0 0; font-size: 10.5px; color: var(--text-3); }
+  .brand-credit a { color: var(--text-2); text-decoration: none; border-bottom: 1px dotted var(--stroke-strong); }
+  .brand-credit a:hover { color: var(--accent); border-color: var(--accent); }
+  .sheet-note a { color: var(--text-2); text-decoration: none; border-bottom: 1px dotted var(--stroke-strong); }
+  .sheet-note a:hover { color: var(--accent); border-color: var(--accent); }
+  .segmented {
+    margin-left: 6px; display: flex; gap: 2px; padding: 3px; border-radius: 999px;
+    background: var(--glass); border: 1px solid var(--stroke);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  }
+  .segmented button {
+    height: 30px; padding: 0 12px; border-radius: 999px; border: 0; background: transparent;
+    font-size: 11.5px; font-weight: 600; color: var(--text-3); transition: all 160ms ease;
+  }
+  .segmented button.active { background: var(--text); color: var(--bg); }
+  html.light .segmented button.active { background: #0a1119; color: #fff; }
+  .topbar .spacer { flex: 1; }
+
+  .controls { position: absolute; top: 68px; left: 16px; display: flex; gap: 8px; flex-wrap: wrap; max-width: calc(100% - 32px); }
+  body.mode-before .controls { display: none; }
+  .vehicle-pill { height: 42px; padding: 0 14px 0 10px; gap: 10px; }
+  .vehicle-dot { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; background: rgba(56,189,248,.16); }
+  .vehicle-dot span { width: 8px; height: 8px; border-radius: 99px; background: var(--accent); box-shadow: 0 0 0 3px rgba(56,189,248,.18); }
+  .vehicle-pill b { font-size: 12.5px; }
+  .vehicle-pill em { font-style: normal; font-size: 11px; color: var(--text-3); }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ok); }
+  .status i { width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+
+  /* ── bottom sheet ───────────────────────────────────────── */
+  #sheet {
+    position: absolute; left: 16px; bottom: 16px; width: 560px; max-width: calc(100% - 32px);
+    border-radius: 22px; padding: 16px 18px 14px; z-index: 6;
+    transition: width 220ms ease, left 220ms ease;
+  }
+  body.mode-b #sheet { width: 760px; }
+  body.mode-b .hero b { font-size: 38px; }
+  body.mode-b .tl-track { height: 22px; border-radius: 8px; }
+  body.mode-b .play { width: 44px; height: 44px; }
+  body.mode-b .play svg { width: 16px; height: 16px; }
+  body.mode-b .tl-clock { font-size: 15px; min-width: 64px; }
+  body.mode-b .timeline { margin-top: 18px; }
+  body.mode-c #sheet {
+    top: 68px; left: 16px; bottom: 16px; width: 320px; border-radius: 22px;
+    display: flex; flex-direction: column; overflow: auto;
+  }
+  body.mode-c .controls { display: none; }
+  body.mode-c .chips { display: none; }
+  body.mode-c .tl-labels { display: none; }
+  body.mode-c .timeline { margin-top: 12px; }
+  body.mode-before #sheet { display: none; }
+
+  .sheet-head { display: flex; align-items: flex-start; gap: 16px; }
+  .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: .02em; color: var(--text-3); }
+  .hero { display: flex; align-items: baseline; gap: 5px; margin-top: 2px; }
+  .hero b { font-size: 30px; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .hero span { font-size: 12px; color: var(--text-3); font-weight: 600; }
+  .sub { margin-top: 3px; font-size: 11.5px; color: var(--text-2); }
+  .metrics { margin-left: auto; display: grid; grid-template-columns: repeat(2, minmax(74px, auto)); gap: 10px 18px; }
+  .metric .k { font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-3); }
+  .metric .v { margin-top: 1px; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  body.mode-c .sheet-head { display: block; }
+  body.mode-c .metrics { margin: 14px 0 0; grid-template-columns: repeat(2, 1fr); }
+
+  .timeline { margin-top: 14px; display: flex; align-items: center; gap: 12px; }
+  body.mode-b .timeline { margin-top: 18px; gap: 14px; }
+  .play {
+    flex: 0 0 auto; width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--stroke-strong);
+    background: var(--text); color: var(--bg); display: grid; place-items: center;
+  }
+  .play svg { width: 13px; height: 13px; }
+  .tl-wrap { flex: 1; min-width: 0; }
+  .tl-track { position: relative; height: 12px; border-radius: 99px; background: rgba(120,135,150,.16); cursor: ew-resize; touch-action: none; }
+  body.mode-b .tl-track { height: 15px; }
+  .tl-block { position: absolute; top: 0; bottom: 0; border-radius: 5px; }
+  .tl-block.trip { background: var(--accent); opacity: .9; }
+  .tl-block.trip.sel { outline: 2px solid var(--text); outline-offset: 2px; }
+  .tl-block.stop { background: rgba(140,152,164,.55); }
+  .tl-block.no-data { background: repeating-linear-gradient(90deg, rgba(255,70,58,.85) 0 2px, transparent 2px 5px); }
+  .tl-playhead { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 3px rgba(127,127,127,.22); pointer-events: none; }
+  .tl-labels { display: flex; justify-content: space-between; margin-top: 5px; font-size: 9px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .tl-labels span { flex: 1; text-align: center; }
+  .tl-labels span.first { text-align: left; }
+  .tl-labels span.last { text-align: right; }
+  .tl-clock { flex: 0 0 auto; min-width: 48px; text-align: right; font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+  .chips { display: flex; gap: 6px; margin-top: 12px; overflow-x: auto; padding-bottom: 2px; }
+  .chip {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px;
+    border-radius: 999px; border: 1px solid var(--stroke); background: transparent;
+    font-size: 10.5px; font-weight: 600; color: var(--text-2);
+  }
+  .chip i { width: 6px; height: 6px; border-radius: 99px; background: var(--accent); }
+  .chip.sel { border-color: rgba(56,189,248,.5); background: rgba(56,189,248,.12); color: var(--text); }
+  .chip em { font-style: normal; color: var(--text-3); font-weight: 500; }
+
+  .sheet-note { margin-top: 10px; font-size: 10px; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+
+  /* ── trip list (mode C) ─────────────────────────────────── */
+  .trip-list { margin-top: 14px; display: none; }
+  body.mode-c .trip-list { display: block; }
+  .trip-list h3 { margin: 0 0 8px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); }
+  .trip-row {
+    width: 100%; display: flex; align-items: center; gap: 9px; padding: 8px 8px; margin-bottom: 2px;
+    border-radius: 12px; border: 1px solid transparent; background: transparent; text-align: left;
+  }
+  .trip-row:hover { background: rgba(127,140,153,.10); }
+  .trip-row.sel { border-color: rgba(56,189,248,.45); background: rgba(56,189,248,.10); }
+  .trip-row i { width: 7px; height: 7px; border-radius: 99px; background: var(--accent); flex: 0 0 auto; }
+  .trip-row .n { font-size: 11.5px; font-weight: 650; }
+  .trip-row .t { margin-left: auto; font-size: 10px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+  .trip-row .d { font-size: 10px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+  /* ── legend popover ─────────────────────────────────────── */
+  #legend {
+    position: absolute; right: 16px; top: 112px; width: 236px; border-radius: 18px; padding: 13px 14px;
+    z-index: 8; display: none;
+  }
+  #legend.open { display: block; }
+  #legend h3 { margin: 0 0 10px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); }
+  .leg { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
+  .leg .sw { width: 26px; height: 12px; flex: 0 0 auto; display: grid; place-items: center; }
+  .leg .lbl { display: block; font-size: 11px; font-weight: 600; }
+  .leg .note { display: block; font-size: 9.5px; color: var(--text-3); margin-top: 1px; }
+  .sw-line { width: 26px; height: 3px; border-radius: 3px; background: var(--accent); }
+  .sw-casing { width: 26px; height: 7px; border-radius: 4px; background: var(--accent); box-shadow: 0 0 0 2px var(--casing); }
+  .sw-stop { width: 11px; height: 11px; border-radius: 99px; border: 2px solid var(--accent); background: var(--glass-strong); }
+  .sw-gap { width: 26px; height: 0; border-top: 2px solid var(--text-3); position: relative; }
+  .sw-gap::before, .sw-gap::after { content:""; position:absolute; top:-4px; width:5px; height:5px; border-radius:99px; border:1.5px solid var(--text-3); background: var(--bg); }
+  .sw-gap::before { left: -1px; } .sw-gap::after { right: -1px; }
+  .sw-bad { width: 10px; height: 10px; border-radius: 99px; border: 2px solid var(--bad); background: rgba(255,69,58,.18); }
+  .leg-quality { display: none; }
+  .leg-trip-offset { display: none; }
+  body.mode-d .leg-trip-offset { display: flex; }
+  body.quality .leg-quality { display: flex; }
+
+  /* ── map labels ─────────────────────────────────────────── */
+  .map-label {
+    font-size: 10px; font-weight: 650; padding: 4px 8px; border-radius: 999px;
+    background: var(--glass-strong); border: 1px solid var(--stroke); color: var(--text-2);
+    white-space: nowrap; box-shadow: 0 6px 18px -8px rgba(0,0,0,.5);
+  }
+  .map-label.stop { color: var(--text-2); }
+  .map-label.stop b { color: var(--text); }
+  .map-label.gap { color: var(--bad); border-color: rgba(255,69,58,.28); background: rgba(40,10,10,.72); }
+  html.light .map-label.gap { background: rgba(255,240,240,.94); }
+  .pin {
+    width: 12px; height: 12px; border-radius: 99px; border: 2.5px solid var(--glass-strong);
+    box-shadow: 0 0 0 3px rgba(0,0,0,.18);
+  }
+  .pin.start { background: var(--ok); }
+  .pin.end { background: var(--bad); }
+  .moving {
+    width: 16px; height: 16px; border-radius: 99px; background: var(--accent);
+    border: 3px solid var(--casing); box-shadow: 0 0 0 6px rgba(56,189,248,.18);
+  }
+  html.light .moving { box-shadow: 0 0 0 6px rgba(10,132,255,.16); }
+
+  /* ── before replica ─────────────────────────────────────── */
+  #beforeSide {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 320px; z-index: 7;
+    background: var(--glass-strong); border-right: 1px solid var(--stroke);
+    -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px);
+    display: none; flex-direction: column; overflow: auto;
+  }
+  body.mode-before #beforeSide { display: flex; }
+  .bs-head { padding: 14px 16px; border-bottom: 1px solid var(--stroke); display: flex; gap: 10px; align-items: center; }
+  .bs-head h2 { margin: 0; font-size: 14px; }
+  .bs-head p { margin: 1px 0 0; font-size: 10px; color: var(--text-3); }
+  .bs-sec { padding: 10px 14px; border-bottom: 1px solid var(--stroke); }
+  .bs-sec > .lbl { font-size: 9px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+  .fake-select { width: 100%; height: 38px; border-radius: 10px; border: 1px solid var(--stroke); background: rgba(255,255,255,.04); display: flex; align-items: center; padding: 0 11px; font-size: 12px; font-weight: 600; }
+  html.light .fake-select { background: #fff; }
+  .fake-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 11px; background: rgba(255,255,255,.05); }
+  .fake-seg span { padding: 8px 0; text-align: center; font-size: 10.5px; font-weight: 600; color: var(--text-2); border-radius: 7px; }
+  .fake-seg span.on { background: rgba(56,189,248,.22); color: var(--text); }
+  .fake-row { display: flex; align-items: center; justify-content: space-between; height: 36px; border-radius: 10px; border: 1px solid var(--stroke); padding: 0 11px; font-size: 11px; margin-top: 6px; }
+  .acc-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
+  .acc-card { border: 1px solid var(--stroke); border-radius: 10px; padding: 7px 8px; }
+  .acc-card .dot { width: 9px; height: 9px; border-radius: 99px; border: 2px solid var(--ok); }
+  .acc-card .dot.med { border-color: var(--warn); }
+  .acc-card .dot.low { border-color: var(--bad); }
+  .acc-card b { display: block; margin-top: 6px; font-size: 9px; }
+  .acc-card span { font-size: 8px; color: var(--text-3); }
+  .switch-row { display: flex; align-items: center; justify-content: space-between; }
+  .switch-row .txt b { display: block; font-size: 12px; }
+  .switch-row .txt span { font-size: 9.5px; color: var(--text-3); }
+  .toggle { width: 42px; height: 25px; border-radius: 99px; background: #2ecc71; padding: 2px; }
+  .toggle i { display: block; width: 21px; height: 21px; border-radius: 99px; background: #fff; margin-left: auto; }
+  .leg-row { display: flex; align-items: center; gap: 9px; margin-top: 7px; font-size: 9.5px; color: var(--text-2); }
+  .leg-row .s { width: 20px; display: grid; place-items: center; }
+  .dotted { width: 20px; border-top: 2px dotted #8b5cf6; }
+  .dashed { width: 20px; border-top: 2px dashed #f59e0b; }
+  .solid { width: 20px; border-top: 2px solid #38bdf8; }
+  .bead { width: 10px; height: 10px; border-radius: 99px; border: 2px solid #ff453a; background: rgba(255,69,58,.2); }
+  .bs-foot { margin-top: auto; padding: 12px 14px; border-top: 1px solid var(--stroke); }
+  .bs-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+  .bs-stats .k { font-size: 8px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); }
+  .bs-stats .v { font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  body.mode-before #chrome .brand { display: none; }
+
+
+
+  #vehicles {
+    position: absolute; left: 16px; top: 118px; width: 300px; border-radius: 18px;
+    padding: 12px; z-index: 9; display: none;
+  }
+  #vehicles.open { display: block; }
+  .veh-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+  .veh-head b { font-size: 13px; }
+  .veh-head span { font-size: 9.5px; color: var(--text-3); }
+  .veh-search {
+    width: 100%; height: 32px; border-radius: 9px; border: 1px solid var(--stroke);
+    background: rgba(255,255,255,.04); color: var(--text); padding: 0 10px; font: 500 11px/1 inherit; outline: none;
+  }
+  html.light .veh-search { background: #fff; }
+  .veh-search:focus { border-color: var(--accent); }
+  .veh-list { margin-top: 7px; max-height: 300px; overflow: auto; }
+  .veh-row {
+    width: 100%; display: flex; align-items: center; gap: 9px; padding: 8px;
+    border-radius: 10px; border: 1px solid transparent; background: transparent; text-align: left;
+  }
+  .veh-row:hover { background: rgba(127,140,153,.10); }
+  .veh-row.sel { border-color: rgba(56,189,248,.45); background: rgba(56,189,248,.10); }
+  .veh-row .dot { width: 8px; height: 8px; border-radius: 99px; flex: 0 0 auto; }
+  .veh-row .id { font: 650 11.5px/1.2 ui-monospace, monospace; }
+  .veh-row .drv { font-size: 9.5px; color: var(--text-3); margin-top: 1px; }
+  .veh-row .st { margin-left: auto; font-size: 9.5px; color: var(--text-3); text-align: right; }
+  .veh-row .st.live { color: var(--ok); }
+  .veh-row .st.gap { color: #ffd60a; }
+  .veh-empty { padding: 14px 8px; font-size: 10.5px; color: var(--text-3); text-align: center; }
+  .cal-presets { display: flex; gap: 4px; margin-top: 8px; }
+  .cal-presets button {
+    flex: 1; height: 26px; border-radius: 8px; border: 1px solid var(--stroke);
+    background: transparent; color: var(--text-2); font-size: 9.5px; font-weight: 650;
+  }
+  .cal-presets button.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .cal-error { margin-top: 6px; font-size: 9.5px; color: var(--bad); display: none; }
+  .cal-error.show { display: block; }
+  .cal-range { margin-top: 7px; font-size: 10px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+
+  .tl-win-label { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 9.5px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+  .tl-win-label span:last-child { color: var(--text-3); }
+  .tl-window { background: rgba(56,189,248,.08); border-color: var(--accent); }
+  .tl-track { overflow: hidden; }
+  .tl-window {
+    position: absolute; top: -2px; bottom: -2px; border: 1.5px solid var(--text);
+    border-radius: 6px; pointer-events: none;
+    box-shadow: 0 0 0 999px rgba(3, 8, 14, 0.42);
+  }
+  html.light .tl-window { box-shadow: 0 0 0 999px rgba(255, 255, 255, 0.55); }
+  .tl-handle {
+    position: absolute; top: -6px; width: 12px; height: 24px; padding: 0;
+    border: 0; background: transparent; cursor: ew-resize; z-index: 3;
+  }
+  .tl-handle::after {
+    content: ""; position: absolute; left: 4px; top: 2px; width: 4px; height: 20px;
+    border-radius: 3px; background: var(--text); box-shadow: 0 0 0 2px var(--bg);
+  }
+  .tl-handle.left { transform: translateX(-6px); }
+  .tl-handle.right { transform: translateX(-6px); }
+  .tl-handle:focus-visible::after { outline: 2px solid var(--accent); }
+  /* ── calendar ───────────────────────────────────────────── */
+  #calendar {
+    position: absolute; right: 16px; top: 112px; width: 320px; border-radius: 18px;
+    padding: 13px 14px; z-index: 9; display: none;
+  }
+  #calendar.open { display: block; }
+  .cal-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .cal-top b { font-size: 13px; }
+  .cal-top span { font-size: 9.5px; color: var(--text-3); }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .cal-dow { text-align: center; font-size: 9px; font-weight: 700; color: var(--text-3); padding: 2px 0 4px; }
+  .cal-day {
+    position: relative; height: 32px; border-radius: 9px; border: 1px solid transparent;
+    background: transparent; font-size: 11px; font-weight: 600; color: var(--text-3);
+  }
+  .cal-day.has { color: var(--text); background: rgba(127,140,153,.12); }
+  .cal-day.has::after {
+    content: ""; position: absolute; left: 50%; bottom: 4px; width: 4px; height: 4px;
+    margin-left: -2px; border-radius: 99px; background: var(--accent);
+  }
+  .cal-day.sel { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .cal-day.sel::after { background: var(--accent-ink); }
+  .cal-note { margin-top: 8px; font-size: 9.5px; line-height: 1.4; color: var(--text-3); }
+  .cal-time { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--stroke); }
+  .time-row {
+    display: flex; align-items: center; gap: 7px; height: 42px; padding: 0 6px;
+    border-radius: 11px; border: 1px solid var(--stroke); background: rgba(255,255,255,.04);
+  }
+  .time-row + .time-row { margin-top: 6px; }
+  html.light .time-row { background: #fff; }
+  .time-row .tr-lbl { width: 34px; font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+  .time-row b { flex: 1; text-align: center; font-size: 14px; font-variant-numeric: tabular-nums; }
+  .time-row .step {
+    width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--stroke);
+    background: transparent; color: var(--text-2); font-size: 17px; line-height: 1;
+    display: grid; place-items: center;
+  }
+  .time-row .step:hover { background: rgba(127,140,153,.14); color: var(--text); }
+  .time-row .step:active { transform: scale(.94); }
+  .cal-range { margin-top: 7px; font-size: 10px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+  .win-step { display: flex; gap: 4px; }
+  .win-step button {
+    width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--stroke);
+    background: var(--glass); color: var(--text-2); font-size: 14px; line-height: 1; display: grid; place-items: center;
+  }
+
+  /* ── quality chips ──────────────────────────────────────── */
+  .quality-row { display: none; align-items: center; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  body.mode-d .quality-row, body.quality .quality-row { display: flex; }
+  .qpill {
+    display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px;
+    border-radius: 999px; border: 1px solid var(--stroke); font-size: 9.5px; font-weight: 650; color: var(--text-2);
+  }
+  .qpill i { width: 6px; height: 6px; border-radius: 99px; }
+  .q-clean i { background: #30d158; }
+  .q-good i { background: #ffd60a; }
+  .q-bad i { background: #ff453a; }
+  .q-label { font-size: 9.5px; color: var(--text-3); margin-right: 2px; }
+  .chip-q { width: 6px; height: 6px; border-radius: 99px; background: #30d158; margin-left: 2px; }
+  .chip-q.good { background: #ffd60a; }
+  .chip-q.bad { background: #ff453a; }
+  .tl-block .qbar { position: absolute; left: 1px; right: 1px; bottom: 1px; height: 2px; border-radius: 2px; }
+
+  body.mode-d #sheet { width: 640px; }
+  .leg-q { display: none; }
+  body.mode-d .leg-q, body.quality .leg-q { display: flex; }
+
+  @media (max-width: 760px) {
+    body.mode-before #map { left: 0; }
+    body.mode-before #beforeSide { display: none; }
+    body.mode-before .topbar { left: 10px; }
+    .brand p { display: none; }
+    .topbar { top: 10px; left: 10px; right: 10px; flex-wrap: wrap; gap: 8px; }
+    .brand { order: 1; flex: 1; min-width: 0; }
+    .brand h1 { white-space: nowrap; }
+    .topbar .spacer { display: none; }
+    .segmented { order: 3; width: 100%; margin-left: 0; overflow-x: auto; }
+    .segmented button { flex: 1 0 auto; padding: 0 8px; }
+    #qualityBtn, #legendBtn, #themeBtn { order: 2; }
+    .controls { top: 112px; left: 10px; }
+    body.mode-c .controls { display: flex; }
+    body.mode-c .chips { display: flex; }
+    body.mode-c #sheet { top: auto; left: 10px; right: 10px; bottom: 10px; width: auto; }
+    body.mode-c .trip-list { display: none; }
+    .map-label.stop { display: none; }
+    .map-label.gap { font-size: 9px; padding: 3px 7px; }
+    #sheet, body.mode-b #sheet {
+      left: 10px; right: 10px; bottom: 10px; width: auto; max-width: none;
+      border-radius: 20px; padding: 14px;
+    }
+    body.mode-c #sheet { top: 60px; right: auto; width: 300px; bottom: 10px; }
+    .metrics { grid-template-columns: repeat(2, minmax(64px, auto)); gap: 8px 14px; }
+    .hero b { font-size: 26px; }
+    #legend { right: 10px; top: 106px; width: 210px; }
+    #calendar { right: 10px; top: 160px; width: 270px; }
+    #vehicles { left: 10px; top: 160px; width: 270px; }
+  }
+</style>
+</head>
+<body class="mode-a">
+<div id="map"></div>
+
+<div id="chrome">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V8.5a2.5 2.5 0 0 1 2.5-2.5H10l2 3h5.5A2.5 2.5 0 0 1 20 11.5V19"/><path d="M4 19h16"/><circle cx="8" cy="19" r="1.6"/><circle cx="16" cy="19" r="1.6"/></svg>
+      </div>
+      <div>
+        <h1>Fleet History</h1>
+        <p class="brand-line"><span id="brandSub">Basti · 16 Nov</span><span class="brand-credit"> · by <a href="https://mrps.in" target="_blank" rel="noreferrer">Mani Ratan Singh</a></span></p>
+      </div>
+    </div>
+
+    <div class="segmented" role="tablist" aria-label="Design direction">
+      <button data-mode="before">Before</button>
+      <button data-mode="a" class="active">Maps</button>
+      <button data-mode="b">Timeline</button>
+      <button data-mode="d">Trips</button>
+      <button data-mode="c">Dispatch</button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <button class="icon-btn" id="qualityBtn" title="GPS quality overlay" aria-pressed="false">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 17l5-6 4 3 4-7 5 4"/></svg>
+    </button>
+    <button class="icon-btn" id="legendBtn" title="Map key" aria-pressed="false">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5"/><circle cx="12" cy="8" r=".9" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+    </button>
+  </div>
+
+  <div class="controls">
+    <button class="pill vehicle-pill" id="vehiclePill" aria-haspopup="listbox" aria-expanded="false">
+      <span class="vehicle-dot"><span></span></span>
+      <b id="vehId">AMB-07</b>
+      <em id="vehName">Ramesh Yadav</em>
+      <span class="status" id="vehStatus"><i></i>Live</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <button class="pill" id="rangePill">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>
+      <span id="rangeLabel">Today</span>
+    </button>
+    <button class="pill" id="windowPill" title="Timeline window">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+      <span id="windowLabel">Full day</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <button class="pill" id="calendarBtn" title="Pick a day">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M8 3v4M16 3v4M3.5 10h17"/><circle cx="8.5" cy="14" r="1" fill="currentColor" stroke="none"/></svg>
+      <span id="calLabel">16 Nov</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+  </div>
+
+  <section id="sheet" class="glass">
+    <div class="sheet-head">
+      <div class="summary">
+        <div class="eyebrow" id="sEyebrow">Today · 16 Nov</div>
+        <div class="hero"><b id="sDistance">—</b><span>km</span></div>
+        <div class="sub" id="sSub">—</div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="k">Moving</div><div class="v" id="mMoving">—</div></div>
+        <div class="metric"><div class="k">Stops</div><div class="v" id="mStops">—</div></div>
+        <div class="metric"><div class="k">Avg speed</div><div class="v" id="mAvg">—</div></div>
+        <div class="metric"><div class="k">Quality</div><div class="v" id="mQuality">—</div></div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <button class="play" id="playBtn" aria-label="Play day">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5l9 5.5-9 5.5z"/></svg>
+      </button>
+      <div class="tl-wrap">
+        <div class="tl-win-label"><span id="winRange">06:40 → 07:10</span><span id="winDur">30m</span></div>
+        <div class="tl-track" id="tlTrack">
+          <div class="tl-window" id="tlWindow"></div>
+          <div class="tl-playhead" id="tlHead" style="left:0"></div>
+          <button class="tl-handle left" id="tlHandleL" aria-label="Adjust start time"></button>
+          <button class="tl-handle right" id="tlHandleR" aria-label="Adjust end time"></button>
+        </div>
+        <div class="tl-labels" id="tlTicks"></div>
+      </div>
+      <div class="tl-clock" id="tlClock">06:40</div>
+      <div class="win-step"><button id="prevWin" title="Previous window">‹</button><button id="nextWin" title="Next window">›</button></div>
+    </div>
+
+    <div class="chips" id="tripChips"></div>
+    <div id="qualityRow" class="quality-row"></div>
+
+    <div class="trip-list" id="tripList"></div>
+
+    <div class="sheet-note">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4.5M12 16h.01"/></svg>
+      Demo data · built by <a href="https://mrps.in" target="_blank" rel="noreferrer">Mani Ratan Singh</a> · mrps.in
+    </div>
+  </section>
+
+  <div id="legend" class="glass">
+    <h3>Map key</h3>
+    <div class="leg"><span class="sw"><span class="sw-casing"></span></span><span><span class="lbl">Trip</span><span class="note">Continuous, casing on the road</span></span></div>
+    <div class="leg"><span class="sw"><span class="sw-stop"></span></span><span><span class="lbl">Stop</span><span class="note">Stationary ≥ 5 min</span></span></div>
+    <div class="leg leg-trip-offset"><span class="sw"><span class="sw-line" style="background:linear-gradient(90deg,#38bdf8 50%,#30d158 50%)"></span></span><span><span class="lbl">Trips nudged</span><span class="note">5 px apart so overlaps stay visible</span></span></div>
+    <div class="leg"><span class="sw"><span class="sw-gap"></span></span><span><span class="lbl">No data</span><span class="note">Signal lost; path breaks</span></span></div>
+    <div class="leg leg-quality"><span class="sw"><span class="sw-bad"></span></span><span><span class="lbl">GPS outlier</span><span class="note">Ignored in the trail</span></span></div>
+    <div class="leg leg-q"><span class="sw"><span class="sw-line" style="background:#30d158"></span></span><span><span class="lbl">Clean data</span><span class="note">Median accuracy ≤ 20 m, no gaps</span></span></div>
+    <div class="leg leg-q"><span class="sw"><span class="sw-line" style="background:#ffd60a"></span></span><span><span class="lbl">Good data</span><span class="note">20–50 m or one short gap</span></span></div>
+    <div class="leg leg-q"><span class="sw"><span class="sw-line" style="background:#ff453a"></span></span><span><span class="lbl">Bad data</span><span class="note">&gt; 50 m or an outlier</span></span></div>
+  </div>
+
+  <div id="vehicles" class="glass">
+    <div class="veh-head"><b>Vehicles</b><span>5 drivers</span></div>
+    <input id="vehSearch" class="veh-search" placeholder="Search driver or ID" autocomplete="off" />
+    <div id="vehList" class="veh-list" role="listbox"></div>
+  </div>
+
+  <div id="calendar" class="glass">
+    <div class="cal-top"><b>November 2026</b><span id="calNote">Sample days</span></div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-time">
+      <div class="time-row">
+        <span class="tr-lbl">From</span>
+        <button type="button" class="step" id="fromMinus" aria-label="Earlier start">−</button>
+        <b id="fromLabel">06:40 AM</b>
+        <button type="button" class="step" id="fromPlus" aria-label="Later start">+</button>
+      </div>
+      <div class="time-row">
+        <span class="tr-lbl">To</span>
+        <button type="button" class="step" id="toMinus" aria-label="Earlier end">−</button>
+        <b id="toLabel">09:03 AM</b>
+        <button type="button" class="step" id="toPlus" aria-label="Later end">+</button>
+      </div>
+    </div>
+    <div class="cal-presets" id="calPresets">
+      <button data-min="0">Full day</button>
+      <button data-min="120">2h</button>
+      <button data-min="60">1h</button>
+      <button data-min="30">30m</button>
+    </div>
+    <div class="cal-range" id="calRange">06:40 am → 09:03 am · 2h 23m</div>
+    <div class="cal-note" id="calHint">Each day has a different data shape.</div>
+  </div>
+
+  <aside id="beforeSide">
+    <div class="bs-head">
+      <div class="brand-mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19V8.5a2.5 2.5 0 0 1 2.5-2.5H10l2 3h5.5A2.5 2.5 0 0 1 20 11.5V19"/><path d="M4 19h16"/></svg></div>
+      <div><h2>Fleet History</h2><p>Sant Kabir Eye Hospital · Mani Ratan Singh</p></div>
+    </div>
+    <div class="bs-sec"><div class="lbl">Vehicle</div><div class="fake-select">AMB-07 · 2h ago · 148 pts</div></div>
+    <div class="bs-sec"><div class="lbl">Select period</div><div class="fake-seg"><span>24 hours</span><span class="on">7 days</span><span>Today</span><span>Yesterday</span></div></div>
+    <div class="bs-sec"><div class="lbl">Custom range</div><div class="fake-row">FROM <span>09 Nov 2026, 10:24 am</span></div><div class="fake-row">TO <span>16 Nov 2026, 10:24 am</span></div></div>
+    <div class="bs-sec"><div class="lbl">GPS accuracy</div><div class="acc-grid"><div class="acc-card"><span class="dot"></span><b>High</b><span>≤ 20 m</span></div><div class="acc-card"><span class="dot med"></span><b>Medium</b><span>20–50 m</span></div><div class="acc-card"><span class="dot low"></span><b>Low</b><span>&gt; 50 m</span></div></div></div>
+    <div class="bs-sec"><div class="switch-row"><div class="txt"><b>Colour by trip</b><span>Unified spine stays visible underneath</span></div><div class="toggle"><i></i></div></div></div>
+    <div class="bs-sec">
+      <div class="lbl">Map key</div>
+      <div class="leg-row"><span class="s"><span class="solid" style="border-color:#38bdf8;opacity:.7"></span></span>Unified trail · all trips</div>
+      <div class="leg-row"><span class="s"><span class="solid"></span></span>Measured link</div>
+      <div class="leg-row"><span class="s"><span class="solid" style="border-top-style:dashed"></span></span>Return trip · offset (inferred)</div>
+      <div class="leg-row"><span class="s"><span class="bead" style="border-color:#38bdf8;background:rgba(56,189,248,.18)"></span></span>Buffered upload</div>
+      <div class="leg-row"><span class="s"><span class="bead"></span></span>Short trip bead</div>
+      <div class="leg-row"><span class="s"><span class="dotted"></span></span>No data</div>
+      <div class="leg-row"><span class="s"><span class="dashed"></span></span>Suspect jump (&gt;150 km/h)</div>
+    </div>
+    <div class="bs-sec"><div class="lbl">Manage history</div><div class="fake-row" style="color:#ff8a80">Delete this vehicle</div></div>
+    <div class="bs-foot"><div class="bs-stats"><div><div class="k">Points</div><div class="v" id="bPoints">—</div></div><div><div class="k">Distance</div><div class="v" id="bDistance">—</div></div><div><div class="k">First</div><div class="v" id="bFirst">—</div></div><div><div class="k">Last</div><div class="v" id="bLast">—</div></div></div></div>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script type="module">
+
+window.__err = null;
+window.addEventListener('error', (e) => { window.__err = String(e.message || e.error); });
+window.addEventListener('unhandledrejection', (e) => { window.__err = String(e.reason); });
+const R = 6371000;
+const rad = (d) => (d * Math.PI) / 180;
+function haversine(a, b) {
+  const dLat = rad(b[1] - a[1]);
+  const dLon = rad(b[0] - a[0]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[1])) * Math.cos(rad(b[1])) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function offsetPoint(lon, lat, meters, bearingDeg) {
+  const br = rad(bearingDeg);
+  const dLat = (meters * Math.cos(br)) / 111320;
+  const dLon = (meters * Math.sin(br)) / (111320 * Math.cos(rad(lat)));
+  return [lon + dLon, lat + dLat];
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rnd = mulberry32(20261116);
+const rand = (a, b) => a + rnd() * (b - a);
+
+const ROUTE_A = [[82.718537,26.79729],[82.718258,26.795994],[82.718002,26.796195],[82.717367,26.796479],[82.716617,26.796647],[82.715943,26.796896],[82.7157,26.796945],[82.715423,26.796974],[82.715136,26.797001],[82.714911,26.797001],[82.714486,26.797162],[82.714217,26.797193],[82.713949,26.796201],[82.713726,26.795605],[82.713709,26.795184],[82.713521,26.793323],[82.713223,26.790496],[82.712928,26.789062],[82.712688,26.788228],[82.712059,26.786623],[82.711479,26.785296],[82.710744,26.783926],[82.710307,26.783373],[82.708936,26.781822],[82.708212,26.781028],[82.706861,26.779873],[82.705134,26.778854],[82.704418,26.778507],[82.704096,26.778408],[82.702474,26.777952],[82.700847,26.777718],[82.697727,26.777553],[82.690401,26.777126],[82.688181,26.777085],[82.679978,26.776615],[82.676884,26.776441],[82.674347,26.776238],[82.673897,26.776189],[82.66891,26.775642],[82.661919,26.774884],[82.656439,26.774289],[82.653461,26.773968],[82.652554,26.773819],[82.651156,26.773552],[82.649561,26.773188],[82.647537,26.772741],[82.645662,26.772312],[82.643774,26.771891],[82.637594,26.770472],[82.633953,26.769588],[82.63051,26.768747],[82.62774,26.768103],[82.62158,26.766879],[82.615602,26.765721],[82.613317,26.765275],[82.609778,26.764586],[82.605496,26.763829],[82.6012,26.76313],[82.598892,26.762945],[82.593583,26.762721],[82.591232,26.762625],[82.587527,26.762529],[82.58643,26.762492],[82.583516,26.762415],[82.580907,26.762449],[82.579908,26.762477],[82.576546,26.762665],[82.57163,26.762946],[82.566983,26.763196],[82.559164,26.763619],[82.554534,26.763847],[82.551827,26.763973],[82.550494,26.764047],[82.548366,26.764149],[82.546986,26.764335],[82.545848,26.764603],[82.54482,26.764959],[82.541446,26.766416],[82.536698,26.768484],[82.534015,26.769642],[82.530679,26.771077],[82.526752,26.772752],[82.522533,26.77447],[82.518625,26.776046],[82.516115,26.777022],[82.514305,26.777736],[82.510558,26.779191],[82.50718,26.78047],[82.502803,26.782108],[82.498432,26.783655],[82.496905,26.784146],[82.494971,26.784752],[82.492577,26.785499],[82.489563,26.786454],[82.486926,26.787284],[82.482033,26.788862],[82.478372,26.790059],[82.477049,26.790475],[82.474208,26.79143],[82.473837,26.791642],[82.472993,26.792312],[82.470748,26.794339],[82.46959,26.795304],[82.467862,26.796643],[82.466991,26.79714],[82.466275,26.797338],[82.465497,26.797452],[82.464104,26.797515],[82.463534,26.797447]];
+const ROUTE_B = [[82.718537,26.79729],[82.718708,26.798076],[82.718972,26.79926],[82.719205,26.800222],[82.719315,26.800755],[82.719651,26.802439],[82.721214,26.803764],[82.723813,26.80541],[82.724733,26.805882],[82.726032,26.806711],[82.727228,26.807493],[82.728747,26.808636],[82.731376,26.810765],[82.732949,26.812062],[82.733673,26.812671],[82.736566,26.815207],[82.743003,26.820582],[82.745079,26.822257],[82.747116,26.823873],[82.749773,26.825987],[82.751837,26.827558],[82.753569,26.828826],[82.75439,26.829283],[82.755542,26.829676],[82.756834,26.829869],[82.75834,26.829779],[82.76256,26.829027],[82.767537,26.828144],[82.769855,26.827761],[82.772125,26.827572],[82.774933,26.827411],[82.777684,26.827343],[82.780252,26.827195],[82.780754,26.827472],[82.78291,26.828889],[82.784142,26.829709],[82.787392,26.831852],[82.788092,26.832312]];
+const ROUTE_C = [[82.718537,26.79729],[82.718258,26.795994],[82.718121,26.795281],[82.718114,26.794721],[82.718194,26.794227],[82.718291,26.793949],[82.718642,26.793469],[82.719749,26.792809],[82.720305,26.792508],[82.721192,26.792559],[82.72168,26.792582],[82.722128,26.792567],[82.722234,26.792615],[82.72244,26.792712],[82.723811,26.793194],[82.72516,26.793697],[82.726138,26.794194],[82.72667,26.794465],[82.72771,26.795033],[82.728629,26.795758],[82.729365,26.79637],[82.730413,26.797254],[82.732803,26.799426],[82.733386,26.799509],[82.733508,26.799513],[82.736676,26.799493],[82.738208,26.799607],[82.741599,26.800153],[82.742229,26.800233],[82.743273,26.800239],[82.745399,26.800158],[82.745545,26.800152],[82.7468,26.800038],[82.747157,26.799902],[82.747587,26.799656],[82.748132,26.799626],[82.748952,26.799699],[82.74931,26.799685],[82.753154,26.799948],[82.753802,26.799958],[82.755508,26.800364],[82.758571,26.801093],[82.758763,26.800852],[82.758862,26.800586],[82.759058,26.800404],[82.759235,26.800342],[82.759278,26.800231],[82.75928,26.800121],[82.759392,26.800041],[82.759773,26.80002],[82.759773,26.800018]];
+
+function makeRoute(coords) {
+  const cum = [0];
+  for (let i = 1; i < coords.length; i++) cum.push(cum[i - 1] + haversine(coords[i - 1], coords[i]));
+  const len = cum[cum.length - 1];
+  const pointAt = (s) => {
+    const d = Math.max(0, Math.min(len, s));
+    let lo = 0, hi = cum.length - 1;
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1;
+      if (cum[mid] <= d) lo = mid; else hi = mid;
+    }
+    const span = cum[hi] - cum[lo] || 1;
+    const t = (d - cum[lo]) / span;
+    const a = coords[lo], b = coords[hi];
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  };
+  return { coords, cum, len, pointAt };
+}
+
+const RA = makeRoute(ROUTE_A);
+const RB = makeRoute(ROUTE_B);
+const RC = makeRoute(ROUTE_C);
+
+const T0 = Date.UTC(2026, 10, 16, 1, 10, 0); // 06:40 IST
+
+const SCENES = {
+  dense:  { day: 12, label: 'Dense 30 s',   note: 'High accuracy · no gaps' },
+  lanes:  { day: 13, label: 'Narrow lanes', note: '10 km/h · 30 s · high accuracy' },
+  sparse: { day: 14, label: 'Sparse 5 min', note: '5 min samples · 2 gaps' },
+  poor:   { day: 15, label: 'Poor accuracy',note: '40–120 m fixes' },
+  mixed:  { day: 16, label: 'Mixed day',    note: 'Stops · gap · outlier' },
+};
+
+function gapThreshold(arr) {
+  const ds = [];
+  for (let i = 1; i < arr.length; i++) {
+    const dt = (arr[i].t - arr[i - 1].t) / 1000;
+    if (dt > 0) ds.push(dt);
+  }
+  if (!ds.length) return 90;
+  ds.sort((a, b) => a - b);
+  return Math.max(90, ds[Math.floor(ds.length / 2)] * 2.5);
+}
+
+function metrics(arr) {
+  let distance = 0;
+  let movingMs = 0;
+  const limit = gapThreshold(arr) * 1000;
+  for (let i = 1; i < arr.length; i++) {
+    const dt = arr[i].t - arr[i - 1].t;
+    if (dt <= 0 || dt > limit) continue;
+    const d = haversine([arr[i - 1].lon, arr[i - 1].lat], [arr[i].lon, arr[i].lat]);
+    distance += d;
+    if ((d / (dt / 1000)) * 3.6 > 3) movingMs += dt;
+  }
+  return { distance, movingMs };
+}
+
+function makeDay(scene) {
+  const points = [];
+  const gaps = [];
+  const stops = [];
+  let trip = 0;
+
+  const accFor = (route, s) => {
+    if (scene === 'dense' || scene === 'lanes') return rand(3, 10);
+    if (scene === 'sparse') return rand(12, 32);
+    if (scene === 'poor') return rand(45, 120);
+    if (route === RA && s > RA.len * 0.12 && s < RA.len * 0.20) return rand(38, 92);
+    if (rnd() < 0.06) return rand(24, 46);
+    return rand(4, 14);
+  };
+
+  const push = (route, s, t, phase, extra = {}) => {
+    let [lon, lat] = route.pointAt(s);
+    const acc = extra.acc ?? accFor(route, s);
+    let jitter = extra.jitter || 0;
+    if (scene === 'poor' && extra.kind !== 'stop') jitter += rand(20, 45);
+    if (jitter) [lon, lat] = offsetPoint(lon, lat, rand(-jitter, jitter), rand(0, 360));
+    points.push({ t, lon, lat, acc, trip: extra.trip ?? trip, phase, kind: extra.kind || 'fix', s });
+  };
+
+  const leg = (route, s0, s1, t0, phase, dt = 30 * 1000, speed = 9.7) => {
+    const dir = s1 >= s0 ? 1 : -1;
+    const step = speed * (dt / 1000);
+    let s = s0;
+    let tt = t0;
+    while (dir > 0 ? s < s1 : s > s1) {
+      push(route, s, tt, phase);
+      s += dir * step;
+      tt += dt;
+    }
+    return { s, t: tt };
+  };
+
+  const addStop = (route, s, t0, minutes, tripNo, label, jitter = 8, acc = [4, 10]) => {
+    const coord = route.pointAt(s);
+    let tt = t0;
+    for (let i = 0; i <= minutes; i++) {
+      push(route, s, tt, 'stop', { trip: tripNo, kind: 'stop', jitter, acc: rand(acc[0], acc[1]) });
+      tt += 60 * 1000;
+    }
+    stops.push({ start: t0, end: tt - 60 * 1000, coord, label: `${minutes} min` });
+    return tt;
+  };
+
+  const addOutlier = (tripNo, sMin, dist = 900) => {
+    const i = points.findIndex((p) => p.trip === tripNo && p.s > sMin);
+    if (i > 0) {
+      const prev = points[i - 1];
+      const bad = points[i];
+      const [lon, lat] = offsetPoint(bad.lon, bad.lat, dist, 88);
+      points.splice(i, 0, { t: prev.t + 15 * 1000, lon, lat, acc: 120, trip: tripNo, phase: bad.phase, kind: 'suspect', s: bad.s });
+    }
+  };
+
+  let t = T0;
+
+  if (scene === 'lanes') {
+    trip = 1;
+    let e = leg(RC, 0, RC.len, t, 'lane', 30 * 1000, 2.8);
+    t = addStop(RC, RC.len, e.t, 8, 1, '8 min', 6, [3, 7]);
+    trip = 2;
+    e = leg(RC, RC.len, 0, t, 'lane', 30 * 1000, 2.8);
+    t = addStop(RC, 0, e.t, 6, 2, '6 min', 5, [3, 6]);
+    trip = 3;
+    leg(RC, 0, RC.len * 0.6, t, 'lane', 30 * 1000, 2.8);
+  } else if (scene === 'dense') {
+    trip = 1;
+    let e = leg(RA, 0, RA.len, t, 'out');
+    t = addStop(RA, RA.len, e.t, 20, 1, '20 min', 6, [3, 8]);
+    trip = 2;
+    e = leg(RA, RA.len, 0, t, 'return');
+    t = addStop(RA, 0, e.t, 8, 2, '8 min', 5, [3, 8]);
+    trip = 3;
+    leg(RB, 0, RB.len, t, 'outB');
+  } else if (scene === 'sparse') {
+    trip = 1;
+    let e = leg(RA, 0, RA.len, t, 'out', 5 * 60 * 1000);
+    t = addStop(RA, RA.len, e.t, 20, 1, '20 min', 8, [10, 25]);
+    trip = 2;
+    e = leg(RA, RA.len, RA.len * 0.45, t, 'return', 5 * 60 * 1000);
+    gaps.push({
+      start: e.t,
+      end: e.t + 25 * 60 * 1000,
+      label: '25 min',
+      from: RA.pointAt(RA.len * 0.45),
+      to: RA.pointAt(RA.len * 0.32),
+    });
+    e = leg(RA, RA.len * 0.32, 0, e.t + 25 * 60 * 1000, 'return', 5 * 60 * 1000);
+    trip = 3;
+    leg(RB, 0, RB.len, e.t, 'outB', 5 * 60 * 1000);
+  } else if (scene === 'poor') {
+    trip = 1;
+    let e = leg(RA, 0, RA.len, t, 'out');
+    t = addStop(RA, RA.len, e.t, 10, 1, '10 min', 10, [40, 90]);
+    trip = 2;
+    e = leg(RA, RA.len, RA.len * 0.5, t, 'return');
+    gaps.push({
+      start: e.t,
+      end: e.t + 12 * 60 * 1000,
+      label: '12 min',
+      from: RA.pointAt(RA.len * 0.5),
+      to: RA.pointAt(RA.len * 0.4),
+    });
+    e = leg(RA, RA.len * 0.4, 0, e.t + 12 * 60 * 1000, 'return');
+    trip = 3;
+    leg(RB, 0, RB.len, e.t, 'outB');
+    addOutlier(3, RB.len * 0.7, 1200);
+  } else {
+    trip = 1;
+    let e = leg(RA, 0, RA.len, t, 'out');
+    t = addStop(RA, RA.len, e.t, 15, 1, '15 min', 8, [4, 8]);
+    trip = 2;
+    e = leg(RA, RA.len, RA.len * 0.45, t, 'return');
+    t = addStop(RA, RA.len * 0.45, e.t, 9, 2, '9 min', 10, [6, 12]);
+    e = leg(RA, RA.len * 0.45, 0, t, 'return');
+    trip = 3;
+    e = leg(RB, 0, RB.len * 0.35, e.t, 'outB');
+    gaps.push({
+      start: e.t,
+      end: e.t + 9 * 60 * 1000,
+      label: '9 min',
+      from: RB.pointAt(RB.len * 0.35),
+      to: RB.pointAt(RB.len * 0.58),
+    });
+    e = leg(RB, RB.len * 0.58, RB.len, e.t + 9 * 60 * 1000, 'outB');
+    addOutlier(3, RB.len * 0.78, 900);
+  }
+
+  const dayStart = Math.min(...points.map((p) => p.t));
+  const dayEnd = Math.max(Math.max(...points.map((p) => p.t)), ...gaps.map((g) => g.end));
+
+  const trips = [...new Set(points.map((p) => p.trip))]
+    .sort((a, b) => a - b)
+    .map((n) => {
+      const arr = points.filter((p) => p.trip === n).sort((a, b) => a.t - b.t);
+      const { distance, movingMs } = metrics(arr);
+      const accs = arr.filter((p) => p.kind !== 'stop').map((p) => p.acc).filter((a) => a > 0).sort((a, b) => a - b);
+      const med = accs.length ? accs[Math.floor(accs.length / 2)] : 0;
+      const hasOutlier = arr.some((p) => p.kind === 'suspect');
+      const hasGap = gaps.some((g) => g.start >= arr[0].t && g.end <= arr[arr.length - 1].t);
+      const quality = hasOutlier || med > 50 ? 'bad' : hasGap || med > 20 ? 'good' : 'clean';
+      return {
+        n,
+        points: arr,
+        start: arr[0].t,
+        end: arr[arr.length - 1].t,
+        distance,
+        movingMs,
+        quality,
+        medianAcc: Math.round(med),
+      };
+    });
+
+  return { points, gaps, stops, trips, dayStart, dayEnd, scene };
+}
+
+let DATA = makeDay('mixed');
+let points = DATA.points;
+let gaps = DATA.gaps;
+let stops = DATA.stops;
+let trips = DATA.trips;
+let DAY_START = DATA.dayStart;
+let DAY_END = DATA.dayEnd;
+
+function fmt(t) {
+  return new Date(t).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+}
+function fmtDur(ms) {
+  const m = Math.round(ms / 60000);
+  const h = Math.floor(m / 60);
+  return h ? `${h}h ${m % 60}m` : `${m}m`;
+}
+
+/* segments that are not gaps and not outliers */
+function tripRuns(tripNo) {
+  const arr = points.filter((p) => p.trip === tripNo);
+  const limit = gapThreshold(arr) * 1000;
+  const runs = [];
+  let run = [];
+  let prev = null;
+  for (const p of arr) {
+    if (p.kind === 'suspect') continue;
+    if (prev && p.t - prev.t > limit) {
+      if (run.length > 1) runs.push(run);
+      run = [];
+    }
+    run.push([p.lon, p.lat]);
+    prev = p;
+  }
+  if (run.length > 1) runs.push(run);
+  return runs;
+}
+
+/* ── map ─────────────────────────────────────────────────── */
+const state = {
+  mode: 'a',
+  theme: 'dark',
+  quality: false,
+  selectedTrip: null,
+  time: DAY_START,
+  playing: false,
+  scene: 'mixed',
+  day: 16,
+  vehicle: 0,
+  windowMin: 0,
+  windowStart: 0,
+  windowEnd: 0,
+};
+
+function applyWindow() {
+  const dayStart = DATA.dayStart;
+  const dayEnd = DATA.dayEnd;
+  const MIN = 5 * 60000;
+  let start = Number(state.windowStart) || dayStart;
+  let end = Number(state.windowEnd) || dayEnd;
+  start = Math.max(dayStart, Math.min(start, dayEnd - MIN));
+  end = Math.max(start + MIN, Math.min(end, dayEnd));
+  state.windowStart = start;
+  state.windowEnd = end;
+  points = DATA.points.filter((p) => p.t >= start && p.t <= end);
+  stops = DATA.stops.filter((s) => s.start < end && s.end > start);
+  gaps = DATA.gaps.filter((g) => g.start < end && g.end > start);
+  trips = DATA.trips
+    .filter((t) => t.start < end && t.end > start)
+    .map((t) => {
+      const arr = points.filter((p) => p.trip === t.n);
+      const m = arr.length > 1 ? metrics(arr) : { distance: t.distance, movingMs: t.movingMs };
+      return {
+        ...t,
+        start: Math.max(t.start, start),
+        end: Math.min(t.end, end),
+        distance: m.distance,
+        movingMs: m.movingMs,
+      };
+    });
+  DAY_START = start;
+  DAY_END = Math.max(end, start + 60000);
+}
+let map;
+let markers = [];
+let layers = [];
+let sources = [];
+
+const DARK_TILES = 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+const DARK_REF = 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
+const LIGHT_TILES = 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+const LIGHT_REF = 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
+
+function buildStyle() {
+  const dark = state.theme === 'dark';
+  return {
+    version: 8,
+    sources: {
+      base: { type: 'raster', tiles: [dark ? DARK_TILES : LIGHT_TILES], tileSize: 256, attribution: 'Esri, HERE, Garmin' },
+      ref: { type: 'raster', tiles: [dark ? DARK_REF : LIGHT_REF], tileSize: 256 },
+    },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': dark ? '#0b0f14' : '#eef1f5' } },
+      { id: 'base', type: 'raster', source: 'base', paint: { 'raster-opacity': 0.92 } },
+      { id: 'ref', type: 'raster', source: 'ref', paint: { 'raster-opacity': 0.9 } },
+    ],
+  };
+}
+
+function initMap() {
+  if (map) { map.remove(); map = null; }
+  markers.forEach((m) => { try { m.remove(); } catch (e) {} });
+  markers = [];
+  layers = [];
+  sources = [];
+  map = new maplibregl.Map({
+    container: 'map',
+    style: buildStyle(),
+    center: RA.pointAt(RA.len * 0.35),
+    zoom: 11.6,
+    attributionControl: false,
+  });
+  window.__map = map;
+  map.on('error', (e) => { window.__mapErr = String(e?.error?.message || e?.error || e); });
+  map.on('style.load', () => { window.__sl = true; });
+  map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: 'Fleet Shield · Mani Ratan Singh (mrps.in)' }), 'bottom-right');
+  map.on('load', () => { fitAll(); render(); });
+}
+
+function fitAll() {
+  const pts = points.map((p) => [p.lon, p.lat]);
+  const b = pts.reduce((acc, c) => acc.extend(c), new maplibregl.LngLatBounds(pts[0], pts[0]));
+  const rail = state.mode === 'c' && window.innerWidth >= 760;
+  const mobile = window.innerWidth < 760;
+  map.fitBounds(b, {
+    padding: mobile
+      ? { top: 150, bottom: 250, left: 36, right: 36 }
+      : rail
+        ? { top: 150, bottom: 70, left: 390, right: 90 }
+        : { top: 150, bottom: 300, left: 170, right: 200 },
+    maxZoom: 13.4,
+    duration: 0,
+  });
+}
+
+function addSource(id, data) {
+  map.addSource(id, { type: 'geojson', data });
+  sources.push(id);
+}
+function addLayer(layer) {
+  map.addLayer(layer);
+  layers.push(layer.id);
+}
+function clearLayers() {
+  layers.forEach((id) => { try { map.removeLayer(id); } catch (e) {} });
+  sources.forEach((id) => { try { map.removeSource(id); } catch (e) {} });
+  layers = [];
+  sources = [];
+}
+
+const TRIP_COLORS = ['#38bdf8', '#30d158', '#ffd60a', '#ff9f0a', '#bf5af2', '#64d2ff'];
+const VEHICLES = [
+  { id: 'AMB-07', driver: 'Ramesh Yadav', color: '#38bdf8', status: 'live',  note: '12 km/h' },
+  { id: 'AMB-02', driver: 'Sunita Devi',  color: '#30d158', status: 'live',  note: 'On scene' },
+  { id: 'AMB-11', driver: 'Arjun Kumar',  color: '#ff9f0a', status: 'gap',   note: '4m ago' },
+  { id: 'AMB-05', driver: 'Meena Prasad', color: '#bf5af2', status: 'live',  note: '28 km/h' },
+  { id: 'AMB-13', driver: 'Farhan Ali',   color: '#64d2ff', status: 'scene', note: 'At camp' },
+];
+const vehicleColor = () => VEHICLES[state.vehicle || 0].color;
+const tripColor = (n) => TRIP_COLORS[(n - 1) % TRIP_COLORS.length];
+const accent = () => (state.theme === 'dark' ? '#38bdf8' : '#0a84ff');
+const casing = () => (state.theme === 'dark' ? 'rgba(2,7,12,.92)' : 'rgba(255,255,255,.96)');
+const textCol = () => (state.theme === 'dark' ? '#eef4fa' : '#0a1119');
+
+function labelMarker(coord, html, cls = '') {
+  const el = document.createElement('div');
+  el.className = 'map-label ' + cls;
+  el.innerHTML = html;
+  const m = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(coord).addTo(map);
+  markers.push(m);
+  return m;
+}
+function dotMarker(coord, cls) {
+  const el = document.createElement('div');
+  el.className = cls;
+  const m = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(coord).addTo(map);
+  markers.push(m);
+  return m;
+}
+
+/* quality colour */
+function accColor(a) {
+  if (a <= 20) return '#30d158';
+  if (a <= 50) return '#ffd60a';
+  return '#ff453a';
+}
+
+function renderNew() {
+  const runs = [];
+  trips.forEach((t) => tripRuns(t.n).forEach((r) => runs.push({ coords: r, trip: t.n })));
+  addSource('runs', { type: 'FeatureCollection', features: runs.map((r) => ({ type: 'Feature', properties: { trip: r.trip, color: tripColor(r.trip) }, geometry: { type: 'LineString', coordinates: r.coords } })) });
+
+  const tripShift = ['*', ['-', ['get', 'trip'], 1], 5];
+  addLayer({
+    id: 'casing', type: 'line', source: 'runs',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': casing(),
+      'line-width': state.mode === 'd' ? 8 : ['interpolate', ['linear'], ['zoom'], 10, 9, 14, 14],
+      'line-opacity': 0.95,
+      'line-offset': state.mode === 'd' ? tripShift : 0,
+    },
+  });
+  addLayer({
+    id: 'trail', type: 'line', source: 'runs',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': state.mode === 'd' ? ['get', 'color'] : vehicleColor(),
+      'line-width': state.mode === 'd' ? 3.6 : ['interpolate', ['linear'], ['zoom'], 10, 4.6, 14, 7],
+      'line-opacity': 1,
+      'line-offset': state.mode === 'd' ? tripShift : 0,
+    },
+  });
+
+  /* quality segments */
+  const segs = [];
+  const limits = {};
+  trips.forEach((t) => { limits[t.n] = gapThreshold(points.filter((p) => p.trip === t.n)) * 1000; });
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i];
+    if (a.trip !== b.trip) continue;
+    if (a.kind === 'suspect' || b.kind === 'suspect') continue;
+    if (b.t - a.t > (limits[b.trip] || 90000)) continue;
+    segs.push({ type: 'Feature', properties: { c: accColor(Math.max(a.acc, b.acc)), trip: b.trip }, geometry: { type: 'LineString', coordinates: [[a.lon, a.lat], [b.lon, b.lat]] } });
+  }
+  addSource('quality', { type: 'FeatureCollection', features: segs });
+  addLayer({
+    id: 'quality-line', type: 'line', source: 'quality',
+    layout: { 'line-cap': 'round', 'line-join': 'round', visibility: state.quality ? 'visible' : 'none' },
+    paint: { 'line-color': ['get', 'c'], 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 5, 14, 8], 'line-opacity': 0.95 },
+  });
+
+  /* stops */
+  addSource('stops', { type: 'FeatureCollection', features: stops.map((s) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: s.coord } })) });
+  addLayer({
+    id: 'stops-halo', type: 'circle', source: 'stops',
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 11, 14, 16], 'circle-color': vehicleColor(), 'circle-opacity': 0.12 },
+  });
+  addLayer({
+    id: 'stops-dot', type: 'circle', source: 'stops',
+    paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 5, 14, 6.5], 'circle-color': state.theme === 'dark' ? '#0b1118' : '#ffffff', 'circle-stroke-color': vehicleColor(), 'circle-stroke-width': 2.5 },
+  });
+
+  /* gap caps */
+  const caps = gaps.flatMap((g) => [g.from, g.to]);
+  addSource('caps', { type: 'FeatureCollection', features: caps.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: c } })) });
+  addLayer({
+    id: 'gap-caps', type: 'circle', source: 'caps',
+    paint: { 'circle-radius': 5, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': textCol(), 'circle-stroke-width': 1.6, 'circle-stroke-opacity': 0.55 },
+  });
+
+  /* outlier */
+  const bad = points.filter((p) => p.kind === 'suspect');
+  if (bad.length) {
+    addSource('bad', { type: 'FeatureCollection', features: bad.map((p) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) });
+    addLayer({
+      id: 'bad-ring', type: 'circle', source: 'bad', layout: { visibility: state.quality ? 'visible' : 'none' },
+      paint: { 'circle-radius': 7, 'circle-color': 'rgba(255,69,58,.22)', 'circle-stroke-color': '#ff453a', 'circle-stroke-width': 2 },
+    });
+
+  }
+
+  applySelection();
+
+  /* markers */
+  const first = points[0];
+  const last = points[points.length - 1];
+  dotMarker([first.lon, first.lat], 'pin start');
+  dotMarker([last.lon, last.lat], 'pin end');
+  labelMarker([first.lon, first.lat], `Start ${fmt(first.t)}`, 'stop').setOffset([0, -22]);
+  labelMarker([last.lon, last.lat], `End ${fmt(last.t)}`, 'stop').setOffset([0, -22]);
+
+  stops.forEach((s, i) => {
+    labelMarker(s.coord, `<b>${s.label}</b> stop`, 'stop').setOffset(i === 0 ? [16, 26] : [0, 24]);
+  });
+  gaps.forEach((g) => {
+    const mid = [(g.from[0] + g.to[0]) / 2, (g.from[1] + g.to[1]) / 2];
+    labelMarker(mid, `No data · ${g.label}`, 'gap').setOffset([0, -18]);
+  });
+
+  movingMarker = dotMarker(markerCoord(state.time), 'moving');
+  if (state.selectedTrip) fitTrip(state.selectedTrip);
+}
+
+function renderBefore() {
+  /* unified line across every point, including the gap diagonal (the flaw) */
+  const all = points.map((p) => [p.lon, p.lat]);
+  addSource('b-unified', { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: all } });
+  addLayer({ id: 'b-unified-line', type: 'line', source: 'b-unified', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#38bdf8', 'line-width': 1.8, 'line-opacity': 0.55 } });
+
+  trips.forEach((t, i) => {
+    const runs = tripRuns(t.n);
+    const fc = { type: 'FeatureCollection', features: runs.map((r) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: r } })) };
+    addSource('b-trip-' + i, fc);
+    addLayer({ id: 'b-trip-line-' + i, type: 'line', source: 'b-trip-' + i, layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': tripColor(t.n), 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 3.5, 14, 6] } });
+  });
+
+  /* every sample as a dot */
+  addSource('b-points', { type: 'FeatureCollection', features: points.map((p) => ({ type: 'Feature', properties: { c: tripColor(p.trip) }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } })) });
+  addLayer({ id: 'b-point-layer', type: 'circle', source: 'b-points', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 2.2, 14, 3.6], 'circle-color': ['get', 'c'], 'circle-stroke-color': '#04121c', 'circle-stroke-width': 0.8 } });
+
+  /* violet dotted no-data connector */
+  addSource('b-gaps', { type: 'FeatureCollection', features: gaps.map((g) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [g.from, g.to] } })) });
+  addLayer({ id: 'b-gap-line', type: 'line', source: 'b-gaps', paint: { 'line-color': '#8b5cf6', 'line-width': 2.2, 'line-dasharray': [1, 3], 'line-opacity': 0.85 } });
+
+  /* amber dashed suspect segments */
+  const bad = points.filter((p) => p.kind === 'suspect');
+  const sus = [];
+  bad.forEach((b) => {
+    const i = points.indexOf(b);
+    if (i > 0) sus.push([[points[i - 1].lon, points[i - 1].lat], [b.lon, b.lat]]);
+    if (i < points.length - 1) sus.push([[b.lon, b.lat], [points[i + 1].lon, points[i + 1].lat]]);
+  });
+  addSource('b-sus', { type: 'FeatureCollection', features: sus.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) });
+  addLayer({ id: 'b-sus-line', type: 'line', source: 'b-sus', paint: { 'line-color': '#f59e0b', 'line-width': 3, 'line-dasharray': [2, 2] } });
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  dotMarker([first.lon, first.lat], 'pin start');
+  dotMarker([last.lon, last.lat], 'pin end');
+
+  document.getElementById('bPoints').textContent = String(points.length);
+  document.getElementById('bDistance').textContent = (trips.reduce((a, t) => a + t.distance, 0) / 1000).toFixed(1) + ' km';
+  document.getElementById('bFirst').textContent = fmt(DAY_START);
+  document.getElementById('bLast').textContent = fmt(DAY_END);
+}
+
+let movingMarker = null;
+
+function markerCoord(t) {
+  let best = points[0];
+  let bd = Infinity;
+  for (const p of points) {
+    const d = Math.abs(p.t - t);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return [best.lon, best.lat];
+}
+
+function applySelection() {
+  if (!map || state.mode === 'before') return;
+  const sel = state.selectedTrip;
+  const expr = sel ? ['case', ['==', ['get', 'trip'], sel], 1, 0.22] : 1;
+  ['casing', 'trail'].forEach((id) => { if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', id === 'casing' ? 0.95 : expr); });
+  if (map.getLayer('quality-line')) map.setPaintProperty('quality-line', 'line-opacity', state.quality ? (sel ? ['case', ['==', ['get', 'trip'], sel], 1, 0.18] : 0.95) : 0);
+  if (map.getLayer('stops-dot')) map.setPaintProperty('stops-dot', 'circle-opacity', sel ? 0.35 : 1);
+}
+
+function fitTrip(n) {
+  const t = trips.find((x) => x.n === n);
+  if (!t) return;
+  const pts = t.points.map((p) => [p.lon, p.lat]);
+  const b = pts.reduce((acc, c) => acc.extend(c), new maplibregl.LngLatBounds(pts[0], pts[0]));
+  map.fitBounds(b, { padding: { top: 140, bottom: 260, left: 80, right: 80 }, maxZoom: 14, duration: 600 });
+}
+
+function render() {
+  if (!map || !map.isStyleLoaded()) {
+    updateStats();
+    if (state.dragging) updateTimelineOverlay();
+    else updateTimeline();
+    if (map && !state.renderQueued) {
+      state.renderQueued = true;
+      const retry = () => {
+        state.renderQueued = false;
+        if (map) render();
+      };
+      map.once('idle', retry);
+      setTimeout(retry, 600);
+    }
+    return;
+  }
+  markers.forEach((m) => { try { m.remove(); } catch (e) {} });
+  markers = [];
+  movingMarker = null;
+  clearLayers();
+  if (state.mode === 'before') renderBefore();
+  else renderNew();
+  updateStats();
+  if (state.dragging) updateTimelineOverlay();
+  else updateTimeline();
+}
+
+/* ── stats / timeline ────────────────────────────────────── */
+function tripStats() {
+  if (state.selectedTrip) {
+    const t = trips.find((x) => x.n === state.selectedTrip);
+    const km = t.distance / 1000;
+    return {
+      km, dur: t.end - t.start,
+      moving: fmtDur(t.movingMs),
+      stops: '0',
+      avg: t.movingMs > 0 ? Math.round(km / (t.movingMs / 3600000)) + ' km/h' : '—',
+      quality: t.quality === 'clean' ? 'Clean' : t.quality === 'good' ? 'Good' : 'Bad',
+      label: `Trip ${t.n}`,
+    };
+  }
+  const km = trips.reduce((a, t) => a + t.distance, 0) / 1000;
+  const movingMs = trips.reduce((a, t) => a + t.movingMs, 0);
+  const avg = movingMs > 0 ? Math.round(km / (movingMs / 3600000)) : 0;
+  return {
+    km, dur: DAY_END - DAY_START,
+    moving: fmtDur(movingMs),
+    stops: String(stops.length),
+    avg: movingMs > 0 ? avg + ' km/h' : '—',
+    quality: (() => { const n = trips.filter((t) => t.quality === 'bad').length; return n ? `${n} issue${n > 1 ? 's' : ''}` : 'Good'; })(),
+    label: 'All trips',
+  };
+}
+
+function updateStats() {
+  const s = tripStats();
+  document.getElementById('sEyebrow').textContent = state.selectedTrip
+    ? `Trip ${state.selectedTrip} · ${SCENES[state.scene].label}`
+    : `${SCENES[state.scene].label} · ${state.day} Nov`;
+  document.getElementById('sDistance').textContent = s.km.toFixed(1);
+  document.getElementById('sSub').textContent = `${trips.length} trip${trips.length === 1 ? '' : 's'} · ${stops.length} stop${stops.length === 1 ? '' : 's'}`;
+  document.getElementById('mMoving').textContent = s.moving;
+  document.getElementById('mStops').textContent = s.stops;
+  document.getElementById('mAvg').textContent = s.avg;
+  document.getElementById('mQuality').textContent = s.quality;
+  updateQualityRow();
+}
+
+function updateQualityRow() {
+  const row = document.getElementById('qualityRow');
+  if (!row) return;
+  const counts = { clean: 0, good: 0, bad: 0 };
+  trips.forEach((t) => { counts[t.quality] += 1; });
+  const names = { clean: 'Clean', good: 'Good', bad: 'Bad' };
+  row.innerHTML = '<span class="q-label">Trip quality</span>' + ['clean', 'good', 'bad']
+    .map((k) => `<span class="qpill q-${k}"><i></i>${names[k]} ${counts[k]}</span>`)
+    .join('');
+}
+
+function blocks() {
+  const out = [];
+  trips.forEach((t) => out.push({ type: 'trip', start: t.start, end: t.end, n: t.n }));
+  stops.forEach((s) => out.push({ type: 'stop', start: s.start, end: s.end }));
+  gaps.forEach((g) => out.push({ type: 'no-data', start: g.start, end: g.end }));
+  return out.sort((a, b) => a.start - b.start);
+}
+
+function allBlocks() {
+  const out = [];
+  DATA.trips.forEach((t) => out.push({ type: 'trip', start: t.start, end: t.end, n: t.n }));
+  DATA.stops.forEach((s) => out.push({ type: 'stop', start: s.start, end: s.end }));
+  DATA.gaps.forEach((g) => out.push({ type: 'no-data', start: g.start, end: g.end }));
+  return out.sort((a, b) => a.start - b.start);
+}
+
+function updateTimelineOverlay() {
+  const span = DATA.dayEnd - DATA.dayStart || 1;
+  const left = ((DAY_START - DATA.dayStart) / span) * 100;
+  const right = ((DAY_END - DATA.dayStart) / span) * 100;
+  const win = document.getElementById('tlWindow');
+  if (win) {
+    win.style.left = left + '%';
+    win.style.width = Math.max(0.4, right - left) + '%';
+  }
+  const hl = document.getElementById('tlHandleL');
+  if (hl) hl.style.left = left + '%';
+  const hr = document.getElementById('tlHandleR');
+  if (hr) hr.style.left = right + '%';
+  setTime(state.time, false);
+}
+
+function updateTimeline() {
+  const track = document.getElementById('tlTrack');
+  const dayStart = DATA.dayStart;
+  const dayEnd = DATA.dayEnd;
+  const span = dayEnd - dayStart || 1;
+  track.querySelectorAll('.tl-block').forEach((n) => n.remove());
+  allBlocks().forEach((b) => {
+    const el = document.createElement('div');
+    el.className = 'tl-block ' + b.type + (b.type === 'trip' && state.selectedTrip === b.n ? ' sel' : '');
+    el.style.left = ((b.start - dayStart) / span) * 100 + '%';
+    el.style.width = Math.max(0.5, ((b.end - b.start) / span) * 100) + '%';
+    if (b.type === 'trip' && state.mode === 'd') {
+      const trip = trips.find((t) => t.n === b.n) || DATA.trips.find((t) => t.n === b.n);
+      el.style.background = tripColor(b.n);
+      if (trip) {
+        const bar = document.createElement('span');
+        bar.className = 'qbar';
+        bar.style.background = trip.quality === 'clean' ? '#30d158' : trip.quality === 'good' ? '#ffd60a' : '#ff453a';
+        el.appendChild(bar);
+      }
+    }
+    if (b.type === 'trip') {
+      el.title = `Trip ${b.n} · ${fmt(b.start)}–${fmt(b.end)}`;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.selectedTrip = state.selectedTrip === b.n ? null : b.n;
+        state.time = Math.max(DAY_START, Math.min(DAY_END, b.start));
+        render();
+        if (state.selectedTrip) fitTrip(b.n);
+      });
+    }
+    track.appendChild(el);
+  });
+  const ticks = document.getElementById('tlTicks');
+  if (ticks) {
+    const stops = window.innerWidth < 760 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];
+    ticks.innerHTML = stops
+      .map((f, i) => `<span class="${i === 0 ? 'first' : i === stops.length - 1 ? 'last' : ''}">${fmt(dayStart + f * span)}</span>`)
+      .join('');
+  }
+  updateTimelineOverlay();
+}
+
+function setTime(t, moveMap = true) {
+  state.time = Math.max(DAY_START, Math.min(DAY_END, t));
+  const span = DATA.dayEnd - DATA.dayStart || 1;
+  const pct = ((state.time - DATA.dayStart) / span) * 100;
+  const head = document.getElementById('tlHead');
+  if (head) head.style.left = pct + '%';
+  document.getElementById('tlClock').textContent = fmt(state.time);
+  if (movingMarker) movingMarker.setLngLat(markerCoord(state.time));
+  if (moveMap && state.playing && map) map.easeTo({ center: markerCoord(state.time), duration: 300, essential: false });
+}
+
+/* scrub + window handles */
+let scrubbing = false;
+let dragMode = null;
+const track = document.getElementById('tlTrack');
+
+function timeAtX(clientX) {
+  const r = track.getBoundingClientRect();
+  const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+  return DATA.dayStart + f * (DATA.dayEnd - DATA.dayStart);
+}
+
+function scrubTo(e) {
+  setTime(Math.max(DAY_START, Math.min(DAY_END, timeAtX(e.clientX))));
+}
+
+track.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('.tl-handle')) return;
+  scrubbing = true;
+  track.setPointerCapture(e.pointerId);
+  scrubTo(e);
+});
+track.addEventListener('pointermove', (e) => { if (scrubbing) scrubTo(e); });
+track.addEventListener('pointerup', () => { scrubbing = false; });
+
+function setRangeLive(start, end) {
+  state.windowStart = start;
+  state.windowEnd = end;
+  applyWindow();
+  state.time = Math.max(DAY_START, Math.min(state.time, DAY_END));
+  state.dragging = true;
+  render();
+  state.dragging = false;
+  updateTimelineOverlay();
+  syncTimeUI();
+}
+
+function startHandle(mode, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  dragMode = mode;
+}
+
+document.getElementById('tlHandleL').addEventListener('pointerdown', (e) => startHandle('start', e));
+document.getElementById('tlHandleR').addEventListener('pointerdown', (e) => startHandle('end', e));
+
+document.addEventListener('pointermove', (e) => {
+  if (!dragMode) return;
+  const t = timeAtX(e.clientX);
+  const MIN = 5 * 60000;
+  if (dragMode === 'start') {
+    setRangeLive(Math.min(t, DAY_END - MIN), DAY_END);
+  } else {
+    setRangeLive(DAY_START, Math.max(t, DAY_START + MIN));
+  }
+});
+
+document.addEventListener('pointerup', () => {
+  if (!dragMode) return;
+  dragMode = null;
+  updateTimeline();
+  syncTimeUI();
+  fitAll();
+});
+
+/* play */
+let raf = null;
+function tick(ts) {
+  if (!state.playing) return;
+  const speed = 160;
+  const next = state.time + 16 * speed;
+  if (next >= DAY_END) { setTime(DAY_END); state.playing = false; syncPlay(); return; }
+  setTime(next);
+  raf = requestAnimationFrame(tick);
+}
+function syncPlay() {
+  document.getElementById('playBtn').innerHTML = state.playing
+    ? '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="1"/><rect x="9" y="3" width="3" height="10" rx="1"/></svg>'
+    : '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5l9 5.5-9 5.5z"/></svg>';
+}
+document.getElementById('playBtn').addEventListener('click', () => {
+  state.playing = !state.playing;
+  if (state.playing) { if (state.time >= DAY_END) setTime(DAY_START); raf = requestAnimationFrame(tick); }
+  else if (raf) cancelAnimationFrame(raf);
+  syncPlay();
+});
+
+/* ── chips ───────────────────────────────────────────────── */
+function updateChips() {
+  const wrap = document.getElementById('tripChips');
+  wrap.innerHTML = '';
+  trips.forEach((t) => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (state.selectedTrip === t.n ? ' sel' : '');
+    const q = state.mode === 'd' ? `<span class="chip-q ${t.quality}"></span>` : '';
+    b.innerHTML = `<i style="background:${tripColor(t.n)}"></i>Trip ${t.n} <em>${fmt(t.start)}</em>${q}`;
+    b.addEventListener('click', () => {
+      state.selectedTrip = state.selectedTrip === t.n ? null : t.n;
+      state.time = t.start;
+      render();
+      if (state.selectedTrip) fitTrip(t.n);
+    });
+    wrap.appendChild(b);
+  });
+  const list = document.getElementById('tripList');
+  list.innerHTML = '<h3>Trips</h3>';
+  trips.forEach((t) => {
+    const row = document.createElement('button');
+    row.className = 'trip-row' + (state.selectedTrip === t.n ? ' sel' : '');
+    const q = state.mode === 'd' ? ` · ${t.quality}` : '';
+    row.innerHTML = `<i style="background:${tripColor(t.n)}"></i><span><span class="n">Trip ${t.n}${q}</span><div class="d">${(t.distance / 1000).toFixed(1)} km · ${fmtDur(t.end - t.start)}</div></span><span class="t">${fmt(t.start)}</span>`;
+    row.addEventListener('click', () => {
+      state.selectedTrip = state.selectedTrip === t.n ? null : t.n;
+      state.time = t.start;
+      render();
+      if (state.selectedTrip) fitTrip(t.n);
+    });
+    list.appendChild(row);
+  });
+  const all = document.createElement('button');
+  all.className = 'trip-row' + (state.selectedTrip === null ? ' sel' : '');
+  all.innerHTML = `<i style="background:var(--text-3)"></i><span><span class="n">All trips</span><div class="d">${trips.length} trips · ${stops.length} stops</div></span><span class="t">${fmt(DAY_START)}</span>`;
+  all.addEventListener('click', () => { state.selectedTrip = null; render(); });
+  list.insertBefore(all, list.firstChild.nextSibling);
+}
+
+/* ── chrome events ───────────────────────────────────────── */
+function setMode(mode) {
+  state.mode = mode;
+  document.body.className = 'mode-' + mode;
+  document.querySelectorAll('.segmented button').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+  document.getElementById('legend').classList.remove('open');
+  document.getElementById('calendar').classList.remove('open');
+  if (mode === 'before') {
+    document.body.classList.remove('quality');
+    render();
+    return;
+  }
+  setTimeout(() => { if (map) map.resize(); }, 240);
+  render();
+  updateChips();
+}
+
+document.querySelectorAll('.segmented button').forEach((b) => b.addEventListener('click', () => {
+  state.selectedTrip = null;
+  state.time = DAY_START;
+  setMode(b.dataset.mode);
+  fitAll();
+}));
+
+document.getElementById('qualityBtn').addEventListener('click', (e) => {
+  state.quality = !state.quality;
+  document.body.classList.toggle('quality', state.quality);
+  e.currentTarget.classList.toggle('is-on', state.quality);
+  e.currentTarget.setAttribute('aria-pressed', String(state.quality));
+  if (state.mode !== 'before') {
+    if (map.getLayer('quality-line')) map.setLayoutProperty('quality-line', 'visibility', state.quality ? 'visible' : 'none');
+    if (map.getLayer('bad-ring')) map.setLayoutProperty('bad-ring', 'visibility', state.quality ? 'visible' : 'none');
+    if (map.getLayer('trail')) map.setPaintProperty('trail', 'line-opacity', state.quality ? 0.25 : (state.selectedTrip ? ['case', ['==', ['get', 'trip'], state.selectedTrip], 1, 0.22] : 1));
+    updateStats();
+  }
+});
+
+document.getElementById('legendBtn').addEventListener('click', (e) => {
+  const el = document.getElementById('legend');
+  el.classList.toggle('open');
+  e.currentTarget.classList.toggle('is-on', el.classList.contains('open'));
+});
+
+document.getElementById('themeBtn').addEventListener('click', () => {
+  state.theme = state.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.classList.toggle('dark', state.theme === 'dark');
+  document.documentElement.classList.toggle('light', state.theme === 'light');
+  initMap();
+  if (state.mode === 'before') { /* map reload renders */ }
+});
+
+let rangeIndex = 0;
+const ranges = ['Today', 'Last 24 hours', 'Last 7 days'];
+document.getElementById('rangePill').addEventListener('click', () => {
+  rangeIndex = (rangeIndex + 1) % ranges.length;
+  document.getElementById('rangeLabel').textContent = ranges[rangeIndex];
+});
+
+/* ── boot ────────────────────────────────────────────────── */
+
+/* ── vehicle picker ─────────────────────────────────────── */
+function updateVehiclePill() {
+  const v = VEHICLES[state.vehicle || 0];
+  const id = document.getElementById('vehId');
+  if (id) id.textContent = v.id;
+  const nm = document.getElementById('vehName');
+  if (nm) nm.textContent = v.driver;
+  const st = document.getElementById('vehStatus');
+  if (st) {
+    st.className = 'status ' + (v.status === 'live' ? '' : v.status);
+    st.innerHTML = `<i></i>${v.status === 'live' ? 'Live' : v.status === 'gap' ? v.note : 'On scene'}`;
+  }
+  const dot = document.querySelector('.vehicle-dot span');
+  if (dot) dot.style.background = v.color;
+}
+
+function renderVehicles(query = '') {
+  const list = document.getElementById('vehList');
+  if (!list) return;
+  const q = query.trim().toLowerCase();
+  const rows = VEHICLES.map((v, i) => ({ v, i })).filter(({ v }) =>
+    !q || v.id.toLowerCase().includes(q) || v.driver.toLowerCase().includes(q)
+  );
+  list.innerHTML = rows.length
+    ? rows.map(({ v, i }) => `
+      <button class="veh-row ${i === state.vehicle ? 'sel' : ''}" role="option" aria-selected="${i === state.vehicle}" data-i="${i}">
+        <span class="dot" style="background:${v.color}"></span>
+        <span><span class="id">${v.id}</span><div class="drv">${v.driver}</div></span>
+        <span class="st ${v.status === 'live' ? 'live' : v.status === 'gap' ? 'gap' : ''}">${v.status === 'live' ? 'Live' : v.note}</span>
+      </button>`).join('')
+    : '<div class="veh-empty">No match</div>';
+  list.querySelectorAll('.veh-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      state.vehicle = Number(row.dataset.i);
+      state.selectedTrip = null;
+      updateVehiclePill();
+      document.getElementById('vehicles').classList.remove('open');
+      document.getElementById('vehiclePill').setAttribute('aria-expanded', 'false');
+      render();
+    });
+  });
+}
+
+document.getElementById('vehiclePill').addEventListener('click', (e) => {
+  const el = document.getElementById('vehicles');
+  const open = !el.classList.contains('open');
+  el.classList.toggle('open', open);
+  e.currentTarget.setAttribute('aria-expanded', String(open));
+  document.getElementById('calendar').classList.remove('open');
+  document.getElementById('legend').classList.remove('open');
+  if (open) {
+    document.getElementById('vehSearch').value = '';
+    renderVehicles();
+    document.getElementById('vehSearch').focus();
+  }
+});
+
+document.getElementById('vehSearch').addEventListener('input', (e) => renderVehicles(e.target.value));
+
+document.addEventListener('click', (e) => {
+  const el = document.getElementById('vehicles');
+  if (!el.classList.contains('open')) return;
+  if (el.contains(e.target) || document.getElementById('vehiclePill').contains(e.target)) return;
+  el.classList.remove('open');
+  document.getElementById('vehiclePill').setAttribute('aria-expanded', 'false');
+});
+
+/* ── calendar / window ───────────────────────────────────── */
+function renderCalendar() {
+  const grid = document.getElementById('calGrid');
+  if (!grid) return;
+  const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  grid.innerHTML = dows.map((d) => `<div class="cal-dow">${d}</div>`).join('');
+  for (let d = 1; d <= 30; d++) {
+    const scene = Object.keys(SCENES).find((k) => SCENES[k].day === d);
+    const el = document.createElement('button');
+    el.className = 'cal-day' + (scene ? ' has' : '') + (d === state.day ? ' sel' : '');
+    el.textContent = String(d);
+    if (scene) {
+      el.title = `${SCENES[scene].label} — ${SCENES[scene].note}`;
+      el.addEventListener('click', () => setScene(scene));
+    }
+    grid.appendChild(el);
+  }
+}
+
+function setScene(scene) {
+  state.scene = scene;
+  state.day = SCENES[scene].day;
+  DATA = makeDay(scene);
+  state.windowStart = DATA.dayStart;
+  state.windowEnd = DATA.dayEnd;
+  applyWindow();
+  state.time = DAY_START;
+  state.selectedTrip = null;
+  document.getElementById('calLabel').textContent = `${state.day} Nov`;
+  document.getElementById('rangeLabel').textContent = `${state.day} Nov`;
+  document.getElementById('brandSub').textContent = `Basti · ${state.day} Nov`;
+  document.getElementById('calHint').textContent = `${SCENES[scene].label} · ${SCENES[scene].note}`;
+  document.getElementById('calendar').classList.remove('open');
+  renderCalendar();
+syncTimeUI();
+updateVehiclePill();
+renderVehicles();
+  updateChips();
+  render();
+  fitAll();
+  syncTimeUI();
+}
+
+const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+const pad2 = (n) => String(n).padStart(2, '0');
+
+function istTimeValue(ms) {
+  const d = new Date(ms + IST_OFFSET);
+  return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+}
+
+function msFromIstTime(value) {
+  const base = new Date(DATA.dayStart + IST_OFFSET);
+  const [hh, mm] = String(value).split(':').map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return DATA.dayStart;
+  return Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), hh, mm) - IST_OFFSET;
+}
+
+function syncTimeUI() {
+  const from = document.getElementById('fromLabel');
+  if (from) from.textContent = fmt(DAY_START);
+  const to = document.getElementById('toLabel');
+  if (to) to.textContent = fmt(DAY_END);
+  const cr = document.getElementById('calRange');
+  if (cr) cr.textContent = `${fmt(DAY_START)} → ${fmt(DAY_END)} · ${fmtDur(DAY_END - DAY_START)}`;
+  const wr = document.getElementById('winRange');
+  if (wr) wr.textContent = `${fmt(DAY_START)} → ${fmt(DAY_END)}`;
+  const wd = document.getElementById('winDur');
+  if (wd) wd.textContent = fmtDur(DAY_END - DAY_START);
+  const wl = document.getElementById('windowLabel');
+  if (wl) wl.textContent = fmtDur(DAY_END - DAY_START);
+  const span = DAY_END - DAY_START;
+  const spanMin = Math.round(span / 60000);
+  document.querySelectorAll('#calPresets button').forEach((b) => {
+    const m = Number(b.dataset.min);
+    const full = m === 0 && span >= (DATA.dayEnd - DATA.dayStart) - 60000;
+    b.classList.toggle('on', full || (m > 0 && Math.abs(m - spanMin) <= 1));
+  });
+}
+
+function setRange(start, end) {
+  state.windowStart = start;
+  state.windowEnd = end;
+  applyWindow();
+  state.time = Math.max(DAY_START, Math.min(state.time || DAY_START, DAY_END));
+  state.selectedTrip = null;
+  updateChips();
+  render();
+  fitAll();
+  syncTimeUI();
+}
+
+function setPreset(min) {
+  const dayStart = DATA.dayStart;
+  const dayEnd = DATA.dayEnd;
+  if (!min) { setRange(dayStart, dayEnd); return; }
+  const end = Math.min(dayEnd, DAY_END || dayEnd);
+  setRange(Math.max(dayStart, end - min * 60000), end);
+}
+
+function stepWindow(dir) {
+  const span = DAY_END - DAY_START;
+  setRange(DAY_START + dir * span, DAY_END + dir * span);
+}
+
+const STEP_MS = 5 * 60000;
+function shiftStart(dir) {
+  const start = Math.max(DATA.dayStart, Math.min(DAY_START + dir * STEP_MS, DAY_END - 5 * 60000));
+  setRange(start, DAY_END);
+}
+function shiftEnd(dir) {
+  const end = Math.min(DATA.dayEnd, Math.max(DAY_END + dir * STEP_MS, DAY_START + 5 * 60000));
+  setRange(DAY_START, end);
+}
+document.getElementById('fromMinus').addEventListener('click', () => shiftStart(-1));
+document.getElementById('fromPlus').addEventListener('click', () => shiftStart(1));
+document.getElementById('toMinus').addEventListener('click', () => shiftEnd(-1));
+document.getElementById('toPlus').addEventListener('click', () => shiftEnd(1));
+
+document.querySelectorAll('#calPresets button').forEach((b) => {
+  b.addEventListener('click', () => setPreset(Number(b.dataset.min)));
+});
+
+document.getElementById('prevWin').addEventListener('click', () => stepWindow(-1));
+document.getElementById('nextWin').addEventListener('click', () => stepWindow(1));
+document.getElementById('nextWin').addEventListener('click', () => stepWindow(1));
+
+document.getElementById('calendarBtn').addEventListener('click', (e) => {
+  const el = document.getElementById('calendar');
+  const open = !el.classList.contains('open');
+  el.classList.toggle('open', open);
+  document.getElementById('legend').classList.remove('open');
+  e.currentTarget.classList.toggle('is-on', open);
+  if (open) renderCalendar();
+});
+
+const params = new URLSearchParams(location.search);
+state.mode = params.get('mode') || 'a';
+state.theme = params.get('theme') === 'light' ? 'light' : 'dark';
+state.quality = params.get('quality') === '1';
+state.scene = SCENES[params.get('scene')] ? params.get('scene') : 'mixed';
+const winParam = Number(params.get('window') || 0);
+const winMin = [0, 120, 60, 30].includes(winParam) ? winParam : 0;
+state.day = SCENES[state.scene].day;
+DATA = makeDay(state.scene);
+state.windowStart = DATA.dayStart;
+state.windowEnd = winMin ? Math.min(DATA.dayEnd, DATA.dayStart + winMin * 60000) : DATA.dayEnd;
+applyWindow();
+state.time = DAY_START;
+const calLabel = document.getElementById('calLabel');
+if (calLabel) calLabel.textContent = `${state.day} Nov`;
+const calHint = document.getElementById('calHint');
+if (calHint) calHint.textContent = `${SCENES[state.scene].label} · ${SCENES[state.scene].note}`;
+const brandSub = document.getElementById('brandSub');
+if (brandSub) brandSub.textContent = `Basti · ${state.day} Nov`;
+const rangeLabel0 = document.getElementById('rangeLabel');
+if (rangeLabel0) rangeLabel0.textContent = `${state.day} Nov`;
+if (document.getElementById('calendarBtn')) document.getElementById('calendarBtn').classList.toggle('is-on', false);
+renderCalendar();
+syncTimeUI();
+document.documentElement.className = state.theme;
+document.body.className = 'mode-' + state.mode;
+if (state.quality) {
+  document.body.classList.add('quality');
+  const qb = document.getElementById('qualityBtn');
+  qb.classList.add('is-on');
+  qb.setAttribute('aria-pressed', 'true');
+}
+document.querySelectorAll('.segmented button').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.mode));
+initMap();
+updateChips();
+setTime(DAY_START);
+syncPlay();
+</script>
+</body>
+</html>
