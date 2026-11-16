@@ -1201,10 +1201,14 @@ export default function HistoryAppV2() {
                 })}
                 <div id="fh-head" className="absolute top-[-3px] bottom-[-3px] w-0.5 bg-white" style={{ left: '0%' }} />
               </div>
-              <div className="flex justify-between text-[9px] fh2-muted mt-1 tabular-nums"><span>{fmt(appliedFrom)}</span><span>{fmt((appliedFrom + appliedTo) / 2)}</span><span>{fmt(appliedTo)}</span></div>
+              <div className="flex justify-between text-[9px] fh2-muted mt-1 tabular-nums">
+                <span>{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate(appliedFrom) : fmt(appliedFrom)}</span>
+                <span>{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate((appliedFrom + appliedTo) / 2) : fmt((appliedFrom + appliedTo) / 2)}</span>
+                <span>{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate(appliedTo) : fmt(appliedTo)}</span>
+              </div>
             </div>
             <div className="text-right">
-              <div className="text-xs font-semibold tabular-nums">{fmt(time || appliedFrom)}</div>
+              <div className="text-xs font-semibold tabular-nums">{appliedTo - appliedFrom > 2 * DAY_MS ? fmtFull(time || appliedFrom) : fmt(time || appliedFrom)}</div>
               <div className="text-[9px] fh2-muted tabular-nums">{playSpeed} km/h</div>
             </div>
           </div>}
