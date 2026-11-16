@@ -195,6 +195,27 @@ function speedColorFor(v) {
   return '#ff453a';
 }
 
+function positionAt(arr, t) {
+  if (!arr.length) return null;
+  if (t <= arr[0].t) return { ...arr[0], bearing: 0 };
+  if (t >= arr[arr.length - 1].t) return { ...arr[arr.length - 1], bearing: 0 };
+  for (let i = 1; i < arr.length; i++) {
+    if (arr[i].t >= t) {
+      const a = arr[i - 1];
+      const b = arr[i];
+      const span = b.t - a.t || 1;
+      const f = Math.max(0, Math.min(1, (t - a.t) / span));
+      return {
+        lon: a.lon + (b.lon - a.lon) * f,
+        lat: a.lat + (b.lat - a.lat) * f,
+        speed: a.speed + (b.speed - a.speed) * f,
+        bearing: bearingBetween([a.lon, a.lat], [b.lon, b.lat]),
+      };
+    }
+  }
+  return arr[arr.length - 1];
+}
+
 function nearestByTime(arr, t) {
   if (!arr.length) return null;
   let best = arr[0];
@@ -373,6 +394,7 @@ export default function HistoryAppV2() {
   const [advanced, setAdvanced] = useState(false);
   const [speedColor, setSpeedColor] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(0);
+  const [follow, setFollow] = useState(true);
   const [reportTab, setReportTab] = useState('map');
   const [reports, setReports] = useState({ summary: [], trips: [], stops: [] });
   const [reportLoading, setReportLoading] = useState(false);
@@ -595,32 +617,26 @@ export default function HistoryAppV2() {
     if (!map || !mapReady || !map.isStyleLoaded()) return undefined;
     markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
     markersRef.current = [];
-    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'speed-line', 'bridges'].forEach((id) => {
+    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'area-centre', 'speed-line', 'bridges'].forEach((id) => {
       if (map.getLayer(id)) map.removeLayer(id);
     });
-    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'speed', 'bridges'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
+    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'area-centre', 'speed', 'bridges'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
 
     if (!points.length) return undefined;
     if (!advanced && reportTab !== 'map') return undefined;
+    if (appliedTo - appliedFrom > 2 * DAY_MS) return undefined;
 
     if (confidence.low) {
-      const cloud = prepared.clean.map((p) => ({ type: 'Feature', properties: { accuracy: p.accuracy || 50 }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } }));
-      map.addSource('cloud', { type: 'geojson', data: { type: 'FeatureCollection', features: cloud } });
-      map.addLayer({
-        id: 'cloud', type: 'circle', source: 'cloud',
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['get', 'accuracy'], 10, 5, 60, 10, 150, 16],
-          'circle-color': vehicleColor,
-          'circle-opacity': 0.18,
-          'circle-stroke-width': 0,
-        },
-      });
       const hull = convexHull(prepared.clean.map((p) => [p.lon, p.lat]));
       if (hull.length > 2) {
         map.addSource('hull', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...hull, hull[0]]] } } });
-        map.addLayer({ id: 'hull-fill', type: 'fill', source: 'hull', paint: { 'fill-color': vehicleColor, 'fill-opacity': 0.07 } });
-        map.addLayer({ id: 'hull-line', type: 'line', source: 'hull', paint: { 'line-color': vehicleColor, 'line-width': 1, 'line-opacity': 0.22 } });
+        map.addLayer({ id: 'hull-fill', type: 'fill', source: 'hull', paint: { 'fill-color': vehicleColor, 'fill-opacity': 0.16 } });
+        map.addLayer({ id: 'hull-line', type: 'line', source: 'hull', paint: { 'line-color': vehicleColor, 'line-width': 1.5, 'line-opacity': 0.4 } });
       }
+      const cLon = prepared.clean.reduce((s, p) => s + p.lon, 0) / prepared.clean.length;
+      const cLat = prepared.clean.reduce((s, p) => s + p.lat, 0) / prepared.clean.length;
+      map.addSource('area-centre', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [cLon, cLat] } } });
+      map.addLayer({ id: 'area-centre', type: 'circle', source: 'area-centre', paint: { 'circle-radius': 5, 'circle-color': vehicleColor, 'circle-stroke-color': theme === 'dark' ? '#0b1118' : '#ffffff', 'circle-stroke-width': 2.5 } });
     }
 
     const runs = confidence.low ? [] : prepared.runs;
@@ -657,11 +673,13 @@ export default function HistoryAppV2() {
         const next = ordered[i];
         const a = prev.coords[prev.coords.length - 1];
         const b = next.coords[0];
-        if (haversine(a, b) * 1000 <= 500) bridges.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [a, b] } });
+        const meters = haversine(a, b) * 1000;
+        if (meters <= 500) bridges.push({ type: 'Feature', properties: { kind: 'bridge' }, geometry: { type: 'LineString', coordinates: [a, b] } });
+        else if (meters <= 20000) bridges.push({ type: 'Feature', properties: { kind: 'link' }, geometry: { type: 'LineString', coordinates: [a, b] } });
       }
       if (bridges.length) {
         map.addSource('bridges', { type: 'geojson', data: { type: 'FeatureCollection', features: bridges } });
-        map.addLayer({ id: 'bridges', type: 'line', source: 'bridges', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': 3.4, 'line-opacity': 0.55 } });
+        map.addLayer({ id: 'bridges', type: 'line', source: 'bridges', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': ['case', ['==', ['get', 'kind'], 'bridge'], 3.4, 1.3], 'line-opacity': ['case', ['==', ['get', 'kind'], 'bridge'], 0.55, 0.18] } });
       }
     }
 
@@ -757,13 +775,22 @@ export default function HistoryAppV2() {
     }
 
     /* gap caps */
-    if (prepared.caps.length) {
+    if (advanced && prepared.caps.length) {
       map.addSource('caps', { type: 'geojson', data: { type: 'FeatureCollection', features: prepared.caps.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: c } })) } });
       map.addLayer({ id: 'gap-caps', type: 'circle', source: 'caps', paint: { 'circle-radius': 4.5, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': theme === 'dark' ? '#eef4fa' : '#0a1119', 'circle-stroke-width': 1.5, 'circle-stroke-opacity': 0.5 } });
     }
 
     const movingEl = document.createElement('div');
-    movingEl.style.cssText = `width:14px;height:14px;border-radius:99px;background:${vehicleColor};border:3px solid ${theme === 'dark' ? '#04121c' : '#ffffff'};box-shadow:0 0 0 5px ${vehicleColor}33`;
+    movingEl.className = 'fh-car';
+    movingEl.innerHTML = `<span class="fh-car-halo" style="--c:${vehicleColor}"></span><svg viewBox="0 0 28 44" width="26" height="40" aria-hidden="true">
+      <defs><linearGradient id="fhCarBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dbe4ee"/></linearGradient></defs>
+      <rect x="3" y="8" width="22" height="30" rx="7" fill="url(#fhCarBody)" stroke="${theme === 'dark' ? '#0b1728' : '#94a3b8'}" stroke-width="1.4"/>
+      <rect x="6" y="13" width="16" height="8" rx="3" fill="#0f2a3d" opacity=".9"/>
+      <rect x="6" y="26" width="16" height="3" rx="1.5" fill="${vehicleColor}" opacity=".9"/>
+      <rect x="6" y="31" width="16" height="3" rx="1.5" fill="${vehicleColor}" opacity=".55"/>
+      <circle cx="8.5" cy="10" r="1.8" fill="#ff453a"/>
+      <circle cx="19.5" cy="10" r="1.8" fill="#ff453a"/>
+    </svg>`;
     movingMarkerRef.current = new maplibregl.Marker({ element: movingEl }).setLngLat([prepared.clean[0].lon, prepared.clean[0].lat]).addTo(map);
     markersRef.current.push(movingMarkerRef.current);
 
@@ -783,22 +810,34 @@ export default function HistoryAppV2() {
   }, [prepared, reports.stops, confidence, mapReady, mode, viewMode, advanced, reportTab, quality, speedColor, theme, vehicleColor, selectedTrip]);
 
   useEffect(() => {
-    const p = nearestByTime(prepared.clean, time || appliedFrom);
+    const p = positionAt(prepared.clean, time || appliedFrom);
     if (p && movingMarkerRef.current) {
       movingMarkerRef.current.setLngLat([p.lon, p.lat]);
+      const el = movingMarkerRef.current.getElement();
+      const car = el.querySelector('svg');
+      if (car) car.style.transform = `rotate(${p.bearing || 0}deg)`;
       setPlaySpeed(Math.round(Number(p.speed) || 0));
+      if (follow && playing && mapRef.current) {
+        const center = mapRef.current.getCenter();
+        const map = mapRef.current;
+        const pt = map.project([p.lon, p.lat]);
+        const w = map.getCanvas().clientWidth;
+        const h = map.getCanvas().clientHeight;
+        const outside = pt.x < w * 0.22 || pt.x > w * 0.78 || pt.y < h * 0.22 || pt.y > h * 0.7;
+        if (outside) map.easeTo({ center: [p.lon, p.lat], duration: 900, easing: (t) => 1 - Math.pow(1 - t, 3), essential: true });
+      }
     }
-  }, [time, prepared, mapReady]);
+  }, [time, prepared, mapReady, follow, playing]);
 
   useEffect(() => {
     if (!playing) return undefined;
     const id = setInterval(() => {
       setTime((t) => {
-        const next = (t || appliedFrom) + 120000;
+        const next = (t || appliedFrom) + 30000;
         if (next >= appliedTo) { setPlaying(false); return appliedTo; }
         return next;
       });
-    }, 140);
+    }, 60);
     return () => clearInterval(id);
   }, [playing, appliedFrom, appliedTo]);
 
@@ -984,6 +1023,10 @@ export default function HistoryAppV2() {
         .fh2-pop { animation: fh2-pop 200ms cubic-bezier(.2,.9,.3,1); transform-origin: top left; }
         @keyframes fh2-pop { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }
         .fh2 .tabular-nums { font-variant-numeric: tabular-nums; }
+        .fh-car { position: relative; width: 26px; height: 40px; will-change: transform; }
+        .fh-car svg { display: block; transition: transform 320ms cubic-bezier(.2,.8,.2,1); filter: drop-shadow(0 6px 10px rgba(0,0,0,.45)); }
+        .fh-car-halo { position: absolute; left: 50%; top: 55%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 99px; background: radial-gradient(circle, var(--c) 0%, transparent 65%); opacity: .22; animation: fh-pulse 2.2s ease-in-out infinite; }
+        @keyframes fh-pulse { 0%,100% { transform: scale(.8); opacity: .12; } 50% { transform: scale(1.1); opacity: .26; } }
         @media (prefers-reduced-motion: reduce) {
           .fh2 *, .fh2 *::before, .fh2 *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
         }
@@ -1026,6 +1069,14 @@ export default function HistoryAppV2() {
             {advanced && <button onClick={() => setSpeedColor((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${speedColor ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Speed</button>}
           </div>
         </div>
+
+        {reportTab === 'map' && appliedTo - appliedFrom > 2 * DAY_MS && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none px-6">
+            <div className="rounded-[16px] border fh2-border fh2-panel px-4 py-3 text-center text-[11px] fh2-muted shadow-2xl">
+              Select a day in <span className="font-semibold" style={{ color: 'var(--text)' }}>Summary</span> to see its route.
+            </div>
+          </div>
+        )}
 
         <section className="absolute left-3 bottom-3 right-3 md:right-auto md:w-[560px] rounded-[22px] border fh2-border fh2-panel backdrop-blur-xl p-4 shadow-2xl z-10">
           <div className="flex items-start gap-4">
