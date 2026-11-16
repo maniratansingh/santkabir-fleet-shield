@@ -373,6 +373,9 @@ export default function HistoryAppV2() {
   const [advanced, setAdvanced] = useState(false);
   const [speedColor, setSpeedColor] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(0);
+  const [reportTab, setReportTab] = useState('map');
+  const [reports, setReports] = useState({ summary: [], trips: [], stops: [] });
+  const [reportLoading, setReportLoading] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -387,7 +390,21 @@ export default function HistoryAppV2() {
   const movingMarkerRef = useRef(null);
   const [mapReady, setMapReady] = useState(false);
 
-  const trips = useMemo(() => buildTrips(points), [points]);
+  const trips = useMemo(() => {
+    if (reports.trips.length) {
+      return reports.trips.map((t, i) => ({
+        index: Number.isFinite(t.index) ? t.index : i,
+        start: t.startTime,
+        end: t.endTime,
+        distance: (t.distanceKm || 0) * 1000,
+        movingMs: (t.movingMin || 0) * 60000,
+        quality: t.quality || 'clean',
+        medianAccuracy: t.medianAccuracy || 0,
+        points: [],
+      }));
+    }
+    return buildTrips(points);
+  }, [reports.trips, points]);
   const prepared = useMemo(() => prepareTrail(points, trips), [points, trips]);
   const confidence = useMemo(() => {
     const ints = [];
@@ -412,7 +429,7 @@ export default function HistoryAppV2() {
       area = Math.abs(sum / 2) * (111.32 * 111.32 * Math.cos(rad(lat)));
     }
     return { low: medInt >= 300 || medAcc >= 60, medInt, medAcc, area };
-  }, [prepared]);
+  }, [prepared, reports]);
   const selected = vehicles.find((v) => v.id === selectedId);
   const vehicleColor = selectedId ? getUniqueVehicleColor(selectedId).line : '#38bdf8';
 
@@ -445,12 +462,16 @@ export default function HistoryAppV2() {
       }
     }
     if (lowRun !== null && Number(points[points.length - 1]?.device_time) - lowRun >= 5 * 60000) stopCount += 1;
+    const useServer = reports.trips.length > 0;
+    const serverKm = reports.trips.reduce((s, t) => s + (t.distanceKm || 0), 0);
+    const serverMoving = reports.trips.reduce((s, t) => s + (t.movingMin || 0) * 60000, 0);
+    const serverMax = reports.trips.reduce((s, t) => Math.max(s, t.maxSpeed || 0), 0);
     return {
-      km: distance / 1000,
-      moving: movingMs,
-      stops: prepared.stops.length,
-      avgSpeed: movingMs > 0 ? (distance / 1000) / (movingMs / 3600000) : 0,
-      maxSpeed: speeds.length ? Math.max(...speeds) : 0,
+      km: useServer ? serverKm : distance / 1000,
+      moving: useServer ? serverMoving : movingMs,
+      stops: reports.stops.length,
+      avgSpeed: (useServer ? serverMoving : movingMs) > 0 ? (useServer ? serverKm : distance / 1000) / ((useServer ? serverMoving : movingMs) / 3600000) : 0,
+      maxSpeed: useServer ? serverMax : (speeds.length ? Math.max(...speeds) : 0),
       interval: median(intervals),
       accuracy: Math.round(median(accs)),
       badPct: accs.length ? Math.round((bad / accs.length) * 100) : 0,
@@ -512,7 +533,26 @@ export default function HistoryAppV2() {
   useEffect(() => {
     setSelectedTrip(null);
     setTime(appliedFrom);
+    const span = appliedTo - appliedFrom;
+    setReportTab(span > 2 * DAY_MS ? 'summary' : 'map');
   }, [selectedId, appliedFrom, appliedTo]);
+
+  useEffect(() => {
+    if (!selectedId || !appliedFrom || !appliedTo) return undefined;
+    let cancelled = false;
+    setReportLoading(true);
+    Promise.all(['summary', 'trips', 'stops'].map((kind) =>
+      api(`/api/history/reports/${kind}?id=${encodeURIComponent(selectedId)}&from=${appliedFrom}&to=${appliedTo}`)
+        .then((data) => ({ kind, rows: Array.isArray(data[kind === 'summary' ? 'days' : kind]) ? data[kind === 'summary' ? 'days' : kind] : [] }))
+        .catch(() => ({ kind, rows: [] }))
+    )).then((results) => {
+      if (cancelled) return;
+      const next = { summary: [], trips: [], stops: [] };
+      results.forEach((r) => { next[r.kind] = r.rows; });
+      setReports(next);
+    }).finally(() => { if (!cancelled) setReportLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedId, appliedFrom, appliedTo, refreshKey]);
 
   /* map */
   useEffect(() => {
@@ -674,12 +714,12 @@ export default function HistoryAppV2() {
     });
 
     /* stops as bubbles, not path */
-    if (prepared.stops.length && !confidence.low) {
+    if (reports.stops.length && !confidence.low) {
       map.addSource('stops', {
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
-          features: prepared.stops.map((s) => ({ type: 'Feature', properties: { minutes: s.minutes, label: `${Math.round(s.minutes)}m` }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
+          features: reports.stops.map((s) => ({ type: 'Feature', properties: { minutes: s.minutes, label: `${Math.round(s.minutes)}m` }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
         },
       });
       map.addLayer({
@@ -721,7 +761,7 @@ export default function HistoryAppV2() {
       map.fitBounds(b, { padding: { top: 150, bottom: 280, left: 90, right: 90 }, maxZoom: 14, duration: 400 });
     }
     return undefined;
-  }, [prepared, confidence, mapReady, mode, quality, speedColor, theme, vehicleColor, selectedTrip]);
+  }, [prepared, reports.stops, confidence, mapReady, mode, quality, speedColor, theme, vehicleColor, selectedTrip]);
 
   useEffect(() => {
     const p = nearestByTime(prepared.clean, time || appliedFrom);
@@ -821,6 +861,54 @@ export default function HistoryAppV2() {
   }, [trips]);
 
   const filteredVehicles = vehicles.filter((v) => !vehicleQuery || v.id.toLowerCase().includes(vehicleQuery.toLowerCase()));
+
+  const openDay = (day) => {
+    const from = Date.parse(`${day}T00:00:00+05:30`);
+    const to = from + DAY_MS - 1;
+    if (!Number.isFinite(from)) return;
+    setFromInput(toLocalInput(from));
+    setToInput(toLocalInput(to));
+    setAppliedFrom(from);
+    setAppliedTo(to);
+    setPreset('custom');
+    setRangeLabel('Custom range');
+    setReportTab('map');
+  };
+
+  const openTrip = (trip) => {
+    setFromInput(toLocalInput(trip.startTime));
+    setToInput(toLocalInput(trip.endTime));
+    setAppliedFrom(trip.startTime);
+    setAppliedTo(trip.endTime);
+    setPreset('custom');
+    setRangeLabel('Custom range');
+    setReportTab('map');
+  };
+
+  const openStop = (stop) => {
+    const from = stop.start - 5 * 60000;
+    const to = stop.end + 5 * 60000;
+    setFromInput(toLocalInput(from));
+    setToInput(toLocalInput(to));
+    setAppliedFrom(from);
+    setAppliedTo(to);
+    setPreset('custom');
+    setRangeLabel('Custom range');
+    setReportTab('map');
+  };
+
+  const exportCsv = () => {
+    const rows = reports[reportTab] || [];
+    if (!rows.length) return;
+    const keys = Object.keys(rows[0]);
+    const csv = [keys.join(','), ...rows.map((r) => keys.map((k) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${selectedId}-${reportTab}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   if (authed === null) {
     return <div className="fh2 min-h-screen w-screen fh2-bg fh2-soft flex items-center justify-center text-sm"><ShieldCheck className="w-5 h-5 text-sky-500 mr-2" /> Checking history access…</div>;
@@ -945,7 +1033,49 @@ export default function HistoryAppV2() {
             </div>
           </div>
 
-          {speedColor && (
+          <div className="mt-3 flex items-center gap-1 p-1 rounded-full border fh2-border fh2-track text-[10px] font-semibold">
+            {['map', 'summary', 'trips', 'stops'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setReportTab(tab)}
+                className={`flex-1 h-7 rounded-full capitalize ${reportTab === tab ? 'fh2-active' : 'fh2-muted'}`}
+              >
+                {tab}
+              </button>
+            ))}
+            {reportTab !== 'map' && <button onClick={exportCsv} className="h-7 px-2 rounded-full fh2-muted" title="Download CSV">CSV</button>}
+          </div>
+
+          {reportTab !== 'map' ? (
+            <div className="mt-3 max-h-[230px] overflow-auto rounded-[12px] border fh2-border">
+              {reportLoading ? (
+                <div className="p-4 text-[11px] fh2-muted">Loading {reportTab}…</div>
+              ) : (reports[reportTab] || []).length === 0 ? (
+                <div className="p-4 text-[11px] fh2-muted">No {reportTab} in this range.</div>
+              ) : (
+                <table className="w-full text-[10px] tabular-nums">
+                  <thead className="sticky top-0 fh2-panel">
+                    <tr className="text-left fh2-muted">
+                      {reportTab === 'summary' && <><th className="p-2">Day</th><th className="p-2">km</th><th className="p-2">Moving</th><th className="p-2">Trips</th><th className="p-2">Stops</th><th className="p-2">Avg</th></>}
+                      {reportTab === 'trips' && <><th className="p-2">Start</th><th className="p-2">End</th><th className="p-2">km</th><th className="p-2">Moving</th><th className="p-2">Avg/Max</th></>}
+                      {reportTab === 'stops' && <><th className="p-2">Start</th><th className="p-2">Duration</th><th className="p-2">Location</th></>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(reports[reportTab] || []).map((row, i) => (
+                      <tr key={i} onClick={() => reportTab === 'summary' ? openDay(row.day) : reportTab === 'trips' ? openTrip(row) : openStop(row)} className="cursor-pointer border-t fh2-border fh2-hover">
+                        {reportTab === 'summary' && <><td className="p-2">{row.day}</td><td className="p-2">{row.distanceKm}</td><td className="p-2">{fmtDur(row.movingMin * 60000)}</td><td className="p-2">{row.trips}</td><td className="p-2">{row.stops}</td><td className="p-2">{row.averageSpeed} km/h</td></>}
+                        {reportTab === 'trips' && <><td className="p-2">{fmt(row.startTime)}</td><td className="p-2">{fmt(row.endTime)}</td><td className="p-2">{row.distanceKm}</td><td className="p-2">{fmtDur(row.movingMin * 60000)}</td><td className="p-2">{row.averageSpeed}/{row.maxSpeed}</td></>}
+                        {reportTab === 'stops' && <><td className="p-2">{fmt(row.start)}</td><td className="p-2">{Math.round(row.minutes)}m</td><td className="p-2">{row.lat.toFixed(4)}, {row.lon.toFixed(4)}</td></>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ) : null}
+
+          {reportTab === 'map' && speedColor && (
             <div className="mt-2 flex items-center gap-2 text-[9px] fh2-muted">
               <span>0</span>
               <span className="h-1.5 flex-1 rounded-full" style={{ background: 'linear-gradient(90deg,#38bdf8,#30d158,#ffd60a,#ff453a)' }} />
@@ -953,7 +1083,7 @@ export default function HistoryAppV2() {
             </div>
           )}
 
-          <div className="mt-3 flex items-center gap-3">
+          {reportTab === 'map' && <div className="mt-3 flex items-center gap-3">
             <button onClick={() => setPlaying((v) => !v)} className="w-8 h-8 rounded-full fh2-active grid place-items-center" aria-label="Play">{playing ? '❚❚' : '▶'}</button>
             <div className="flex-1">
               <div
@@ -980,9 +1110,9 @@ export default function HistoryAppV2() {
               <div className="text-xs font-semibold tabular-nums">{fmt(time || appliedFrom)}</div>
               <div className="text-[9px] fh2-muted tabular-nums">{playSpeed} km/h</div>
             </div>
-          </div>
+          </div>}
 
-          {!confidence.low && <div className="flex gap-1.5 mt-3 overflow-x-auto">
+          {reportTab === 'map' && !confidence.low && <div className="flex gap-1.5 mt-3 overflow-x-auto">
             <button onClick={() => setSelectedTrip(null)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold ${selectedTrip === null ? 'border-sky-400/50 bg-sky-500/10' : 'fh2-border fh2-muted'}`}>All</button>
             {trips.map((t) => (
               <button key={t.index} onClick={() => setSelectedTrip(selectedTrip === t.index ? null : t.index)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold flex items-center gap-1.5 ${selectedTrip === t.index ? 'border-sky-400/50 bg-sky-500/10' : 'fh2-border fh2-muted'}`}>

@@ -6,6 +6,7 @@
 import { createKinematicFilter } from './utils/kalman.js';
 import { coerceTelemetryPacket, normalizeEpochMs, processTelemetryPacket } from './utils/telemetryProcessor.js';
 import { canonicalVehicleId } from './utils/vehicleId.js';
+import { calculateDistanceKm } from './utils/geo.js';
 import { computeVehicleAgeState } from './utils/vehicleState.js';
 
 // In-memory telemetry cache for active fleet ambulances
@@ -153,6 +154,123 @@ async function verifyHistorySession(token, secret) {
   } catch (e) {
     return null;
   }
+}
+
+
+function historyDayKey(ms) {
+  return new Date(Number(ms) + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function analyzeHistory(points) {
+  const pts = (points || [])
+    .map((p) => ({
+      t: Number(p.device_time),
+      lat: Number(p.lat),
+      lon: Number(p.lon),
+      speed: Number(p.speed) || 0,
+      accuracy: Number(p.accuracy) || 0,
+    }))
+    .filter((p) => Number.isFinite(p.t) && Number.isFinite(p.lat) && Number.isFinite(p.lon))
+    .sort((a, b) => a.t - b.t);
+
+  const intervals = [];
+  for (let i = 1; i < pts.length; i++) {
+    const dt = (pts[i].t - pts[i - 1].t) / 1000;
+    if (dt > 0) intervals.push(dt);
+  }
+  const sorted = [...intervals].sort((a, b) => a - b);
+  const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 30;
+  const gapMs = Math.max(10 * 60000, median * 2.5 * 1000);
+
+  /* stops: within 150 m for at least 5 min, merged within 250 m / 20 min */
+  const rawStops = [];
+  let cluster = [];
+  const flush = () => {
+    if (cluster.length > 1) {
+      const first = cluster[0];
+      const last = cluster[cluster.length - 1];
+      const minutes = (last.t - first.t) / 60000;
+      const lat = cluster.reduce((s, p) => s + p.lat, 0) / cluster.length;
+      const lon = cluster.reduce((s, p) => s + p.lon, 0) / cluster.length;
+      const spread = Math.max(...cluster.map((p) => calculateDistanceKm(lat, lon, p.lat, p.lon) * 1000));
+      if (minutes >= 5 && spread <= 250) {
+        rawStops.push({ start: first.t, end: last.t, lat, lon, minutes, points: cluster.length });
+      }
+    }
+    cluster = [];
+  };
+  for (const p of pts) {
+    if (!cluster.length) { cluster = [p]; continue; }
+    const lat = cluster.reduce((s, q) => s + q.lat, 0) / cluster.length;
+    const lon = cluster.reduce((s, q) => s + q.lon, 0) / cluster.length;
+    if (calculateDistanceKm(lat, lon, p.lat, p.lon) * 1000 <= 150) cluster.push(p);
+    else { flush(); cluster = [p]; }
+  }
+  flush();
+
+  const mergedStops = [];
+  for (const s of rawStops) {
+    const near = mergedStops.find((m) => calculateDistanceKm(m.lat, m.lon, s.lat, s.lon) * 1000 < 250 && s.start - m.end < 20 * 60000);
+    if (near) {
+      const total = near.points + s.points;
+      near.lat = (near.lat * near.points + s.lat * s.points) / total;
+      near.lon = (near.lon * near.points + s.lon * s.points) / total;
+      near.points = total;
+      near.end = s.end;
+      near.minutes = (near.end - near.start) / 60000;
+    } else {
+      mergedStops.push({ ...s });
+    }
+  }
+
+  const stopWindows = mergedStops.map((s) => [s.start, s.end]);
+  const moving = pts.filter((p) => !stopWindows.some(([a, b]) => p.t >= a && p.t <= b));
+
+  /* trips: moving runs split by stop, gap, or IST day change */
+  const rawTrips = [];
+  let run = [];
+  let prev = null;
+  for (const p of moving) {
+    if (prev && (p.t - prev.t > gapMs || historyDayKey(p.t) !== historyDayKey(prev.t))) {
+      if (run.length > 1) rawTrips.push(run);
+      run = [];
+    }
+    run.push(p);
+    prev = p;
+  }
+  if (run.length > 1) rawTrips.push(run);
+
+  const trips = rawTrips.map((arr, index) => {
+    let distance = 0;
+    let movingMs = 0;
+    let maxSpeed = 0;
+    for (let i = 1; i < arr.length; i++) {
+      const dt = arr[i].t - arr[i - 1].t;
+      if (dt <= 0 || dt > gapMs) continue;
+      const d = calculateDistanceKm(arr[i - 1].lat, arr[i - 1].lon, arr[i].lat, arr[i].lon);
+      distance += d;
+      if (arr[i].speed > 3) movingMs += dt;
+      if (arr[i].speed > maxSpeed) maxSpeed = arr[i].speed;
+    }
+    return {
+      index,
+      day: historyDayKey(arr[0].t),
+      startTime: arr[0].t,
+      endTime: arr[arr.length - 1].t,
+      startLat: arr[0].lat,
+      startLon: arr[0].lon,
+      endLat: arr[arr.length - 1].lat,
+      endLon: arr[arr.length - 1].lon,
+      distanceKm: Math.round(distance * 10) / 10,
+      durationMin: Math.round((arr[arr.length - 1].t - arr[0].t) / 60000),
+      movingMin: Math.round(movingMs / 60000),
+      averageSpeed: movingMs > 0 ? Math.round(distance / (movingMs / 3600000)) : 0,
+      maxSpeed: Math.round(maxSpeed),
+      points: arr.length,
+    };
+  }).filter((t) => t.distanceKm >= 0.2 || t.movingMin >= 2);
+
+  return { points: pts.length, stops: mergedStops, trips };
 }
 
 function historyStub(env) {
@@ -764,6 +882,18 @@ export default {
       return historyJson(data, response.status);
     }
 
+    for (const report of ['trips', 'stops', 'summary']) {
+      if (url.pathname === `/api/history/reports/${report}`) {
+        const unauthorized = await requireHistoryAuth(request, env);
+        if (unauthorized) return unauthorized;
+        const stub = historyStub(env);
+        if (!stub) return historyJson({ error: 'History store is not configured' }, 503);
+        const response = await stub.fetch(`https://history/reports/${report}${url.search}`);
+        const data = await response.json().catch(() => ({ error: 'Report error' }));
+        return historyJson(data, response.status);
+      }
+    }
+
     if (url.pathname === '/api/history') {
       const unauthorized = await requireHistoryAuth(request, env);
       if (unauthorized) return unauthorized;
@@ -1216,6 +1346,15 @@ export class FleetHistory {
     if (url.pathname.endsWith('/history')) {
       return this.history(url);
     }
+    if (url.pathname.endsWith('/reports/trips')) {
+      return this.reportTrips(url);
+    }
+    if (url.pathname.endsWith('/reports/stops')) {
+      return this.reportStops(url);
+    }
+    if (url.pathname.endsWith('/reports/summary')) {
+      return this.reportSummary(url);
+    }
     if (url.pathname.endsWith('/delete') && request.method === 'POST') {
       return this.remove(request);
     }
@@ -1475,6 +1614,66 @@ export class FleetHistory {
       )
       .toArray();
     return historyJson({ success: true, vehicles: rows, count: rows.length });
+  }
+
+  reportPoints(url) {
+    const id = canonicalVehicleId(url.searchParams.get('id'));
+    if (!id) return null;
+    const now = Date.now();
+    const from = Number(url.searchParams.get('from') || now - HISTORY_RETENTION_MS);
+    const to = Number(url.searchParams.get('to') || now);
+    return this.state.storage.sql
+      .exec(
+        `SELECT device_time, lat, lon, speed, accuracy
+         FROM history_points
+         WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
+         ORDER BY device_time ASC LIMIT 25000`,
+        id, from, to
+      )
+      .toArray();
+  }
+
+  reportTrips(url) {
+    const points = this.reportPoints(url);
+    if (!points) return historyJson({ error: 'Missing id' }, 400);
+    const analysis = analyzeHistory(points);
+    return historyJson({ success: true, trips: analysis.trips, count: analysis.trips.length, points: analysis.points });
+  }
+
+  reportStops(url) {
+    const points = this.reportPoints(url);
+    if (!points) return historyJson({ error: 'Missing id' }, 400);
+    const analysis = analyzeHistory(points);
+    return historyJson({ success: true, stops: analysis.stops, count: analysis.stops.length, points: analysis.points });
+  }
+
+  reportSummary(url) {
+    const points = this.reportPoints(url);
+    if (!points) return historyJson({ error: 'Missing id' }, 400);
+    const analysis = analyzeHistory(points);
+    const days = new Map();
+    for (const trip of analysis.trips) {
+      const d = days.get(trip.day) || { day: trip.day, distanceKm: 0, movingMin: 0, trips: 0, stops: 0, maxSpeed: 0, points: 0 };
+      d.distanceKm += trip.distanceKm;
+      d.movingMin += trip.movingMin;
+      d.trips += 1;
+      d.maxSpeed = Math.max(d.maxSpeed, trip.maxSpeed);
+      days.set(trip.day, d);
+    }
+    for (const stop of analysis.stops) {
+      const key = historyDayKey(stop.start);
+      const d = days.get(key) || { day: key, distanceKm: 0, movingMin: 0, trips: 0, stops: 0, maxSpeed: 0, points: 0 };
+      d.stops += 1;
+      days.set(key, d);
+    }
+    const rows = Array.from(days.values())
+      .map((d) => ({
+        ...d,
+        distanceKm: Math.round(d.distanceKm * 10) / 10,
+        averageSpeed: d.movingMin > 0 ? Math.round(d.distanceKm / (d.movingMin / 60)) : 0,
+      }))
+      .sort((a, b) => a.day.localeCompare(b.day));
+    return historyJson({ success: true, days: rows, count: rows.length, points: analysis.points });
   }
 
   history(url) {
