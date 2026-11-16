@@ -1,7 +1,7 @@
 {
   "name": "santkabir-fleet-shield",
   "version": "1.0.0",
-  "description": "Sant Kabir Fleet Shield \u2014 Real-time Outreach Fleet Command Wallboard by Mani Ratan Singh (mrps.in)",
+  "description": "Sant Kabir Fleet Shield — Real-time Outreach Fleet Command Wallboard by Mani Ratan Singh (mrps.in)",
   "author": "Mani Ratan Singh <https://mrps.in>",
   "homepage": "https://mrps.in",
   "type": "module",
@@ -35,6 +35,6 @@
     "@vitejs/plugin-react": "^6.1.2",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.4",
-    "wrangler": "^3.114.17"
+    "wrangler": "^4.162.0"
   }
 }
