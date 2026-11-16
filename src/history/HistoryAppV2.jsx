@@ -27,6 +27,7 @@ const QUALITY_COLOR = { clean: '#30d158', good: '#ffd60a', bad: '#ff453a' };
 
 const DARK_STYLE = {
   version: 8,
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     'esri-dark-base': { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 16, attribution: 'Esri, HERE, Garmin' },
     'esri-dark-labels': { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 16 },
@@ -39,6 +40,7 @@ const DARK_STYLE = {
 
 const LIGHT_STYLE = {
   version: 8,
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
     'esri-light-base': { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 16, attribution: 'Esri, HERE, Garmin' },
     'esri-light-labels': { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, maxzoom: 16 },
@@ -161,6 +163,156 @@ function tripRuns(trip) {
   return runs;
 }
 
+
+function bearingBetween(a, b) {
+  const y = Math.sin(rad(b[0] - a[0])) * Math.cos(rad(b[1]));
+  const x = Math.cos(rad(a[1])) * Math.sin(rad(b[1])) - Math.sin(rad(a[1])) * Math.cos(rad(b[1])) * Math.cos(rad(b[0] - a[0]));
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function smoothCoords(coords, iterations = 2) {
+  let out = coords;
+  for (let k = 0; k < iterations; k++) {
+    if (out.length < 3) return out;
+    const next = [out[0]];
+    for (let i = 0; i < out.length - 1; i++) {
+      const a = out[i];
+      const b = out[i + 1];
+      next.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25]);
+      next.push([a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+    }
+    next.push(out[out.length - 1]);
+    out = next;
+  }
+  return out;
+}
+
+function convexHull(coords) {
+  if (coords.length < 3) return coords;
+  const pts = [...coords].sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [];
+  for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+  const upper = [];
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+function prepareTrail(points, trips) {
+  const sorted = points
+    .filter((p) => Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon)) && Number(p.lat) !== 0 && Number(p.lon) !== 0)
+    .map((p) => ({ ...p, lon: Number(p.lon), lat: Number(p.lat), t: Number(p.device_time), speed: Number(p.speed) || 0, accuracy: Number(p.accuracy) || 0 }))
+    .sort((a, b) => a.t - b.t);
+
+  /* drop spikes: a jump that implies an impossible speed */
+  const clean = [];
+  for (const p of sorted) {
+    const prev = clean[clean.length - 1];
+    if (prev) {
+      const dt = (p.t - prev.t) / 1000;
+      const d = haversine([prev.lon, prev.lat], [p.lon, p.lat]);
+      const implied = dt > 0 ? (d / dt) * 3.6 : 0;
+      if (dt > 0 && d > 1.2 && implied > 180) continue;
+      if (dt <= 0) continue;
+    }
+    clean.push(p);
+  }
+
+  /* collapse parked jitter into stop bubbles */
+  const stops = [];
+  const stopWindows = [];
+  let cluster = [];
+  const flush = () => {
+    if (cluster.length > 1) {
+      const first = cluster[0];
+      const last = cluster[cluster.length - 1];
+      const minutes = (last.t - first.t) / 60000;
+      const cLon = cluster.reduce((s, p) => s + p.lon, 0) / cluster.length;
+      const cLat = cluster.reduce((s, p) => s + p.lat, 0) / cluster.length;
+      const spread = Math.max(...cluster.map((p) => haversine([cLon, cLat], [p.lon, p.lat]) * 1000));
+      if (minutes >= 8 && spread <= 250) {
+        stops.push({ lon: cLon, lat: cLat, start: first.t, end: last.t, minutes, points: cluster.length });
+        stopWindows.push([first.t, last.t]);
+      }
+    }
+    cluster = [];
+  };
+  for (const p of clean) {
+    if (!cluster.length) { cluster = [p]; continue; }
+    const cLon = cluster.reduce((s, q) => s + q.lon, 0) / cluster.length;
+    const cLat = cluster.reduce((s, q) => s + q.lat, 0) / cluster.length;
+    if (haversine([cLon, cLat], [p.lon, p.lat]) * 1000 <= 220) cluster.push(p);
+    else { flush(); cluster = [p]; }
+  }
+  flush();
+
+  const mergedStops = [];
+  for (const s of stops) {
+    const near = mergedStops.find((m) => haversine([m.lon, m.lat], [s.lon, s.lat]) * 1000 < 300 && s.start - m.end < 30 * 60000);
+    if (near) {
+      const total = near.points + s.points;
+      near.lon = (near.lon * near.points + s.lon * s.points) / total;
+      near.lat = (near.lat * near.points + s.lat * s.points) / total;
+      near.points = total;
+      near.end = s.end;
+      near.minutes = (near.end - near.start) / 60000;
+    } else {
+      mergedStops.push({ ...s });
+    }
+  }
+
+  const inStop = (t) => stopWindows.some(([a, b]) => t >= a && t <= b);
+  const moving = clean.filter((p) => !inStop(p.t));
+
+  const intervals = [];
+  for (let i = 1; i < clean.length; i++) {
+    const dt = (clean[i].t - clean[i - 1].t) / 1000;
+    if (dt > 0) intervals.push(dt);
+  }
+  const gapMs = Math.max(10 * 60000, median(intervals) * 2.5 * 1000);
+
+  const rawRuns = [];
+  let run = [];
+  let prev = null;
+  for (const p of moving) {
+    if (prev && p.t - prev.t > gapMs) {
+      if (run.length > 1) rawRuns.push(run);
+      run = [];
+    }
+    run.push(p);
+    prev = p;
+  }
+  if (run.length > 1) rawRuns.push(run);
+
+  const runs = rawRuns.map((arr) => {
+    const trip = trips.find((t) => arr[0].t >= t.start - 60000 && arr[0].t <= t.end + 60000);
+    return {
+      coords: smoothCoords(arr.map((p) => [p.lon, p.lat]), 2),
+      trip: trip ? trip.index : 0,
+      start: arr[0].t,
+      end: arr[arr.length - 1].t,
+    };
+  });
+
+  const arrows = [];
+  runs.forEach((r) => {
+    const step = Math.max(6, Math.floor(r.coords.length / 8));
+    for (let i = step; i < r.coords.length - step; i += step) {
+      arrows.push({ coord: r.coords[i], bearing: bearingBetween(r.coords[i - 1], r.coords[i + 1]) });
+    }
+  });
+
+  const caps = [];
+  for (let i = 1; i < clean.length; i++) {
+    if (clean[i].t - clean[i - 1].t > gapMs) {
+      caps.push([clean[i - 1].lon, clean[i - 1].lat]);
+      caps.push([clean[i].lon, clean[i].lat]);
+    }
+  }
+
+  return { clean, stops: mergedStops, runs, arrows, caps, gapMs };
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: 'same-origin', ...options });
   const data = await response.json().catch(() => ({}));
@@ -214,24 +366,51 @@ export default function HistoryAppV2() {
   const [mapReady, setMapReady] = useState(false);
 
   const trips = useMemo(() => buildTrips(points), [points]);
+  const prepared = useMemo(() => prepareTrail(points, trips), [points, trips]);
+  const confidence = useMemo(() => {
+    const ints = [];
+    const accs = [];
+    for (let i = 1; i < prepared.clean.length; i++) {
+      const dt = prepared.clean[i].t - prepared.clean[i - 1].t;
+      if (dt > 0) ints.push(dt / 1000);
+    }
+    prepared.clean.forEach((p) => { if (p.accuracy > 0) accs.push(p.accuracy); });
+    const medInt = median(ints);
+    const medAcc = median(accs);
+    const hull = convexHull(prepared.clean.map((p) => [p.lon, p.lat]));
+    let area = 0;
+    if (hull.length > 2) {
+      let sum = 0;
+      for (let i = 0; i < hull.length; i++) {
+        const a = hull[i];
+        const b = hull[(i + 1) % hull.length];
+        sum += a[0] * b[1] - b[0] * a[1];
+      }
+      const lat = prepared.clean.reduce((s, p) => s + p.lat, 0) / prepared.clean.length;
+      area = Math.abs(sum / 2) * (111.32 * 111.32 * Math.cos(rad(lat)));
+    }
+    return { low: medInt >= 300 || medAcc >= 60, medInt, medAcc, area };
+  }, [prepared]);
   const selected = vehicles.find((v) => v.id === selectedId);
   const vehicleColor = selectedId ? getUniqueVehicleColor(selectedId).line : '#38bdf8';
 
   const stats = useMemo(() => {
-    if (!points.length) return { km: 0, moving: 0, stops: 0, interval: 0, accuracy: 0, badPct: 0 };
+    if (!prepared.clean.length) return { km: 0, moving: 0, stops: 0, interval: 0, accuracy: 0, badPct: 0, avgSpeed: 0, maxSpeed: 0 };
     let distance = 0;
     let movingMs = 0;
     const intervals = [];
     const accs = [];
-    for (let i = 1; i < points.length; i++) {
-      const dt = Number(points[i].device_time) - Number(points[i - 1].device_time);
+    const speeds = [];
+    for (let i = 1; i < prepared.clean.length; i++) {
+      const dt = prepared.clean[i].t - prepared.clean[i - 1].t;
       if (dt > 0) intervals.push(dt / 1000);
       if (dt > 0 && dt <= 15 * 60000) {
-        distance += haversine([points[i - 1].lon, points[i - 1].lat], [points[i].lon, points[i].lat]);
-        if (Number(points[i].speed) > 3) movingMs += dt;
+        distance += haversine([prepared.clean[i - 1].lon, prepared.clean[i - 1].lat], [prepared.clean[i].lon, prepared.clean[i].lat]);
+        if (Number(prepared.clean[i].speed) > 3) movingMs += dt;
+        if (Number(prepared.clean[i].speed) > 0) speeds.push(Number(prepared.clean[i].speed));
       }
     }
-    points.forEach((p) => { const a = Number(p.accuracy); if (Number.isFinite(a) && a > 0) accs.push(a); });
+    prepared.clean.forEach((p) => { const a = Number(p.accuracy); if (Number.isFinite(a) && a > 0) accs.push(a); });
     const bad = accs.filter((a) => a > 50).length;
     let stopCount = 0;
     let lowRun = null;
@@ -247,17 +426,20 @@ export default function HistoryAppV2() {
     return {
       km: distance / 1000,
       moving: movingMs,
-      stops: stopCount,
+      stops: prepared.stops.length,
+      avgSpeed: movingMs > 0 ? (distance / 1000) / (movingMs / 3600000) : 0,
+      maxSpeed: speeds.length ? Math.max(...speeds) : 0,
       interval: median(intervals),
       accuracy: Math.round(median(accs)),
       badPct: accs.length ? Math.round((bad / accs.length) * 100) : 0,
     };
-  }, [points, trips]);
+  }, [prepared]);
 
   /* theme */
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle('dark', theme === 'dark');
+    root.classList.toggle('light', theme === 'light');
     try { localStorage.setItem('sk_history_theme', theme); } catch {}
   }, [theme]);
 
@@ -349,15 +531,34 @@ export default function HistoryAppV2() {
     if (!map || !mapReady) return undefined;
     markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
     markersRef.current = [];
-    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'gap-caps', 'bad-ring'].forEach((id) => {
+    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line'].forEach((id) => {
       if (map.getLayer(id)) map.removeLayer(id);
     });
-    ['runs', 'quality', 'stops', 'caps', 'bad'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
+    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
 
     if (!points.length) return undefined;
 
-    const runs = [];
-    trips.forEach((t) => tripRuns(t).forEach((coords) => runs.push({ coords, trip: t.index })));
+    if (confidence.low) {
+      const cloud = prepared.clean.map((p) => ({ type: 'Feature', properties: { accuracy: p.accuracy || 50 }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } }));
+      map.addSource('cloud', { type: 'geojson', data: { type: 'FeatureCollection', features: cloud } });
+      map.addLayer({
+        id: 'cloud', type: 'circle', source: 'cloud',
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['get', 'accuracy'], 10, 5, 60, 10, 150, 16],
+          'circle-color': vehicleColor,
+          'circle-opacity': 0.18,
+          'circle-stroke-width': 0,
+        },
+      });
+      const hull = convexHull(prepared.clean.map((p) => [p.lon, p.lat]));
+      if (hull.length > 2) {
+        map.addSource('hull', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...hull, hull[0]]] } } });
+        map.addLayer({ id: 'hull-fill', type: 'fill', source: 'hull', paint: { 'fill-color': vehicleColor, 'fill-opacity': 0.07 } });
+        map.addLayer({ id: 'hull-line', type: 'line', source: 'hull', paint: { 'line-color': vehicleColor, 'line-width': 1, 'line-opacity': 0.22 } });
+      }
+    }
+
+    const runs = confidence.low ? [] : prepared.runs;
     const features = runs.map((r) => ({
       type: 'Feature',
       properties: { trip: r.trip, color: mode === 'trips' ? TRIP_COLORS[r.trip % TRIP_COLORS.length] : vehicleColor },
@@ -367,22 +568,57 @@ export default function HistoryAppV2() {
     map.addLayer({
       id: 'casing', type: 'line', source: 'runs',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': theme === 'dark' ? 'rgba(2,7,12,.92)' : 'rgba(255,255,255,.96)', 'line-width': mode === 'trips' ? 8 : 9, 'line-offset': 0 },
+      paint: {
+        'line-color': theme === 'dark' ? 'rgba(2,7,12,.9)' : 'rgba(255,255,255,.96)',
+        'line-width': mode === 'trips' ? 8 : 9,
+        'line-opacity': selectedTrip === null ? 0.95 : ['case', ['==', ['get', 'trip'], selectedTrip], 0.95, 0.25],
+      },
     });
     map.addLayer({
       id: 'trail', type: 'line', source: 'runs',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': ['get', 'color'], 'line-width': mode === 'trips' ? 3.6 : 4.6, 'line-offset': 0, 'line-opacity': 1 },
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': mode === 'trips' ? 3.8 : 4.6,
+        'line-opacity': selectedTrip === null ? 1 : ['case', ['==', ['get', 'trip'], selectedTrip], 1, 0.18],
+      },
     });
 
-    /* quality segments */
+    /* direction arrows */
+    const arrowId = theme === 'dark' ? 'fh-arrow-light' : 'fh-arrow-dark';
+    if (!map.hasImage(arrowId)) {
+      const size = 36;
+      const c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      ctx.translate(size / 2, size / 2);
+      ctx.beginPath();
+      ctx.moveTo(0, -10); ctx.lineTo(7, 7); ctx.lineTo(0, 3); ctx.lineTo(-7, 7); ctx.closePath();
+      ctx.fillStyle = theme === 'dark' ? '#ffffff' : '#0f172a';
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = theme === 'dark' ? 'rgba(0,0,0,.45)' : 'rgba(255,255,255,.75)';
+      ctx.stroke();
+      const img = ctx.getImageData(0, 0, size, size);
+      map.addImage(arrowId, img);
+    }
+    if (!confidence.low && prepared.arrows.length) {
+      map.addSource('arrows', { type: 'geojson', data: { type: 'FeatureCollection', features: prepared.arrows.map((a) => ({ type: 'Feature', properties: { bearing: a.bearing }, geometry: { type: 'Point', coordinates: a.coord } })) } });
+      map.addLayer({
+        id: 'arrows', type: 'symbol', source: 'arrows',
+        layout: { 'icon-image': arrowId, 'icon-size': 0.55, 'icon-rotate': ['get', 'bearing'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+        paint: { 'icon-opacity': 0.9 },
+      });
+    }
+
+    /* quality segments, cleaned */
     const segs = [];
-    for (let i = 1; i < points.length; i++) {
-      const a = points[i - 1];
-      const b = points[i];
-      const dt = Number(b.device_time) - Number(a.device_time);
-      if (dt <= 0 || dt > 15 * 60000) continue;
-      const acc = Math.max(Number(a.accuracy) || 0, Number(b.accuracy) || 0);
+    for (let i = 1; !confidence.low && i < prepared.clean.length; i++) {
+      const a = prepared.clean[i - 1];
+      const b = prepared.clean[i];
+      const dt = b.t - a.t;
+      if (dt <= 0 || dt > prepared.gapMs) continue;
+      const acc = Math.max(a.accuracy || 0, b.accuracy || 0);
       segs.push({
         type: 'Feature',
         properties: { c: acc > 50 ? '#ff453a' : acc > 20 ? '#ffd60a' : '#30d158' },
@@ -396,46 +632,50 @@ export default function HistoryAppV2() {
       paint: { 'line-color': ['get', 'c'], 'line-width': 6, 'line-opacity': 0.95 },
     });
 
-    /* stops: low speed for >=5 min */
-    const stops = [];
-    let run = [];
-    points.forEach((p) => {
-      if (Number(p.speed) < 3) run.push(p);
-      else { if (run.length && Number(run[run.length - 1].device_time) - Number(run[0].device_time) >= 5 * 60000) stops.push(run); run = []; }
-    });
-    if (run.length && Number(run[run.length - 1].device_time) - Number(run[0].device_time) >= 5 * 60000) stops.push(run);
-    map.addSource('stops', { type: 'geojson', data: { type: 'FeatureCollection', features: stops.map((s) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [Number(s[Math.floor(s.length / 2)].lon), Number(s[Math.floor(s.length / 2)].lat)] } })) } });
-    map.addLayer({ id: 'stops-halo', type: 'circle', source: 'stops', paint: { 'circle-radius': 13, 'circle-color': vehicleColor, 'circle-opacity': 0.12 } });
-    map.addLayer({ id: 'stops-dot', type: 'circle', source: 'stops', paint: { 'circle-radius': 5.5, 'circle-color': theme === 'dark' ? '#0b1118' : '#ffffff', 'circle-stroke-color': vehicleColor, 'circle-stroke-width': 2.5 } });
+    /* stops as bubbles, not path */
+    if (prepared.stops.length) {
+      map.addSource('stops', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: prepared.stops.map((s) => ({ type: 'Feature', properties: { minutes: s.minutes, label: `${Math.round(s.minutes)}m` }, geometry: { type: 'Point', coordinates: [s.lon, s.lat] } })),
+        },
+      });
+      map.addLayer({
+        id: 'stops-halo', type: 'circle', source: 'stops',
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'minutes'], 8, 11, 60, 22], 'circle-color': vehicleColor, 'circle-opacity': 0.16 },
+      });
+      map.addLayer({
+        id: 'stops-dot', type: 'circle', source: 'stops',
+        paint: { 'circle-radius': 5.5, 'circle-color': theme === 'dark' ? '#0b1118' : '#ffffff', 'circle-stroke-color': vehicleColor, 'circle-stroke-width': 2.5 },
+      });
+      map.addLayer({
+        id: 'stops-label', type: 'symbol', source: 'stops', minzoom: 10.5,
+        layout: { 'text-field': ['get', 'label'], 'text-size': 10, 'text-offset': [0, 1.8], 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-font': ['Open Sans Regular'] },
+        paint: { 'text-color': theme === 'dark' ? '#e2e8f0' : '#0f172a', 'text-halo-color': theme === 'dark' ? 'rgba(2,7,12,.85)' : 'rgba(255,255,255,.9)', 'text-halo-width': 2 },
+      });
+    }
 
     /* gap caps */
-    const caps = [];
-    for (const t of trips) {
-      const limit = gapThreshold(t.points) * 1000;
-      for (let i = 1; i < t.points.length; i++) {
-        if (Number(t.points[i].device_time) - Number(t.points[i - 1].device_time) > limit) {
-          caps.push([Number(t.points[i - 1].lon), Number(t.points[i - 1].lat)]);
-          caps.push([Number(t.points[i].lon), Number(t.points[i].lat)]);
-        }
-      }
+    if (prepared.caps.length) {
+      map.addSource('caps', { type: 'geojson', data: { type: 'FeatureCollection', features: prepared.caps.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: c } })) } });
+      map.addLayer({ id: 'gap-caps', type: 'circle', source: 'caps', paint: { 'circle-radius': 4.5, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': theme === 'dark' ? '#eef4fa' : '#0a1119', 'circle-stroke-width': 1.5, 'circle-stroke-opacity': 0.5 } });
     }
-    map.addSource('caps', { type: 'geojson', data: { type: 'FeatureCollection', features: caps.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: c } })) } });
-    map.addLayer({ id: 'gap-caps', type: 'circle', source: 'caps', paint: { 'circle-radius': 5, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': theme === 'dark' ? '#eef4fa' : '#0a1119', 'circle-stroke-width': 1.6, 'circle-stroke-opacity': 0.55 } });
 
     const startEl = document.createElement('div');
     startEl.style.cssText = 'width:12px;height:12px;border-radius:99px;background:#30d158;border:2.5px solid #04121c;box-shadow:0 0 0 3px rgba(0,0,0,.18)';
-    markersRef.current.push(new maplibregl.Marker({ element: startEl }).setLngLat([Number(points[0].lon), Number(points[0].lat)]).addTo(map));
+    markersRef.current.push(new maplibregl.Marker({ element: startEl }).setLngLat([prepared.clean[0].lon, prepared.clean[0].lat]).addTo(map));
     const endEl = document.createElement('div');
     endEl.style.cssText = 'width:12px;height:12px;border-radius:99px;background:#ff453a;border:2.5px solid #04121c;box-shadow:0 0 0 3px rgba(0,0,0,.18)';
-    markersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([Number(points[points.length - 1].lon), Number(points[points.length - 1].lat)]).addTo(map));
+    markersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([prepared.clean[prepared.clean.length - 1].lon, prepared.clean[prepared.clean.length - 1].lat]).addTo(map));
 
-    const coords = points.map((p) => [Number(p.lon), Number(p.lat)]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
+    const coords = prepared.clean.map((p) => [p.lon, p.lat]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
     if (coords.length) {
       const b = coords.reduce((acc, c) => acc.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
       map.fitBounds(b, { padding: { top: 150, bottom: 280, left: 90, right: 90 }, maxZoom: 14, duration: 400 });
     }
     return undefined;
-  }, [points, trips, mapReady, mode, quality, theme, vehicleColor]);
+  }, [prepared, confidence, mapReady, mode, quality, theme, vehicleColor, selectedTrip]);
 
   useEffect(() => {
     if (!playing) return undefined;
@@ -529,46 +769,60 @@ export default function HistoryAppV2() {
   const filteredVehicles = vehicles.filter((v) => !vehicleQuery || v.id.toLowerCase().includes(vehicleQuery.toLowerCase()));
 
   if (authed === null) {
-    return <div className="min-h-screen w-screen bg-[#060d17] text-slate-300 flex items-center justify-center text-sm"><ShieldCheck className="w-5 h-5 text-sky-500 mr-2" /> Checking history access…</div>;
+    return <div className="fh2 min-h-screen w-screen fh2-bg fh2-soft flex items-center justify-center text-sm"><ShieldCheck className="w-5 h-5 text-sky-500 mr-2" /> Checking history access…</div>;
   }
 
   if (authed === false) {
     return (
-      <div className="min-h-screen w-screen bg-[#060d17] text-slate-100 flex items-center justify-center p-5">
-        <form onSubmit={handleLogin} className="w-full max-w-sm rounded-[26px] border border-white/10 bg-[#0b1728]/95 p-6 shadow-2xl">
+      <div className="fh2 min-h-screen w-screen fh2-bg text-current flex items-center justify-center p-5">
+        <form onSubmit={handleLogin} className="w-full max-w-sm rounded-[26px] border fh2-border fh2-panel p-6 shadow-2xl">
           <div className="w-12 h-12 rounded-[16px] bg-sky-500/15 text-sky-400 flex items-center justify-center mb-4"><Lock className="w-6 h-6" /></div>
           <h1 className="text-xl font-semibold tracking-tight">Fleet History</h1>
-          <p className="text-sm text-slate-400 mt-1">Restricted access. Enter the history password.</p>
+          <p className="text-sm fh2-muted mt-1">Restricted access. Enter the history password.</p>
           <div className="relative mt-5">
-            <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} autoFocus placeholder="Enter password" className="w-full rounded-[12px] border border-white/10 bg-white/5 px-3 py-2.5 pr-11 text-sm outline-none focus:border-sky-400/60" />
-            <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-400">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
+            <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} autoFocus placeholder="Enter password" className="w-full rounded-[12px] border fh2-border fh2-input px-3 py-2.5 pr-11 text-sm outline-none focus:border-sky-400/60" />
+            <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 fh2-muted">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>
           </div>
           {loginError && <div className="mt-3 rounded-[10px] border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{loginError}</div>}
-          <button type="submit" disabled={loggingIn || !password} className="mt-4 w-full min-h-11 rounded-[12px] bg-sky-500 text-slate-950 font-semibold text-sm disabled:opacity-50">{loggingIn ? 'Checking…' : 'Open history'}</button>
-          <div className="mt-5 pt-4 border-t border-white/10 text-[11px] text-slate-500 flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> Sant Kabir Eye Hospital · Mani Ratan Singh</div>
+          <button type="submit" disabled={loggingIn || !password} className="mt-4 w-full min-h-11 rounded-[12px] bg-sky-500 text-[var(--bg)] font-semibold text-sm disabled:opacity-50">{loggingIn ? 'Checking…' : 'Open history'}</button>
+          <div className="mt-5 pt-4 border-t fh2-border text-[11px] fh2-muted flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5" /> Sant Kabir Eye Hospital · Mani Ratan Singh</div>
         </form>
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-screen bg-[#060d17] text-slate-100 flex flex-col overflow-hidden">
+    <div className="fh2 h-screen w-screen fh2-bg text-current flex flex-col overflow-hidden">
       <style>{`
         .maplibregl-ctrl-group { background: rgba(11,23,40,.92) !important; border: 1px solid rgba(255,255,255,.12) !important; box-shadow: 0 12px 30px -12px rgba(0,0,0,.6) !important; }
         .maplibregl-ctrl-group button span { filter: invert(1); }
         .maplibregl-ctrl-attrib { background: rgba(11,23,40,.8) !important; color: #94a3b8 !important; }
         .maplibregl-ctrl-attrib a { color: #cbd5e1 !important; }
+        .fh2 { --bg:#060d17; --panel:rgba(11,23,40,.92); --border:rgba(255,255,255,.10); --text:#f1f5f9; --muted:#94a3b8; --soft:#cbd5e1; --hover:rgba(255,255,255,.08); --track:rgba(255,255,255,.12); }
+        html.light .fh2 { --bg:#eef1f5; --panel:rgba(255,255,255,.94); --border:rgba(15,23,42,.12); --text:#0f172a; --muted:#64748b; --soft:#334155; --hover:rgba(15,23,42,.06); --track:rgba(15,23,42,.12); }
+        .fh2-bg { background: var(--bg); color: var(--text); }
+        .fh2-panel { background: var(--panel); border-color: var(--border); }
+        .fh2-muted { color: var(--muted); }
+        .fh2-soft { color: var(--soft); }
+        .fh2-border { border-color: var(--border); }
+        .fh2-hover:hover { background: var(--hover); }
+        .fh2-input { background: var(--hover); border-color: var(--border); color: var(--text); }
+        .fh2-track { background: var(--track); }
+        .fh2-active { background: var(--text); color: var(--bg); }
+        html.light .maplibregl-ctrl-attrib { background: rgba(255,255,255,.86) !important; color: #475569 !important; }
+        html.light .maplibregl-ctrl-attrib a { color: #334155 !important; }
+        html.light .maplibregl-ctrl-group button span { filter: none; }
       `}</style>
-      <header className="shrink-0 border-b border-white/10 bg-[#081321]/95 px-4 py-2.5 flex items-center gap-3 z-20">
+      <header className="shrink-0 border-b fh2-border fh2-panel px-4 py-2.5 flex items-center gap-3 z-20">
         <div className="w-9 h-9 rounded-[12px] bg-sky-500/15 text-sky-400 flex items-center justify-center"><Route className="w-5 h-5" /></div>
         <div className="min-w-0">
           <h1 className="text-sm font-semibold leading-tight">Fleet History</h1>
-          <p className="text-[10px] text-slate-400 leading-tight">Sant Kabir Eye Hospital · by Mani Ratan Singh</p>
+          <p className="text-[10px] fh2-muted leading-tight">Sant Kabir Eye Hospital · by Mani Ratan Singh</p>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          <button onClick={() => setRefreshKey((v) => v + 1)} className="p-2.5 rounded-full hover:bg-white/10 text-slate-300" aria-label="Refresh"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
-          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-full hover:bg-white/10 text-slate-300" aria-label="Theme">{theme === 'dark' ? '☀' : '☾'}</button>
-          <button onClick={async () => { await fetch('/api/history/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {}); setAuthed(false); }} className="p-2.5 rounded-full hover:bg-white/10 text-slate-300" aria-label="Lock"><LogOut className="w-4 h-4" /></button>
+          <button onClick={() => setRefreshKey((v) => v + 1)} className="p-2.5 rounded-full fh2-hover fh2-soft" aria-label="Refresh"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+          <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2.5 rounded-full fh2-hover fh2-soft" aria-label="Theme">{theme === 'dark' ? '☀' : '☾'}</button>
+          <button onClick={async () => { await fetch('/api/history/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {}); setAuthed(false); }} className="p-2.5 rounded-full fh2-hover fh2-soft" aria-label="Lock"><LogOut className="w-4 h-4" /></button>
         </div>
       </header>
 
@@ -576,44 +830,52 @@ export default function HistoryAppV2() {
         <div className="absolute inset-0"><div ref={mapContainerRef} className="h-full w-full" /></div>
 
         <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center gap-2 z-10">
-          <button onClick={() => setVehiclesOpen((v) => !v)} className="h-10 pl-2.5 pr-3 rounded-full border border-white/10 bg-[#0b1728]/85 backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl">
+          <button onClick={() => setVehiclesOpen((v) => !v)} className="h-10 pl-2.5 pr-3 rounded-full border fh2-border fh2-panel backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl">
             <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: `${vehicleColor}22` }}><span className="w-2 h-2 rounded-full" style={{ background: vehicleColor }} /></span>
             <span>{selectedId || 'No vehicle'}</span>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            <ChevronDown className="w-3.5 h-3.5 fh2-muted" />
           </button>
-          <button onClick={() => setRangeOpen((v) => !v)} className="h-10 px-3 rounded-full border border-white/10 bg-[#0b1728]/85 backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl">
-            {rangeLabel} <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+          <button onClick={() => setRangeOpen((v) => !v)} className="h-10 px-3 rounded-full border fh2-border fh2-panel backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl">
+            {rangeLabel} <ChevronDown className="w-3.5 h-3.5 fh2-muted" />
           </button>
           <div className="ml-auto flex items-center gap-1.5">
-            <div className="flex p-1 rounded-full border border-white/10 bg-[#0b1728]/85 backdrop-blur-xl text-[11px] font-semibold">
-              <button onClick={() => setMode('maps')} className={`px-3 h-7 rounded-full ${mode === 'maps' ? 'bg-white text-slate-900' : 'text-slate-400'}`}>Maps</button>
-              <button onClick={() => setMode('trips')} className={`px-3 h-7 rounded-full ${mode === 'trips' ? 'bg-white text-slate-900' : 'text-slate-400'}`}>Trips</button>
+            <div className="flex p-1 rounded-full border fh2-border fh2-panel backdrop-blur-xl text-[11px] font-semibold">
+              <button onClick={() => setMode('maps')} className={`px-3 h-7 rounded-full ${mode === 'maps' ? 'fh2-active' : 'fh2-muted'}`}>Maps</button>
+              <button onClick={() => setMode('trips')} className={`px-3 h-7 rounded-full ${mode === 'trips' ? 'fh2-active' : 'fh2-muted'}`}>Trips</button>
             </div>
-            <button onClick={() => setQuality((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-slate-950 border-transparent' : 'border-white/10 bg-[#0b1728]/85 text-slate-300'}`}>Quality</button>
-            <button onClick={() => setLegendOpen((v) => !v)} className="w-9 h-9 rounded-full border border-white/10 bg-[#0b1728]/85 text-slate-300" aria-label="Key"><Info className="w-4 h-4" /></button>
+            <button onClick={() => setQuality((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-[var(--bg)] border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>
+            <button onClick={() => setLegendOpen((v) => !v)} className="w-9 h-9 rounded-full border fh2-border fh2-panel fh2-soft" aria-label="Key"><Info className="w-4 h-4" /></button>
           </div>
         </div>
 
-        <section className="absolute left-3 bottom-3 right-3 md:right-auto md:w-[560px] rounded-[22px] border border-white/10 bg-[#0b1728]/90 backdrop-blur-xl p-4 shadow-2xl z-10">
+        <section className="absolute left-3 bottom-3 right-3 md:right-auto md:w-[560px] rounded-[22px] border fh2-border fh2-panel backdrop-blur-xl p-4 shadow-2xl z-10">
           <div className="flex items-start gap-4">
             <div>
-              <div className="text-[10px] text-slate-400">{rangeLabel} · {fmtDate(appliedFrom)}</div>
-              <div className="flex items-baseline gap-1.5 mt-0.5"><b className="text-[30px] tracking-tight tabular-nums">{stats.km.toFixed(1)}</b><span className="text-xs text-slate-400">km</span></div>
-              <div className="text-[11px] text-slate-400 mt-0.5">{trips.length} trip{trips.length === 1 ? '' : 's'} · {stats.stops} stop{stats.stops === 1 ? '' : 's'}</div>
+              <div className="text-[10px] fh2-muted flex items-center gap-1.5">
+                {rangeLabel} · {fmtDate(appliedFrom)}
+                {confidence.low && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/25">Low-confidence area</span>}
+              </div>
+              <div className="flex items-baseline gap-1.5 mt-0.5">
+                <b className="text-[30px] tracking-tight tabular-nums">{confidence.low ? confidence.area.toFixed(2) : stats.km.toFixed(1)}</b>
+                <span className="text-xs fh2-muted">{confidence.low ? 'km² area' : 'km'}</span>
+              </div>
+              <div className="text-[11px] fh2-muted mt-0.5">{trips.length} trip{trips.length === 1 ? '' : 's'} · {stats.stops} stop{stats.stops === 1 ? '' : 's'}</div>
             </div>
             <div className="ml-auto grid grid-cols-2 gap-x-5 gap-y-2 text-[11px]">
-              <div><div className="text-[9px] uppercase tracking-wider text-slate-500">Moving</div><div className="font-semibold tabular-nums">{fmtDur(stats.moving)}</div></div>
-              <div><div className="text-[9px] uppercase tracking-wider text-slate-500">Sampling</div><div className="font-semibold tabular-nums">{Math.round(stats.interval)}s</div></div>
-              <div><div className="text-[9px] uppercase tracking-wider text-slate-500">Accuracy</div><div className="font-semibold tabular-nums">{stats.accuracy}m</div></div>
-              <div><div className="text-[9px] uppercase tracking-wider text-slate-500">Poor fixes</div><div className="font-semibold tabular-nums">{stats.badPct}%</div></div>
+              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Moving</div><div className="font-semibold tabular-nums">{fmtDur(stats.moving)}</div></div>
+              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Sampling</div><div className="font-semibold tabular-nums">{Math.round(stats.interval)}s</div></div>
+              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Accuracy</div><div className="font-semibold tabular-nums">{stats.accuracy}m</div></div>
+              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Poor fixes</div><div className="font-semibold tabular-nums">{stats.badPct}%</div></div>
+              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Avg speed</div><div className="font-semibold tabular-nums">{Math.round(stats.avgSpeed)} km/h</div></div>
+              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Max speed</div><div className="font-semibold tabular-nums">{Math.round(stats.maxSpeed)} km/h</div></div>
             </div>
           </div>
 
           <div className="mt-3 flex items-center gap-3">
-            <button onClick={() => setPlaying((v) => !v)} className="w-8 h-8 rounded-full bg-white text-slate-900 grid place-items-center" aria-label="Play">{playing ? '❚❚' : '▶'}</button>
+            <button onClick={() => setPlaying((v) => !v)} className="w-8 h-8 rounded-full fh2-active grid place-items-center" aria-label="Play">{playing ? '❚❚' : '▶'}</button>
             <div className="flex-1">
               <div
-                className="relative h-3 rounded-full bg-white/10 overflow-hidden cursor-pointer"
+                className="relative h-3 rounded-full fh2-track overflow-hidden cursor-pointer"
                 onPointerDown={(e) => {
                   const r = e.currentTarget.getBoundingClientRect();
                   const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
@@ -630,15 +892,15 @@ export default function HistoryAppV2() {
                 })}
                 <div id="fh-head" className="absolute top-[-3px] bottom-[-3px] w-0.5 bg-white" style={{ left: '0%' }} />
               </div>
-              <div className="flex justify-between text-[9px] text-slate-500 mt-1 tabular-nums"><span>{fmt(appliedFrom)}</span><span>{fmt((appliedFrom + appliedTo) / 2)}</span><span>{fmt(appliedTo)}</span></div>
+              <div className="flex justify-between text-[9px] fh2-muted mt-1 tabular-nums"><span>{fmt(appliedFrom)}</span><span>{fmt((appliedFrom + appliedTo) / 2)}</span><span>{fmt(appliedTo)}</span></div>
             </div>
             <div className="text-xs font-semibold tabular-nums">{fmt(time || appliedFrom)}</div>
           </div>
 
           <div className="flex gap-1.5 mt-3 overflow-x-auto">
-            <button onClick={() => setSelectedTrip(null)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold ${selectedTrip === null ? 'border-sky-400/50 bg-sky-500/10' : 'border-white/10 text-slate-400'}`}>All</button>
+            <button onClick={() => setSelectedTrip(null)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold ${selectedTrip === null ? 'border-sky-400/50 bg-sky-500/10' : 'fh2-border fh2-muted'}`}>All</button>
             {trips.map((t) => (
-              <button key={t.index} onClick={() => setSelectedTrip(selectedTrip === t.index ? null : t.index)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold flex items-center gap-1.5 ${selectedTrip === t.index ? 'border-sky-400/50 bg-sky-500/10' : 'border-white/10 text-slate-400'}`}>
+              <button key={t.index} onClick={() => setSelectedTrip(selectedTrip === t.index ? null : t.index)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold flex items-center gap-1.5 ${selectedTrip === t.index ? 'border-sky-400/50 bg-sky-500/10' : 'fh2-border fh2-muted'}`}>
                 <span className="w-2 h-2 rounded-full" style={{ background: mode === 'trips' ? TRIP_COLORS[t.index % TRIP_COLORS.length] : vehicleColor }} />
                 Trip {t.index + 1}
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: QUALITY_COLOR[t.quality] }} />
@@ -646,18 +908,18 @@ export default function HistoryAppV2() {
             ))}
           </div>
 
-          <div className="mt-2 text-[10px] text-slate-500 flex items-center gap-1.5"><ShieldCheck className="w-3 h-3" /> Built by <a href="https://mrps.in" className="underline decoration-white/20">Mani Ratan Singh</a> · mrps.in</div>
+          <div className="mt-2 text-[10px] fh2-muted flex items-center gap-1.5"><ShieldCheck className="w-3 h-3" /> Built by <a href="https://mrps.in" className="underline decoration-white/20">Mani Ratan Singh</a> · mrps.in</div>
         </section>
 
         {vehiclesOpen && (
-          <div className="absolute left-3 top-14 w-[300px] rounded-[18px] border border-white/10 bg-[#0b1728]/95 backdrop-blur-xl p-3 shadow-2xl z-30">
-            <div className="flex items-center justify-between mb-2"><b className="text-xs">Vehicles</b><button onClick={() => setVehiclesOpen(false)}><X className="w-3.5 h-3.5 text-slate-400" /></button></div>
-            <input value={vehicleQuery} onChange={(e) => setVehicleQuery(e.target.value)} placeholder="Search driver or ID" className="w-full h-8 rounded-lg border border-white/10 bg-white/5 px-2.5 text-[11px] outline-none" />
+          <div className="absolute left-3 top-14 w-[300px] rounded-[18px] border fh2-border fh2-panel backdrop-blur-xl p-3 shadow-2xl z-30">
+            <div className="flex items-center justify-between mb-2"><b className="text-xs">Vehicles</b><button onClick={() => setVehiclesOpen(false)}><X className="w-3.5 h-3.5 fh2-muted" /></button></div>
+            <input value={vehicleQuery} onChange={(e) => setVehicleQuery(e.target.value)} placeholder="Search driver or ID" className="w-full h-8 rounded-lg border fh2-border fh2-input px-2.5 text-[11px] outline-none" />
             <div className="mt-2 max-h-[300px] overflow-auto">
               {filteredVehicles.map((v) => (
-                <button key={v.id} onClick={() => { setSelectedId(v.id); setVehiclesOpen(false); }} className={`w-full flex items-center gap-2 p-2 rounded-lg text-left ${v.id === selectedId ? 'bg-sky-500/10 border border-sky-400/40' : 'hover:bg-white/5 border border-transparent'}`}>
+                <button key={v.id} onClick={() => { setSelectedId(v.id); setVehiclesOpen(false); }} className={`w-full flex items-center gap-2 p-2 rounded-lg text-left ${v.id === selectedId ? 'bg-sky-500/10 border border-sky-400/40' : 'fh2-hover border border-transparent'}`}>
                   <span className="w-2 h-2 rounded-full" style={{ background: getUniqueVehicleColor(v.id).line }} />
-                  <span className="min-w-0"><span className="block text-[11px] font-semibold truncate">{v.id}</span><span className="block text-[9px] text-slate-500">{v.points} pts</span></span>
+                  <span className="min-w-0"><span className="block text-[11px] font-semibold truncate">{v.id}</span><span className="block text-[9px] fh2-muted">{v.points} pts</span></span>
                 </button>
               ))}
             </div>
@@ -665,20 +927,20 @@ export default function HistoryAppV2() {
         )}
 
         {rangeOpen && (
-          <div className="absolute left-3 top-14 w-[320px] rounded-[18px] border border-white/10 bg-[#0b1728]/98 backdrop-blur-xl p-3 shadow-2xl z-30 max-h-[80vh] overflow-auto">
-            <div className="flex items-center justify-between mb-2"><b className="text-xs">Range</b><button onClick={() => setRangeOpen(false)}><X className="w-3.5 h-3.5 text-slate-400" /></button></div>
+          <div className="absolute left-3 top-14 w-[320px] rounded-[18px] border fh2-border fh2-panel backdrop-blur-xl p-3 shadow-2xl z-30 max-h-[80vh] overflow-auto">
+            <div className="flex items-center justify-between mb-2"><b className="text-xs">Range</b><button onClick={() => setRangeOpen(false)}><X className="w-3.5 h-3.5 fh2-muted" /></button></div>
             <AppleRangePicker preset={preset} rangeLabel={rangeLabel} fromValue={fromInput} toValue={toInput} minMs={Date.now() - MAX_RANGE_MS} maxMs={Date.now()} onFromChange={setFromInput} onToChange={setToInput} onPreset={applyPreset} onApply={applyCustom} error={error} inline />
           </div>
         )}
 
         {legendOpen && (
-          <div className="absolute right-3 top-16 w-[240px] rounded-[18px] border border-white/10 bg-[#0b1728]/95 backdrop-blur-xl p-3 shadow-2xl z-30 text-[10px]">
-            <div className="flex items-center justify-between mb-2"><b className="text-[10px] uppercase tracking-wider text-slate-400">Map key</b><button onClick={() => setLegendOpen(false)}><X className="w-3.5 h-3.5 text-slate-400" /></button></div>
+          <div className="absolute right-3 top-16 w-[240px] rounded-[18px] border fh2-border fh2-panel backdrop-blur-xl p-3 shadow-2xl z-30 text-[10px]">
+            <div className="flex items-center justify-between mb-2"><b className="text-[10px] uppercase tracking-wider fh2-muted">Map key</b><button onClick={() => setLegendOpen(false)}><X className="w-3.5 h-3.5 fh2-muted" /></button></div>
             <div className="flex items-center gap-2 mt-2"><span className="w-6 h-1 rounded" style={{ background: vehicleColor }} /> Trip</div>
             <div className="flex items-center gap-2 mt-2"><span className="w-2.5 h-2.5 rounded-full border-2" style={{ borderColor: vehicleColor }} /> Stop</div>
             <div className="flex items-center gap-2 mt-2"><span className="w-6 border-t-2 border-dashed border-slate-400" /> No data</div>
             {quality && <div className="flex items-center gap-2 mt-2"><span className="w-2.5 h-2.5 rounded-full border-2 border-rose-500" /> Poor fix</div>}
-            <div className="mt-3 pt-2 border-t border-white/10 text-slate-500">Esri, HERE, Garmin | Fleet Shield · Mani Ratan Singh</div>
+            <div className="mt-3 pt-2 border-t fh2-border fh2-muted">Esri, HERE, Garmin | Fleet Shield · Mani Ratan Singh</div>
           </div>
         )}
       </main>
