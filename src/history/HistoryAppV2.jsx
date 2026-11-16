@@ -1051,7 +1051,7 @@ export default function HistoryAppV2() {
   }
 
   return (
-    <div className="fh2 h-screen w-screen fh2-bg text-current flex flex-col overflow-hidden">
+    <div className="fh2 fh2-root w-full fh2-bg text-current flex flex-col overflow-hidden">
       <style>{`
         .maplibregl-ctrl-group { background: rgba(11,23,40,.92) !important; border: 1px solid rgba(255,255,255,.12) !important; box-shadow: 0 12px 30px -12px rgba(0,0,0,.6) !important; }
         .maplibregl-ctrl-group button span { filter: invert(1); }
@@ -1073,6 +1073,10 @@ export default function HistoryAppV2() {
         html.light .maplibregl-ctrl-group button span { filter: none; }
         html.light .maplibregl-ctrl-group { background: rgba(255,255,255,.94) !important; border-color: rgba(15,23,42,.12) !important; }
 
+        .fh2-root { height: 100vh; height: 100dvh; }
+        .fh-controls { top: calc(0.75rem + env(safe-area-inset-top)); }
+        .fh-sheet { bottom: calc(0.75rem + env(safe-area-inset-bottom)); max-height: calc(100dvh - 1.5rem - env(safe-area-inset-bottom)); overflow-y: auto; }
+        @media (min-width: 768px) { .fh-sheet { bottom: 0.75rem; max-height: none; overflow: visible; } }
         .fh2 { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
         .fh2-panel { -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 18px 50px -22px rgba(0,0,0,.55); }
         html.light .fh2-panel { box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 18px 50px -26px rgba(15,23,42,.28); }
@@ -1127,7 +1131,7 @@ export default function HistoryAppV2() {
           </div>
         )}
 
-        <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center gap-2 z-10">
+        <div className="fh-controls absolute left-3 right-3 flex flex-wrap items-center gap-2 z-10">
           <button onClick={() => setVehiclesOpen((v) => !v)} className="h-10 pl-2.5 pr-3 rounded-full border fh2-border fh2-panel backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl">
             <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: `${vehicleColor}22` }}><span className="w-2 h-2 rounded-full" style={{ background: vehicleColor }} /></span>
             <span>{selectedId || 'No vehicle'}</span>
@@ -1147,7 +1151,7 @@ export default function HistoryAppV2() {
           </div>
         </div>
 
-        <section className="absolute left-3 bottom-3 right-3 md:right-auto md:w-[560px] rounded-[22px] border fh2-border fh2-panel backdrop-blur-xl p-4 shadow-2xl z-10">
+        <section className="fh-sheet absolute left-3 right-3 md:right-auto md:w-[560px] rounded-[22px] border fh2-border fh2-panel backdrop-blur-xl p-4 shadow-2xl z-10">
           <div className="flex items-start gap-4">
             <div>
               <div className="text-[10px] fh2-muted flex items-center gap-1.5">

@@ -1892,6 +1892,19 @@ function canonicalVehicleId(value) {
 }
 
 // src/utils/telemetryProcessor.js
+function normalizeEpochMs(value, now = Date.now()) {
+  let ms = NaN;
+  if (typeof value === "string" && !/^\d+(\.\d+)?$/.test(value.trim())) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) ms = parsed;
+  } else {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) ms = n < 1e11 ? n * 1e3 : n;
+  }
+  if (!Number.isFinite(ms) || ms <= 0) return now;
+  if (ms > now + 5 * 60 * 1e3) return now;
+  return ms;
+}
 function coerceTelemetryPacket(raw) {
   if (!raw) return null;
   if (Array.isArray(raw)) {
@@ -1932,7 +1945,7 @@ function processTelemetryPacket(packet, options = {}) {
   const existing = options.existing || {};
   const filter = options.filter;
   const now = Number.isFinite(options.now) ? options.now : Date.now();
-  const timestamp = Number.isFinite(Number(packet.timestamp)) ? Number(packet.timestamp) : now;
+  const timestamp = normalizeEpochMs(packet.timestamp, now);
   const fixedLat = Number(rawLat.toFixed(6));
   const fixedLon = Number(rawLon.toFixed(6));
   let filteredLat = fixedLat;
@@ -1972,6 +1985,8 @@ function processTelemetryPacket(packet, options = {}) {
     status: speedKmH > 3 ? "moving" : distKm < 0.25 ? "at_base" : "in_field",
     lat: filteredLat,
     lon: filteredLon,
+    rawLat: fixedLat,
+    rawLon: fixedLon,
     speed: speedKmH,
     speedKnots: Number(rawSpeed.toFixed(2)),
     bearing: computedBearing,
@@ -1997,7 +2012,7 @@ function processTelemetryPacket(packet, options = {}) {
 }
 
 // src/utils/vehicleState.js
-var LIVE_WINDOW_MS = 60 * 1e3;
+var LIVE_WINDOW_MS = 180 * 1e3;
 var SIGNAL_GAP_WINDOW_MS = 15 * 60 * 1e3;
 var PARKED_WINDOW_MS = 35 * 60 * 1e3;
 var OFFLINE_AFTER_MS = PARKED_WINDOW_MS;
@@ -2047,8 +2062,7 @@ function computeVehicleAgeState(v, now = Date.now()) {
 // src/worker.js
 var liveVehicles = /* @__PURE__ */ new Map();
 var vehicleFilters = /* @__PURE__ */ new Map();
-var HUB_NAME = "purvanchal-fleet";
-var HUB_FORWARD_INTERVAL_MS = 3e4;
+var HUB_NAME = "fleet-history";
 var HUB_PERSIST_INTERVAL_MS = 5e3;
 var lastHubForward = /* @__PURE__ */ new Map();
 async function safeEqual(a, b) {
@@ -2067,7 +2081,7 @@ var HISTORY_NAME = "fleet-history";
 var HISTORY_COOKIE = "history_session";
 var HISTORY_SESSION_SECONDS = 8 * 60 * 60;
 var HISTORY_BUCKET_MS = 30 * 1e3;
-var HISTORY_RETENTION_MS = 7 * 24 * 60 * 60 * 1e3;
+var HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS);
 var HISTORY_PASSWORD_SALT = "mQ7B7fLda1aEC-GS4-oOIQ";
 var HISTORY_PASSWORD_HASH = "NhEnOhRT75TkiWp-ntanopnnRUL2NXzJFJZZsGL8PwA";
@@ -2168,9 +2182,136 @@ async function verifyHistorySession(token, secret) {
     return null;
   }
 }
+function historyDayKey(ms) {
+  return new Date(Number(ms) + 5.5 * 3600 * 1e3).toISOString().slice(0, 10);
+}
+function analyzeHistory(points) {
+  const pts = (points || []).map((p) => ({
+    t: Number(p.device_time),
+    lat: Number(p.lat),
+    lon: Number(p.lon),
+    speed: Number(p.speed) || 0,
+    accuracy: Number(p.accuracy) || 0
+  })).filter((p) => Number.isFinite(p.t) && Number.isFinite(p.lat) && Number.isFinite(p.lon)).sort((a, b) => a.t - b.t);
+  const intervals = [];
+  for (let i = 1; i < pts.length; i++) {
+    const dt = (pts[i].t - pts[i - 1].t) / 1e3;
+    if (dt > 0) intervals.push(dt);
+  }
+  const sorted = [...intervals].sort((a, b) => a - b);
+  const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 30;
+  const gapMs = Math.max(10 * 6e4, median * 2.5 * 1e3);
+  const rawStops = [];
+  let cluster = [];
+  const flush = () => {
+    if (cluster.length > 1) {
+      const first = cluster[0];
+      const last = cluster[cluster.length - 1];
+      const minutes = (last.t - first.t) / 6e4;
+      const lat = cluster.reduce((s, p) => s + p.lat, 0) / cluster.length;
+      const lon = cluster.reduce((s, p) => s + p.lon, 0) / cluster.length;
+      const spread = Math.max(...cluster.map((p) => calculateDistanceKm(lat, lon, p.lat, p.lon) * 1e3));
+      if (minutes >= 5 && spread <= 250) {
+        rawStops.push({ start: first.t, end: last.t, lat, lon, minutes, points: cluster.length });
+      }
+    }
+    cluster = [];
+  };
+  for (const p of pts) {
+    if (!cluster.length) {
+      cluster = [p];
+      continue;
+    }
+    const lat = cluster.reduce((s, q) => s + q.lat, 0) / cluster.length;
+    const lon = cluster.reduce((s, q) => s + q.lon, 0) / cluster.length;
+    if (calculateDistanceKm(lat, lon, p.lat, p.lon) * 1e3 <= 150) cluster.push(p);
+    else {
+      flush();
+      cluster = [p];
+    }
+  }
+  flush();
+  const mergedStops = [];
+  for (const s of rawStops) {
+    const near = mergedStops.find((m) => calculateDistanceKm(m.lat, m.lon, s.lat, s.lon) * 1e3 < 250 && s.start - m.end < 20 * 6e4);
+    if (near) {
+      const total = near.points + s.points;
+      near.lat = (near.lat * near.points + s.lat * s.points) / total;
+      near.lon = (near.lon * near.points + s.lon * s.points) / total;
+      near.points = total;
+      near.end = s.end;
+      near.minutes = (near.end - near.start) / 6e4;
+    } else {
+      mergedStops.push({ ...s });
+    }
+  }
+  const stopWindows = mergedStops.map((s) => [s.start, s.end]);
+  const moving = pts.filter((p) => !stopWindows.some(([a, b]) => p.t >= a && p.t <= b));
+  const rawTrips = [];
+  let run = [];
+  let prev = null;
+  for (const p of moving) {
+    if (prev && (p.t - prev.t > gapMs || historyDayKey(p.t) !== historyDayKey(prev.t))) {
+      if (run.length > 1) rawTrips.push(run);
+      run = [];
+    }
+    run.push(p);
+    prev = p;
+  }
+  if (run.length > 1) rawTrips.push(run);
+  const trips = rawTrips.map((arr, index) => {
+    let distance = 0;
+    let movingMs = 0;
+    let maxSpeed = 0;
+    for (let i = 1; i < arr.length; i++) {
+      const dt = arr[i].t - arr[i - 1].t;
+      if (dt <= 0 || dt > gapMs) continue;
+      const d = calculateDistanceKm(arr[i - 1].lat, arr[i - 1].lon, arr[i].lat, arr[i].lon);
+      distance += d;
+      if (arr[i].speed > 3) movingMs += dt;
+      if (arr[i].speed > maxSpeed) maxSpeed = arr[i].speed;
+    }
+    return {
+      index,
+      day: historyDayKey(arr[0].t),
+      startTime: arr[0].t,
+      endTime: arr[arr.length - 1].t,
+      startLat: arr[0].lat,
+      startLon: arr[0].lon,
+      endLat: arr[arr.length - 1].lat,
+      endLon: arr[arr.length - 1].lon,
+      distanceKm: Math.round(distance * 10) / 10,
+      durationMin: Math.round((arr[arr.length - 1].t - arr[0].t) / 6e4),
+      movingMin: Math.round(movingMs / 6e4),
+      averageSpeed: movingMs > 0 ? Math.round(distance / (movingMs / 36e5)) : 0,
+      maxSpeed: Math.round(maxSpeed),
+      points: arr.length
+    };
+  }).filter((t) => t.distanceKm >= 0.2 || t.movingMin >= 2);
+  return { points: pts.length, stops: mergedStops, trips };
+}
+function summarizeHistoryDays(analysis) {
+  const days = /* @__PURE__ */ new Map();
+  for (const trip of analysis.trips) {
+    const d = days.get(trip.day) || { day: trip.day, distanceKm: 0, movingMin: 0, trips: 0, stops: 0, maxSpeed: 0, points: 0 };
+    d.distanceKm += trip.distanceKm;
+    d.movingMin += trip.movingMin;
+    d.trips += 1;
+    d.points += trip.points || 0;
+    d.maxSpeed = Math.max(d.maxSpeed, trip.maxSpeed);
+    days.set(trip.day, d);
+  }
+  for (const stop of analysis.stops) {
+    const key = historyDayKey(stop.start);
+    const d = days.get(key) || { day: key, distanceKm: 0, movingMin: 0, trips: 0, stops: 0, maxSpeed: 0, points: 0 };
+    d.stops += 1;
+    days.set(key, d);
+  }
+  return Array.from(days.values()).map((d) => ({ ...d, distanceKm: Math.round(d.distanceKm * 10) / 10, averageSpeed: d.movingMin > 0 ? Math.round(d.distanceKm / (d.movingMin / 60)) : 0 })).sort((a, b) => a.day.localeCompare(b.day));
+}
 function historyStub(env) {
-  if (!env.HISTORY_DB) return null;
-  return env.HISTORY_DB.get(env.HISTORY_DB.idFromName(HISTORY_NAME));
+  if (!env.FLEET_HUB) return null;
+  return env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME));
 }
 function auditHistory(env, action, vehicleId = "", detail = "", actor = "admin") {
   const stub = historyStub(env);
@@ -2189,18 +2330,6 @@ async function requireHistoryAuth(request, env) {
   const session = await verifyHistorySession(token, env.HISTORY_SESSION_SECRET);
   if (!session) return historyJson({ error: "Unauthorized" }, 401);
   return null;
-}
-function writeHistory(env, record) {
-  const stub = historyStub(env);
-  if (!stub || !record) return null;
-  return stub.fetch("https://history/write", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(record)
-  }).catch((error) => {
-    console.error("history write failed", error?.message || error);
-    return null;
-  });
 }
 var BASE_LAT2 = 26.797313;
 var BASE_LON2 = 82.718401;
@@ -2266,7 +2395,7 @@ var worker_default = {
             if (body.accuracy !== void 0) accuracy = parseFloat(body.accuracy);
             if (body.batt !== void 0 || body.battery !== void 0) batt = parseFloat(body.batt || body.battery);
             if (body.charge !== void 0) charge = Boolean(body.charge);
-            if (body.timestamp) timestamp = new Date(body.timestamp).getTime() || Date.now();
+            if (body.timestamp) timestamp = normalizeEpochMs(body.timestamp);
           } else if (contentType2.includes("application/x-www-form-urlencoded") || contentType2.includes("multipart/form-data")) {
             const formData = await request.formData();
             if (!id) id = formData.get("id") || formData.get("uniqueId") || formData.get("deviceId");
@@ -2321,22 +2450,16 @@ var worker_default = {
         });
       }
       liveVehicles.set(vehId, record);
-      if (env.HISTORY_DB) {
-        const historyPush = writeHistory(env, record);
-        if (ctx?.waitUntil) ctx.waitUntil(historyPush);
-      }
       if (env.FLEET_HUB) {
-        const nowMs = Date.now();
-        const lastForward = lastHubForward.get(vehId) || 0;
-        if (nowMs - lastForward >= HUB_FORWARD_INTERVAL_MS) {
-          lastHubForward.set(vehId, nowMs);
-          const hubPush = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME)).fetch("https://fleet-hub/track", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(record)
-          }).catch(() => null);
-          if (ctx?.waitUntil) ctx.waitUntil(hubPush);
-        }
+        const ingest = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME)).fetch("https://fleet-hub/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(record)
+        }).catch((error) => {
+          console.error("ingest failed", error?.message || error);
+          return null;
+        });
+        if (ctx?.waitUntil) ctx.waitUntil(ingest);
       }
       return new Response(JSON.stringify({
         success: true,
@@ -2488,11 +2611,20 @@ var worker_default = {
     }
     if (url.pathname === "/api/vehicles" || url.pathname === "/api/vehicles/") {
       const now = Date.now();
-      const reportedList = Array.from(liveVehicles.values()).map((vVal) => ({
-        ...vVal,
-        ...computeVehicleAgeState(vVal, now)
-      }));
-      const list = reportedList;
+      let list = [];
+      if (env.FLEET_HUB) {
+        try {
+          const hub = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME));
+          const res = await hub.fetch("https://fleet-hub/live", { headers: { "Content-Type": "application/json" } });
+          const data = await res.json().catch(() => ({}));
+          if (Array.isArray(data.vehicles)) list = data.vehicles;
+        } catch (error) {
+          console.error("live snapshot failed", error?.message || error);
+        }
+      }
+      if (!list.length) {
+        list = Array.from(liveVehicles.values()).map((vVal) => ({ ...vVal, ...computeVehicleAgeState(vVal, now) }));
+      }
       return new Response(JSON.stringify({
         success: true,
         vehicles: list,
@@ -2637,6 +2769,13 @@ var worker_default = {
         "Set-Cookie": `${HISTORY_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${secure}`
       });
     }
+    if (url.pathname === "/api/history/health") {
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: "History store is not configured" }, 503);
+      const response = await stub.fetch("https://history/health");
+      const data = await response.json().catch(() => ({}));
+      return historyJson(data, response.status);
+    }
     if (url.pathname === "/api/history/vehicles") {
       const unauthorized = await requireHistoryAuth(request, env);
       if (unauthorized) return unauthorized;
@@ -2659,6 +2798,17 @@ var worker_default = {
       });
       const data = await response.json().catch(() => ({ error: "History store error" }));
       return historyJson(data, response.status);
+    }
+    for (const report of ["trips", "stops", "summary", "all"]) {
+      if (url.pathname === `/api/history/reports/${report}`) {
+        const unauthorized = await requireHistoryAuth(request, env);
+        if (unauthorized) return unauthorized;
+        const stub = historyStub(env);
+        if (!stub) return historyJson({ error: "History store is not configured" }, 503);
+        const response = await stub.fetch(`https://history/reports/${report}${url.search}`);
+        const data = await response.json().catch(() => ({ error: "Report error" }));
+        return historyJson(data, response.status);
+      }
     }
     if (url.pathname === "/api/history") {
       const unauthorized = await requireHistoryAuth(request, env);
@@ -2978,6 +3128,13 @@ var FleetHistory = class {
     this.ctx = ctx;
     this.state = ctx;
     this.env = env;
+    this.fleet = /* @__PURE__ */ new Map();
+    this.filters = /* @__PURE__ */ new Map();
+    this.wsTrackerIds = /* @__PURE__ */ new Set();
+    this.lastSnapshotAt = 0;
+    if (typeof WebSocketRequestResponsePair !== "undefined") {
+      this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    }
     this.state.blockConcurrencyWhile(async () => {
       this.state.storage.sql.exec(`
         CREATE TABLE IF NOT EXISTS history (
@@ -3007,10 +3164,73 @@ var FleetHistory = class {
           actor TEXT
         )
       `);
+      this.state.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS history_points (
+          vehicle_id TEXT NOT NULL,
+          device_time INTEGER NOT NULL,
+          received_at INTEGER NOT NULL,
+          lat REAL NOT NULL,
+          lon REAL NOT NULL,
+          speed REAL,
+          bearing REAL,
+          accuracy REAL,
+          battery INTEGER,
+          PRIMARY KEY (vehicle_id, device_time)
+        )
+      `);
+      this.state.storage.sql.exec(
+        "CREATE INDEX IF NOT EXISTS history_points_time ON history_points(vehicle_id, device_time)"
+      );
+      try {
+        this.state.storage.sql.exec("ALTER TABLE history_points ADD COLUMN raw_lat REAL");
+      } catch (e) {
+      }
+      try {
+        this.state.storage.sql.exec("ALTER TABLE history_points ADD COLUMN raw_lon REAL");
+      } catch (e) {
+      }
+      this.state.storage.sql.exec(`
+        INSERT OR IGNORE INTO history_points
+          (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
+        SELECT vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
+        FROM history
+      `);
+      const saved = await this.state.storage.get("fleet_snapshot");
+      if (Array.isArray(saved)) {
+        const next = /* @__PURE__ */ new Map();
+        for (const v of saved) {
+          if (!v) continue;
+          const id = canonicalVehicleId(v.id);
+          if (!id) continue;
+          next.set(id, { ...v, id, name: id });
+        }
+        this.fleet = next;
+      }
     });
   }
   async fetch(request) {
     const url = new URL(request.url);
+    if (url.pathname.endsWith("/ws")) {
+      return this.handleSocket(request);
+    }
+    if (url.pathname.endsWith("/ingest") && request.method === "POST") {
+      return this.ingest(request);
+    }
+    if (url.pathname.endsWith("/track") && request.method === "POST") {
+      return this.ingest(request);
+    }
+    if (url.pathname.endsWith("/live")) {
+      return this.live();
+    }
+    if (url.pathname.endsWith("/health")) {
+      return this.health();
+    }
+    if (url.pathname.endsWith("/clear") && (request.method === "DELETE" || request.method === "POST")) {
+      return this.clearLive();
+    }
+    if (url.pathname.endsWith("/remove") && (request.method === "POST" || request.method === "DELETE")) {
+      return this.removeLive(request);
+    }
     if (url.pathname.endsWith("/write") && request.method === "POST") {
       return this.write(request);
     }
@@ -3020,6 +3240,18 @@ var FleetHistory = class {
     if (url.pathname.endsWith("/history")) {
       return this.history(url);
     }
+    if (url.pathname.endsWith("/reports/trips")) {
+      return this.reportTrips(url);
+    }
+    if (url.pathname.endsWith("/reports/stops")) {
+      return this.reportStops(url);
+    }
+    if (url.pathname.endsWith("/reports/summary")) {
+      return this.reportSummary(url);
+    }
+    if (url.pathname.endsWith("/reports/all")) {
+      return this.reportAll(url);
+    }
     if (url.pathname.endsWith("/delete") && request.method === "POST") {
       return this.remove(request);
     }
@@ -3028,47 +3260,99 @@ var FleetHistory = class {
     }
     return historyJson({ error: "Not found" }, 404);
   }
-  async write(request) {
-    const record = await request.json().catch(() => null);
+  handleSocket(request) {
+    const upgrade = request.headers.get("Upgrade");
+    if (!upgrade || upgrade.toLowerCase() !== "websocket") {
+      return historyJson({ error: "Expected WebSocket upgrade" }, 426);
+    }
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    const role = new URL(request.url).searchParams.get("role") === "tracker" ? "tracker" : "dashboard";
+    this.ctx.acceptWebSocket(server);
+    try {
+      server.serializeAttachment({ role });
+    } catch (e) {
+    }
+    try {
+      if (role === "dashboard") {
+        server.send(JSON.stringify({ type: "snapshot", vehicles: this.getFleetSnapshot(), timestamp: Date.now() }));
+      } else {
+        server.send(JSON.stringify({ type: "ready", role: "tracker", timestamp: Date.now() }));
+      }
+    } catch (e) {
+    }
+    return new Response(null, { status: 101, webSocket: client });
+  }
+  async ingest(request) {
+    let record = null;
+    try {
+      record = await request.json();
+    } catch (e) {
+      record = null;
+    }
     if (!record) return historyJson({ error: "Invalid body" }, 400);
     const id = canonicalVehicleId(record.id);
     const lat = Number(record.lat);
     const lon = Number(record.lon);
-    if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) {
-      return historyJson({ error: "Invalid vehicle" }, 400);
+    if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) return historyJson({ error: "Invalid vehicle" }, 400);
+    const stored = { ...record, id, name: id, lat, lon };
+    const previous = this.fleet.get(id);
+    if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) {
+      return historyJson({ success: true, skipped: "stale", id });
     }
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      return historyJson({ error: "Invalid coordinates" }, 400);
-    }
+    this.fleet.set(id, stored);
+    this.writeRecord(stored);
+    this.broadcast({ type: "delta", vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
+    this.persistSnapshotIfDue();
+    return historyJson({ success: true, id, count: this.fleet.size });
+  }
+  health() {
+    const row = this.state.storage.sql.exec(`SELECT (SELECT COUNT(*) FROM history) AS oldCount,
+                    (SELECT COUNT(*) FROM history_points) AS newCount,
+                    (SELECT COUNT(DISTINCT vehicle_id) FROM history_points) AS vehicles,
+                    (SELECT MIN(device_time) FROM history_points) AS oldest,
+                    (SELECT MAX(device_time) FROM history_points) AS newest`).toArray()[0] || {};
+    return historyJson({ success: true, ...row });
+  }
+  live() {
+    return historyJson({
+      success: true,
+      vehicles: this.getFleetSnapshot(),
+      count: this.fleet.size,
+      timestamp: Date.now()
+    });
+  }
+  writeRecord(record) {
+    if (!record) return { success: false, skipped: "empty" };
+    const id = canonicalVehicleId(record.id);
+    const lat = Number(record.lat);
+    const lon = Number(record.lon);
+    if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) return { success: false, skipped: "invalid" };
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return { success: false, skipped: "invalid" };
     const now = Date.now();
     let deviceTime = Number(record.lastSeen ?? record.updatedAt ?? now);
     if (!Number.isFinite(deviceTime)) deviceTime = now;
-    if (deviceTime < now - HISTORY_RETENTION_MS) {
-      return historyJson({ success: true, skipped: "too-old" });
-    }
+    if (deviceTime < now - HISTORY_RETENTION_MS) return { success: false, skipped: "too-old" };
     if (deviceTime > now + 5 * 60 * 1e3) deviceTime = now;
-    const slot = Math.floor(deviceTime / HISTORY_BUCKET_MS) % HISTORY_SLOTS;
     const speed = Number(record.speed);
     const bearing = Number(record.bearing);
     const accuracy = Number(record.accuracy);
-    const battery = Number(record.batt);
+    const battery = Number(record.batt ?? record.battery);
     this.state.storage.sql.exec(
-      `INSERT INTO history (
-         vehicle_id, slot, device_time, received_at,
-         lat, lon, speed, bearing, accuracy, battery
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(vehicle_id, slot) DO UPDATE SET
-         device_time = excluded.device_time,
+      `INSERT INTO history_points (
+         vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(vehicle_id, device_time) DO UPDATE SET
          received_at = excluded.received_at,
          lat = excluded.lat,
          lon = excluded.lon,
          speed = excluded.speed,
          bearing = excluded.bearing,
          accuracy = excluded.accuracy,
-         battery = excluded.battery
-       WHERE excluded.device_time >= history.device_time`,
+         battery = excluded.battery,
+         raw_lat = excluded.raw_lat,
+         raw_lon = excluded.raw_lon`,
       id,
-      slot,
       deviceTime,
       now,
       lat,
@@ -3076,20 +3360,216 @@ var FleetHistory = class {
       Number.isFinite(speed) ? speed : 0,
       Number.isFinite(bearing) ? bearing : 0,
       Number.isFinite(accuracy) ? accuracy : 0,
-      Number.isFinite(battery) ? Math.round(battery) : null
+      Number.isFinite(battery) ? Math.round(battery) : null,
+      Number.isFinite(Number(record.rawLat)) ? Number(record.rawLat) : lat,
+      Number.isFinite(Number(record.rawLon)) ? Number(record.rawLon) : lon
     );
-    return historyJson({ success: true, id, slot, deviceTime });
+    if (now - (this.lastPruneAt || 0) > 36e5) {
+      this.lastPruneAt = now;
+      try {
+        this.state.storage.sql.exec("DELETE FROM history_points WHERE device_time < ?", now - HISTORY_RETENTION_MS);
+      } catch (e) {
+      }
+    }
+    return { success: true, id, deviceTime };
+  }
+  webSocketMessage(ws, message) {
+    const attachment = ws.deserializeAttachment?.() || {};
+    if (attachment.role === "tracker") {
+      let raw = message;
+      if (typeof raw !== "string") {
+        try {
+          raw = new TextDecoder().decode(raw);
+        } catch (e) {
+          raw = "";
+        }
+      }
+      const packet = coerceTelemetryPacket(raw);
+      if (!packet) return;
+      const id = canonicalVehicleId(packet.id);
+      if (!id) return;
+      const existing = this.fleet.get(id) || {};
+      let filter = this.filters.get(id);
+      if (!filter) {
+        filter = createKinematicFilter();
+        this.filters.set(id, filter);
+      }
+      const record = processTelemetryPacket(packet, { existing, filter, now: Date.now() });
+      if (!record) return;
+      this.fleet.set(record.id, record);
+      this.wsTrackerIds.add(record.id);
+      this.writeRecord(record);
+      try {
+        ws.serializeAttachment({ role: "tracker", id: record.id });
+      } catch (e) {
+      }
+      this.broadcast({ type: "delta", vehicle: { ...record, ...computeVehicleAgeState(record) } });
+      this.persistSnapshotIfDue();
+      try {
+        ws.send(JSON.stringify({ type: "ack", id: record.id, timestamp: Date.now() }));
+      } catch (e) {
+      }
+      return;
+    }
+    try {
+      const data = JSON.parse(message);
+      if (data?.type === "ping") {
+        ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
+      } else if (data?.type === "subscribe") {
+        ws.send(JSON.stringify({ type: "snapshot", vehicles: this.getFleetSnapshot(), timestamp: Date.now() }));
+      } else if (data?.type === "track" && data.vehicle?.id) {
+        const id = canonicalVehicleId(data.vehicle.id);
+        if (!id) return;
+        const stored = { ...data.vehicle, id, name: id };
+        const previous = this.fleet.get(id);
+        if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) return;
+        this.fleet.set(id, stored);
+        this.writeRecord(stored);
+        this.broadcast({ type: "delta", vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
+        this.persistSnapshotIfDue();
+      }
+    } catch (e) {
+      if (message === "ping") {
+        try {
+          ws.send(JSON.stringify({ type: "pong", timestamp: Date.now() }));
+        } catch (err) {
+        }
+      }
+    }
+  }
+  webSocketClose(ws, code, reason, wasClean) {
+    const attachment = ws.deserializeAttachment?.() || {};
+    if (attachment.role === "tracker" && attachment.id) this.wsTrackerIds.delete(String(attachment.id));
+    try {
+      ws.close(code, "Hub closing connection");
+    } catch (e) {
+    }
+  }
+  webSocketError(ws, error) {
+    try {
+      ws.close(1011, "Hub socket error");
+    } catch (e) {
+    }
+  }
+  broadcast(message) {
+    const payload = JSON.stringify(message);
+    for (const ws of this.state.getWebSockets()) {
+      const role = ws.deserializeAttachment?.()?.role;
+      if (role === "tracker") continue;
+      try {
+        ws.send(payload);
+      } catch (e) {
+      }
+    }
+  }
+  getFleetSnapshot() {
+    const now = Date.now();
+    return Array.from(this.fleet.values()).map((record) => ({ ...record, ...computeVehicleAgeState(record, now) }));
+  }
+  persistSnapshotIfDue() {
+    const now = Date.now();
+    if (now - this.lastSnapshotAt < HUB_PERSIST_INTERVAL_MS) return;
+    this.lastSnapshotAt = now;
+    const snapshot = Array.from(this.fleet.values());
+    if (this.state.waitUntil) this.state.waitUntil(this.state.storage.put("fleet_snapshot", snapshot));
+    else this.state.storage.put("fleet_snapshot", snapshot).catch(() => {
+    });
+  }
+  clearLive() {
+    this.fleet.clear();
+    this.filters.clear();
+    this.wsTrackerIds.clear();
+    this.broadcast({ type: "clear", timestamp: Date.now() });
+    if (this.state.waitUntil) this.state.waitUntil(this.state.storage.put("fleet_snapshot", []));
+    return historyJson({ success: true, count: 0 });
+  }
+  async removeLive(request) {
+    let ids = [];
+    try {
+      const body = await request.json();
+      if (body?.id) ids.push(body.id);
+      if (Array.isArray(body?.ids)) ids.push(...body.ids);
+    } catch (e) {
+      ids = new URL(request.url).searchParams.getAll("id");
+    }
+    ids = Array.from(new Set(ids.map(canonicalVehicleId).filter(Boolean)));
+    const removed = [];
+    for (const id of ids) {
+      if (this.fleet.delete(id)) removed.push(id);
+      this.filters.delete(id);
+      this.wsTrackerIds.delete(id);
+    }
+    if (removed.length) {
+      await this.state.storage.put("fleet_snapshot", Array.from(this.fleet.values()));
+      this.broadcast({ type: "remove", ids: removed, timestamp: Date.now() });
+    }
+    return historyJson({ success: true, removed, count: this.fleet.size });
+  }
+  async write(request) {
+    const record = await request.json().catch(() => null);
+    if (!record) return historyJson({ error: "Invalid body" }, 400);
+    const result = this.writeRecord(record);
+    if (!result.success && result.skipped === "invalid") return historyJson({ error: "Invalid vehicle" }, 400);
+    return historyJson(result);
   }
   vehicles() {
     const rows = this.state.storage.sql.exec(
       `SELECT vehicle_id AS id,
                 MAX(device_time) AS last_seen,
                 COUNT(*) AS points
-         FROM history
+         FROM history_points
          GROUP BY vehicle_id
          ORDER BY last_seen DESC`
     ).toArray();
     return historyJson({ success: true, vehicles: rows, count: rows.length });
+  }
+  reportPoints(url) {
+    const id = canonicalVehicleId(url.searchParams.get("id"));
+    if (!id) return null;
+    const now = Date.now();
+    const from = Number(url.searchParams.get("from") || now - HISTORY_RETENTION_MS);
+    const to = Number(url.searchParams.get("to") || now);
+    return this.state.storage.sql.exec(
+      `SELECT device_time, lat, lon, speed, accuracy
+         FROM history_points
+         WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
+         ORDER BY device_time ASC LIMIT 100000`,
+      id,
+      from,
+      to
+    ).toArray();
+  }
+  reportTrips(url) {
+    const points = this.reportPoints(url);
+    if (!points) return historyJson({ error: "Missing id" }, 400);
+    const analysis = analyzeHistory(points);
+    return historyJson({ success: true, trips: analysis.trips, count: analysis.trips.length, points: analysis.points });
+  }
+  reportStops(url) {
+    const points = this.reportPoints(url);
+    if (!points) return historyJson({ error: "Missing id" }, 400);
+    const analysis = analyzeHistory(points);
+    return historyJson({ success: true, stops: analysis.stops, count: analysis.stops.length, points: analysis.points });
+  }
+  reportSummary(url) {
+    const points = this.reportPoints(url);
+    if (!points) return historyJson({ error: "Missing id" }, 400);
+    const analysis = analyzeHistory(points);
+    const rows = summarizeHistoryDays(analysis);
+    return historyJson({ success: true, days: rows, count: rows.length, points: analysis.points });
+  }
+  reportAll(url) {
+    const points = this.reportPoints(url);
+    if (!points) return historyJson({ error: "Missing id" }, 400);
+    const analysis = analyzeHistory(points);
+    const days = summarizeHistoryDays(analysis);
+    return historyJson({
+      success: true,
+      days,
+      trips: analysis.trips,
+      stops: analysis.stops,
+      points: analysis.points
+    });
   }
   history(url) {
     const id = canonicalVehicleId(url.searchParams.get("id"));
@@ -3098,12 +3578,12 @@ var FleetHistory = class {
     const from = Number(url.searchParams.get("from") || now - HISTORY_RETENTION_MS);
     const to = Number(url.searchParams.get("to") || now);
     const limit = Math.min(
-      25e3,
-      Math.max(1, Number(url.searchParams.get("limit") || 25e3))
+      1e5,
+      Math.max(1, Number(url.searchParams.get("limit") || 1e5))
     );
     const points = this.state.storage.sql.exec(
-      `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery
-         FROM history
+      `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon
+         FROM history_points
          WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
          ORDER BY device_time ASC
          LIMIT ?`,
@@ -3112,13 +3592,21 @@ var FleetHistory = class {
       Number.isFinite(to) ? to : now,
       limit
     ).toArray();
+    const MAX_MAP_POINTS = 7e3;
+    let out = points;
+    if (points.length > MAX_MAP_POINTS) {
+      const step = Math.ceil(points.length / MAX_MAP_POINTS);
+      out = points.filter((_, i) => i % step === 0 || i === points.length - 1);
+    }
     return historyJson({
       success: true,
       id,
       from,
       to,
-      count: points.length,
-      points
+      count: out.length,
+      total: points.length,
+      downsampled: out.length !== points.length,
+      points: out
     });
   }
   async remove(request) {
@@ -3129,15 +3617,13 @@ var FleetHistory = class {
     const to = Number(body.to);
     if (!all && !id) return historyJson({ error: "Missing id" }, 400);
     if (all) {
+      this.state.storage.sql.exec("DELETE FROM history_points");
       this.state.storage.sql.exec("DELETE FROM history");
     } else if (id && Number.isFinite(from) && Number.isFinite(to) && from > 0 && to > 0) {
-      this.state.storage.sql.exec(
-        "DELETE FROM history WHERE vehicle_id = ? AND device_time BETWEEN ? AND ?",
-        id,
-        from,
-        to
-      );
+      this.state.storage.sql.exec("DELETE FROM history_points WHERE vehicle_id = ? AND device_time BETWEEN ? AND ?", id, from, to);
+      this.state.storage.sql.exec("DELETE FROM history WHERE vehicle_id = ? AND device_time BETWEEN ? AND ?", id, from, to);
     } else {
+      this.state.storage.sql.exec("DELETE FROM history_points WHERE vehicle_id = ?", id);
       this.state.storage.sql.exec("DELETE FROM history WHERE vehicle_id = ?", id);
     }
     this.state.storage.sql.exec(
