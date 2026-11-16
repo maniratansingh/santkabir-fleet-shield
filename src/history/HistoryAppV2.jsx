@@ -10,6 +10,9 @@ import {
   LogOut,
   Moon,
   Sun,
+  Play,
+  Pause,
+  LocateFixed,
   RefreshCw,
   Route,
   ShieldCheck,
@@ -411,6 +414,7 @@ export default function HistoryAppV2() {
   const mapRef = useRef(null);
   const markersRef = useRef([]);
   const movingMarkerRef = useRef(null);
+  const lastFollowRef = useRef(0);
   const [mapReady, setMapReady] = useState(false);
 
   const trips = useMemo(() => {
@@ -644,7 +648,7 @@ export default function HistoryAppV2() {
     });
     if (unified.length) {
       map.addSource('unified', { type: 'geojson', data: { type: 'FeatureCollection', features: unified.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) } });
-      map.addLayer({ id: 'unified-line', type: 'line', source: 'unified', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': 1.6, 'line-opacity': 0.28 } });
+      map.addLayer({ id: 'unified-line', type: 'line', source: 'unified', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': 2.2, 'line-opacity': 0.22, 'line-blur': 0.6 } });
     }
 
     map.addLayer({
@@ -783,15 +787,22 @@ export default function HistoryAppV2() {
 
     const movingEl = document.createElement('div');
     movingEl.className = 'fh-car';
-    movingEl.innerHTML = `<span class="fh-car-halo" style="--c:${vehicleColor}"></span><svg viewBox="0 0 28 44" width="26" height="40" aria-hidden="true">
-      <defs><linearGradient id="fhCarBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dbe4ee"/></linearGradient></defs>
-      <rect x="3" y="8" width="22" height="30" rx="7" fill="url(#fhCarBody)" stroke="${theme === 'dark' ? '#0b1728' : '#94a3b8'}" stroke-width="1.4"/>
-      <rect x="6" y="13" width="16" height="8" rx="3" fill="#0f2a3d" opacity=".9"/>
-      <rect x="6" y="26" width="16" height="3" rx="1.5" fill="${vehicleColor}" opacity=".9"/>
-      <rect x="6" y="31" width="16" height="3" rx="1.5" fill="${vehicleColor}" opacity=".55"/>
-      <circle cx="8.5" cy="10" r="1.8" fill="#ff453a"/>
-      <circle cx="19.5" cy="10" r="1.8" fill="#ff453a"/>
-    </svg>`;
+    movingEl.innerHTML = `<span class="fh-car-speed">0 km/h</span><span class="fh-car-halo" style="--c:${vehicleColor}"></span>
+      <svg viewBox="0 0 48 48" width="42" height="42" aria-hidden="true">
+        <defs>
+          <filter id="fhShadow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity=".38"/></filter>
+        </defs>
+        <g filter="url(#fhShadow)">
+          <circle cx="24" cy="24" r="19" fill="${vehicleColor}" stroke="${theme === 'dark' ? '#04121c' : '#ffffff'}" stroke-width="2.4"/>
+          <circle cx="24" cy="24" r="15.5" fill="none" stroke="#ffffff" stroke-opacity=".25" stroke-width="1"/>
+          <g transform="rotate(0 24 24)">
+            <rect x="18.5" y="12" width="11" height="24" rx="5" fill="#ffffff"/>
+            <rect x="20.5" y="15.5" width="7" height="5.5" rx="1.8" fill="#0f172a"/>
+            <rect x="20.5" y="23" width="7" height="2.4" rx="1.2" fill="${vehicleColor}" opacity=".75"/>
+            <rect x="20.5" y="30" width="7" height="2.4" rx="1.2" fill="${vehicleColor}" opacity=".45"/>
+          </g>
+        </g>
+      </svg>`;
     movingMarkerRef.current = new maplibregl.Marker({ element: movingEl }).setLngLat([prepared.clean[0].lon, prepared.clean[0].lat]).addTo(map);
     markersRef.current.push(movingMarkerRef.current);
 
@@ -817,30 +828,41 @@ export default function HistoryAppV2() {
       const el = movingMarkerRef.current.getElement();
       const car = el.querySelector('svg');
       if (car) car.style.transform = `rotate(${p.bearing || 0}deg)`;
-      setPlaySpeed(Math.round(Number(p.speed) || 0));
-      if (follow && playing && mapRef.current) {
+      const speed = Math.round(Number(p.speed) || 0);
+      setPlaySpeed(speed);
+      const pill = el.querySelector('.fh-car-speed');
+      if (pill) pill.textContent = `${speed} km/h`;
+      if (follow && playing && mapRef.current && Date.now() - lastFollowRef.current > 1100) {
         const center = mapRef.current.getCenter();
         const map = mapRef.current;
         const pt = map.project([p.lon, p.lat]);
         const w = map.getCanvas().clientWidth;
         const h = map.getCanvas().clientHeight;
         const outside = pt.x < w * 0.22 || pt.x > w * 0.78 || pt.y < h * 0.22 || pt.y > h * 0.7;
-        if (outside) map.easeTo({ center: [p.lon, p.lat], duration: 900, easing: (t) => 1 - Math.pow(1 - t, 3), essential: true });
+        if (outside) { lastFollowRef.current = Date.now(); map.easeTo({ center: [p.lon, p.lat], duration: 900, easing: (t) => 1 - Math.pow(1 - t, 3), essential: true }); }
       }
     }
   }, [time, prepared, mapReady, follow, playing]);
 
   useEffect(() => {
     if (!playing) return undefined;
-    const id = setInterval(() => {
-      setTime((t) => {
-        const step = Math.max(30000, (appliedTo - appliedFrom) / 1200) * playRate;
-        const next = (t || appliedFrom) + step;
-        if (next >= appliedTo) { setPlaying(false); return appliedTo; }
-        return next;
-      });
-    }, 60);
-    return () => clearInterval(id);
+    let raf = null;
+    let lastPaint = 0;
+    const from = (time >= appliedTo ? appliedFrom : time) || appliedFrom;
+    const span = Math.max(1, appliedTo - appliedFrom);
+    const duration = Math.max(5000, 45000 / Math.max(1, playRate));
+    const started = performance.now();
+    const tick = (now) => {
+      if (now - lastPaint > 45) {
+        lastPaint = now;
+        const f = Math.min(1, (now - started) / duration);
+        setTime(from + span * f);
+        if (f >= 1) { setPlaying(false); return; }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { if (raf) cancelAnimationFrame(raf); };
   }, [playing, appliedFrom, appliedTo, playRate]);
 
   useEffect(() => {
@@ -1025,9 +1047,10 @@ export default function HistoryAppV2() {
         .fh2-pop { animation: fh2-pop 200ms cubic-bezier(.2,.9,.3,1); transform-origin: top left; }
         @keyframes fh2-pop { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }
         .fh2 .tabular-nums { font-variant-numeric: tabular-nums; }
-        .fh-car { position: relative; width: 26px; height: 40px; will-change: transform; }
-        .fh-car svg { display: block; transition: transform 320ms cubic-bezier(.2,.8,.2,1); filter: drop-shadow(0 6px 10px rgba(0,0,0,.45)); }
-        .fh-car-halo { position: absolute; left: 50%; top: 55%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 99px; background: radial-gradient(circle, var(--c) 0%, transparent 65%); opacity: .22; animation: fh-pulse 2.2s ease-in-out infinite; }
+        .fh-car { position: relative; width: 42px; height: 42px; will-change: transform; }
+        .fh-car svg { display: block; transition: transform 420ms cubic-bezier(.2,.8,.2,1); overflow: visible; }
+        .fh-car-speed { position: absolute; left: 50%; top: -24px; transform: translateX(-50%); padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 6px 16px -8px rgba(0,0,0,.5); }
+        .fh-car-halo { position: absolute; left: 50%; top: 58%; width: 62px; height: 62px; margin: -31px 0 0 -31px; border-radius: 99px; background: radial-gradient(circle, var(--c) 0%, transparent 68%); opacity: .12; animation: fh-pulse 2.4s ease-in-out infinite; }
         @keyframes fh-pulse { 0%,100% { transform: scale(.8); opacity: .12; } 50% { transform: scale(1.1); opacity: .26; } }
         @media (prefers-reduced-motion: reduce) {
           .fh2 *, .fh2 *::before, .fh2 *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
@@ -1148,8 +1171,9 @@ export default function HistoryAppV2() {
           )}
 
           {reportTab === 'map' && <div className="mt-3 flex items-center gap-3">
-            <button onClick={() => setPlaying((v) => !v)} className="w-8 h-8 rounded-full fh2-active grid place-items-center" aria-label="Play">{playing ? '❚❚' : '▶'}</button>
+            <button onClick={() => setPlaying((v) => !v)} className="w-9 h-9 rounded-full fh2-active grid place-items-center shadow-lg" aria-label="Play">{playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}</button>
             <button onClick={() => setPlayRate((r) => ({ 1: 2, 2: 4, 4: 8, 8: 16, 16: 1 }[r] || 1))} className="h-8 px-2 rounded-full border fh2-border fh2-muted text-[10px] font-semibold tabular-nums" title="Playback speed" aria-label={`Playback speed ${playRate}x`}>{playRate}×</button>
+            <button onClick={() => setFollow((v) => !v)} className={`w-8 h-8 rounded-full border grid place-items-center ${follow ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-muted'}`} title="Follow vehicle" aria-label="Follow vehicle"><LocateFixed className="w-3.5 h-3.5" /></button>
             <div className="flex-1">
               <div
                 className="relative h-3 rounded-full fh2-track overflow-hidden cursor-pointer"
