@@ -86,7 +86,7 @@ is removed from the hub state.
 
 | Feature | Behaviour |
 |---|---|
-| Themes | Dark and light, including matching map styles. |
+| Themes | Dark and light, including matching map styles. Switching restyles the map in place, so the trail, stops and vehicle marker stay visible. |
 | Typography | rem-based ramp with optical sizing. |
 | Contrast | `prefers-contrast: more` adds solid surfaces, 2 px borders and a stronger focus ring. |
 | Transparency | `prefers-reduced-transparency: reduce` removes backdrop blur and makes panels solid. |

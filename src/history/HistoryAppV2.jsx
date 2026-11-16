@@ -421,7 +421,11 @@ export default function HistoryAppV2() {
   const seekTrackRef = useRef(null);
   const seekingRef = useRef(false);
   const wasPlayingRef = useRef(false);
+  const themeRef = useRef(theme);
+  const appliedStyleThemeRef = useRef(theme);
+  themeRef.current = theme;
   const [mapReady, setMapReady] = useState(false);
+  const [styleEpoch, setStyleEpoch] = useState(0);
 
   const trips = useMemo(() => {
     if (reports.trips.length) {
@@ -590,19 +594,30 @@ export default function HistoryAppV2() {
   useEffect(() => {
     if (authed !== true || !mapContainerRef.current) return undefined;
     if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; setMapReady(false); }
+    const initialTheme = themeRef.current;
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: theme === 'dark' ? DARK_STYLE : LIGHT_STYLE,
+      style: initialTheme === 'dark' ? DARK_STYLE : LIGHT_STYLE,
       center: [BASE.lon, BASE.lat],
       zoom: 9.6,
       attributionControl: false,
     });
+    appliedStyleThemeRef.current = initialTheme;
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
     map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: 'Fleet Shield · Mani Ratan Singh (mrps.in)' }), 'bottom-right');
+    // A new style wipes every custom source, layer and image. Bump the epoch so
+    // the draw effect re-adds them instead of silently keeping an empty canvas.
+    map.on('style.load', () => setStyleEpoch((v) => v + 1));
     map.on('load', () => {
+      if (mapRef.current !== map) return;
       requestAnimationFrame(() => {
+        if (mapRef.current !== map) return;
         map.resize();
-        requestAnimationFrame(() => { map.resize(); setMapReady(true); });
+        requestAnimationFrame(() => {
+          if (mapRef.current !== map) return;
+          map.resize();
+          setMapReady(true);
+        });
       });
     });
     const onResize = () => map.resize();
@@ -617,12 +632,39 @@ export default function HistoryAppV2() {
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [authed, theme]);
+  }, [authed]);
+
+  // Theme changes restyle the existing map. Recreating the map dropped overlays
+  // and exhausted WebGL contexts after repeated toggles.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    if (appliedStyleThemeRef.current === theme) return;
+    appliedStyleThemeRef.current = theme;
+    map.setStyle(theme === 'dark' ? DARK_STYLE : LIGHT_STYLE, { diff: false });
+  }, [theme, mapReady]);
 
   /* draw */
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady || !map.isStyleLoaded()) return undefined;
+    if (!map || !mapReady) return undefined;
+    if (!map.isStyleLoaded()) {
+      // setStyle clears every custom source, layer and image asynchronously.
+      // Wait for the replacement style, then force this effect to run again.
+      let done = false;
+      const redraw = () => {
+        if (done || !map.isStyleLoaded()) return;
+        done = true;
+        setStyleEpoch((v) => v + 1);
+      };
+      map.on('styledata', redraw);
+      map.once('idle', redraw);
+      return () => {
+        done = true;
+        map.off('styledata', redraw);
+        map.off('idle', redraw);
+      };
+    }
     markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
     markersRef.current = [];
     ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'area-centre', 'speed-line', 'bridges', 'gap-anchors', 'unified-line'].forEach((id) => {
@@ -819,7 +861,7 @@ export default function HistoryAppV2() {
     markersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([prepared.clean[prepared.clean.length - 1].lon, prepared.clean[prepared.clean.length - 1].lat]).addTo(map));
 
     return undefined;
-  }, [prepared, reports.stops, confidence, mapReady, mode, viewMode, advanced, reportTab, quality, speedColor, theme, vehicleColor, selectedTrip]);
+  }, [prepared, reports.stops, confidence, mapReady, mode, viewMode, advanced, reportTab, quality, speedColor, theme, vehicleColor, selectedTrip, styleEpoch]);
 
   useEffect(() => {
     const p = positionAt(prepared.clean, time || appliedFrom);
