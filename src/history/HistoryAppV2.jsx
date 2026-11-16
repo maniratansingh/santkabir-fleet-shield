@@ -395,6 +395,7 @@ export default function HistoryAppV2() {
   const [speedColor, setSpeedColor] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(0);
   const [follow, setFollow] = useState(true);
+  const [playRate, setPlayRate] = useState(1);
   const [reportTab, setReportTab] = useState('map');
   const [reports, setReports] = useState({ summary: [], trips: [], stops: [] });
   const [reportLoading, setReportLoading] = useState(false);
@@ -833,14 +834,14 @@ export default function HistoryAppV2() {
     if (!playing) return undefined;
     const id = setInterval(() => {
       setTime((t) => {
-        const step = Math.max(30000, (appliedTo - appliedFrom) / 1200);
+        const step = Math.max(30000, (appliedTo - appliedFrom) / 1200) * playRate;
         const next = (t || appliedFrom) + step;
         if (next >= appliedTo) { setPlaying(false); return appliedTo; }
         return next;
       });
     }, 60);
     return () => clearInterval(id);
-  }, [playing, appliedFrom, appliedTo]);
+  }, [playing, appliedFrom, appliedTo, playRate]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1148,6 +1149,7 @@ export default function HistoryAppV2() {
 
           {reportTab === 'map' && <div className="mt-3 flex items-center gap-3">
             <button onClick={() => setPlaying((v) => !v)} className="w-8 h-8 rounded-full fh2-active grid place-items-center" aria-label="Play">{playing ? '❚❚' : '▶'}</button>
+            <button onClick={() => setPlayRate((r) => ({ 1: 2, 2: 4, 4: 8, 8: 16, 16: 1 }[r] || 1))} className="h-8 px-2 rounded-full border fh2-border fh2-muted text-[10px] font-semibold tabular-nums" title="Playback speed" aria-label={`Playback speed ${playRate}x`}>{playRate}×</button>
             <div className="flex-1">
               <div
                 className="relative h-3 rounded-full fh2-track overflow-hidden cursor-pointer"
