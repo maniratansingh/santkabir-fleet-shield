@@ -21,6 +21,7 @@ import {
 import AppleRangePicker from './AppleRangePicker';
 import { DAY_MS, MAX_RANGE_MS, fromLocalInput, toLocalInput } from './dateRange';
 import { getUniqueVehicleColor } from '../utils/colors';
+import { get3DAmbulanceSvg } from '../utils/ambulanceSvg';
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
 
@@ -788,26 +789,7 @@ export default function HistoryAppV2() {
     const movingEl = document.createElement('div');
     movingEl.className = 'fh-car';
     movingEl.style.zIndex = '12';
-    movingEl.innerHTML = `<span class="fh-car-speed">0 km/h</span>
-      <span class="fh-puck" style="--c:${vehicleColor}">
-        <svg class="fh-van" viewBox="0 0 56 40" width="36" height="26" aria-hidden="true">
-          <ellipse cx="28" cy="34" rx="20" ry="3" fill="#000" opacity=".18"/>
-          <rect x="3" y="10" width="50" height="20" rx="6" fill="#f8fafc" stroke="#0b1728" stroke-width="1.2"/>
-          <path d="M40 10 L51 17 V30 H40 Z" fill="#e2e8f0" opacity=".7"/>
-          <rect x="6" y="14" width="13" height="7" rx="1.6" fill="#0f172a"/>
-          <rect x="22" y="14" width="8" height="7" rx="1.6" fill="#0f172a"/>
-          <rect x="6" y="23" width="44" height="3.4" fill="#ff453a"/>
-          <rect x="30" y="14" width="4" height="12" rx="1" fill="#ff453a"/>
-          <rect x="26" y="18" width="12" height="4" rx="1" fill="#ff453a"/>
-          <rect x="21" y="6" width="9" height="3.4" rx="1.7" fill="#ff453a"/>
-          <rect x="23" y="6" width="3" height="3.4" fill="#38bdf8" opacity=".85"/>
-          <circle cx="14" cy="31" r="3.6" fill="#0b1220"/>
-          <circle cx="42" cy="31" r="3.6" fill="#0b1220"/>
-          <circle cx="14" cy="31" r="1.4" fill="#94a3b8"/>
-          <circle cx="42" cy="31" r="1.4" fill="#94a3b8"/>
-        </svg>
-      </span>
-      <span class="fh-dir"><i style="border-bottom-color:${vehicleColor}"></i></span>`;
+    movingEl.innerHTML = `<span class="fh-car-speed">0 km/h</span><span class="fh-3d">${get3DAmbulanceSvg(theme === 'dark', 'moving', false, vehicleColor, selectedId || 'history')}</span>`;
     movingMarkerRef.current = new maplibregl.Marker({ element: movingEl }).setLngLat([prepared.clean[0].lon, prepared.clean[0].lat]).addTo(map);
     markersRef.current.push(movingMarkerRef.current);
 
@@ -831,7 +813,7 @@ export default function HistoryAppV2() {
     if (p && movingMarkerRef.current) {
       movingMarkerRef.current.setLngLat([p.lon, p.lat]);
       const el = movingMarkerRef.current.getElement();
-      const dir = el.querySelector('.fh-dir');
+      const dir = el.querySelector('.fh-3d');
       if (dir) dir.style.transform = `rotate(${p.bearing || 0}deg)`;
       const speed = Math.round(Number(p.speed) || 0);
       setPlaySpeed(speed);
@@ -1053,13 +1035,11 @@ export default function HistoryAppV2() {
         .fh2-pop { animation: fh2-pop 200ms cubic-bezier(.2,.9,.3,1); transform-origin: top left; }
         @keyframes fh2-pop { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }
         .fh2 .tabular-nums { font-variant-numeric: tabular-nums; }
-        .fh-car { position: relative; width: 42px; height: 42px; will-change: transform; }
-        .fh-puck { position: absolute; inset: 0; border-radius: 99px; background: var(--c); border: 2.5px solid #ffffff; box-shadow: 0 6px 16px -6px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.9); display: grid; place-items: center; }
-        .fh-van { display: block; }
-        .fh-car-speed { position: absolute; left: 50%; top: -26px; transform: translateX(-50%); padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 6px 16px -8px rgba(0,0,0,.5); }
-        .fh-dir { position: absolute; inset: 0; border-radius: 99px; pointer-events: none; transition: transform 420ms cubic-bezier(.2,.8,.2,1); }
-        .fh-dir i { position: absolute; left: 50%; top: -8px; margin-left: -5px; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 9px solid #38bdf8; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
-        @keyframes fh-pulse { 0%,100% { transform: scale(.8); opacity: .12; } 50% { transform: scale(1.1); opacity: .26; } }
+        .fh-car { position: relative; width: 54px; height: 68px; will-change: transform; }
+        .fh-3d { position: absolute; inset: 0; display: grid; place-items: center; transform-origin: 50% 58%; transition: transform 420ms cubic-bezier(.2,.8,.2,1); filter: drop-shadow(0 8px 12px rgba(0,0,0,.45)); }
+        .fh-3d svg { width: 52px; height: 66px; display: block; }
+        .fh-car-speed { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 6px 16px -8px rgba(0,0,0,.5); }
+
         @media (prefers-reduced-motion: reduce) {
           .fh2 *, .fh2 *::before, .fh2 *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
         }
