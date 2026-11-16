@@ -1416,7 +1416,12 @@ function MapView({
       const lat = Number(v.lat || 0);
       const lon = Number(v.lon || 0);
       const previous = snapStateRef.current.get(v.id);
-      let snapped = snapToRoad(lat, lon);
+      const accuracy = Number(v.accuracy) || 0;
+      // A poor fix should not be pulled onto a road. Unknown accuracy (0) keeps
+      // the existing behaviour; anything above 30 m stays at the raw point.
+      let snapped = accuracy > 30
+        ? { lat, lon, snapped: false, distanceM: Infinity, corridor: null }
+        : snapToRoad(lat, lon);
 
       // Hysteresis: do not flip to a different corridor for a tiny GPS move.
       // Near intersections the nearest segment can alternate and make the

@@ -399,6 +399,7 @@ export default function HistoryAppV2() {
   const [speedColor, setSpeedColor] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(0);
   const [follow, setFollow] = useState(true);
+  const [seeking, setSeeking] = useState(false);
   const [playRate, setPlayRate] = useState(1);
   const [reportTab, setReportTab] = useState('map');
   const [reports, setReports] = useState({ summary: [], trips: [], stops: [] });
@@ -416,6 +417,9 @@ export default function HistoryAppV2() {
   const movingMarkerRef = useRef(null);
   const lastFollowRef = useRef(0);
   const lastViewKeyRef = useRef('');
+  const seekTrackRef = useRef(null);
+  const seekingRef = useRef(false);
+  const wasPlayingRef = useRef(false);
   const [mapReady, setMapReady] = useState(false);
 
   const trips = useMemo(() => {
@@ -912,9 +916,11 @@ export default function HistoryAppV2() {
 
   /* playhead */
   useEffect(() => {
+    const pct = ((time - appliedFrom) / (appliedTo - appliedFrom)) * 100;
     const el = document.getElementById('fh-head');
-    if (!el || !appliedFrom || !appliedTo) return;
-    el.style.left = `${((time - appliedFrom) / (appliedTo - appliedFrom)) * 100}%`;
+    if (el) el.style.left = `${pct}%`;
+    const progress = document.getElementById('fh-progress');
+    if (progress) progress.style.width = `${pct}%`;
   }, [time, appliedFrom, appliedTo]);
 
   const handleLogin = async (e) => {
@@ -1003,6 +1009,36 @@ export default function HistoryAppV2() {
     setPreset('custom');
     setRangeLabel('Custom range');
     setReportTab('map');
+  };
+
+  const seekToClientX = (clientX) => {
+    const el = seekTrackRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    setTime(appliedFrom + f * (appliedTo - appliedFrom));
+  };
+
+  const startSeek = (e) => {
+    e.preventDefault();
+    wasPlayingRef.current = playing;
+    if (playing) setPlaying(false);
+    seekingRef.current = true;
+    setSeeking(true);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+    seekToClientX(e.clientX);
+  };
+
+  const moveSeek = (e) => {
+    if (!seekingRef.current) return;
+    seekToClientX(e.clientX);
+  };
+
+  const endSeek = () => {
+    if (!seekingRef.current) return;
+    seekingRef.current = false;
+    setSeeking(false);
+    if (wasPlayingRef.current) setPlaying(true);
   };
 
   const toggleAdvanced = () => {
@@ -1232,22 +1268,36 @@ export default function HistoryAppV2() {
             <button onClick={() => setFollow((v) => !v)} className={`w-8 h-8 rounded-full border grid place-items-center ${follow ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-muted'}`} title="Follow vehicle" aria-label="Follow vehicle"><LocateFixed className="w-3.5 h-3.5" /></button>
             <div className="flex-1">
               <div
-                className="relative h-3 rounded-full fh2-track overflow-hidden cursor-pointer"
-                onPointerDown={(e) => {
-                  const r = e.currentTarget.getBoundingClientRect();
-                  const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-                  setTime(appliedFrom + f * (appliedTo - appliedFrom));
-                }}
+                ref={seekTrackRef}
+                className="fh-seek relative h-5 flex items-center cursor-pointer select-none"
+                onPointerDown={startSeek}
+                onPointerMove={moveSeek}
+                onPointerUp={endSeek}
+                onPointerCancel={endSeek}
+                role="slider"
+                aria-label="Seek playback"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(((time - appliedFrom) / (appliedTo - appliedFrom || 1)) * 100)}
+                style={{ touchAction: 'none' }}
               >
-                {timelineBlocks.map((b) => {
-                  const span = appliedTo - appliedFrom || 1;
-                  const left = ((b.start - appliedFrom) / span) * 100;
-                  const width = Math.max(0.6, ((b.end - b.start) / span) * 100);
-                  return (
-                    <button key={b.index} onClick={() => { setSelectedTrip(selectedTrip === b.index ? null : b.index); setTime(b.start); }} className="absolute top-0 bottom-0" style={{ left: `${left}%`, width: `${width}%`, background: viewMode === 'trips' ? TRIP_COLORS[b.index % TRIP_COLORS.length] : vehicleColor, opacity: selectedTrip === null || selectedTrip === b.index ? 0.95 : 0.25 }} title={`Trip ${b.index + 1}`} />
-                  );
-                })}
-                <div id="fh-head" className="absolute top-[-3px] bottom-[-3px] w-0.5 bg-white" style={{ left: '0%' }} />
+                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full fh2-track overflow-hidden">
+                  {timelineBlocks.map((b) => {
+                    const span = appliedTo - appliedFrom || 1;
+                    const left = ((b.start - appliedFrom) / span) * 100;
+                    const width = Math.max(0.5, ((b.end - b.start) / span) * 100);
+                    return (
+                      <div key={b.index} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: `${left}%`, width: `${width}%`, background: viewMode === 'trips' ? TRIP_COLORS[b.index % TRIP_COLORS.length] : vehicleColor, opacity: 0.55 }} />
+                    );
+                  })}
+                  <div id="fh-progress" className="absolute inset-y-0 left-0 bg-sky-400/35 pointer-events-none" style={{ width: '0%' }} />
+                </div>
+                <div id="fh-head" className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,.45)] ring-2 ring-black/10 pointer-events-none" style={{ left: '0%' }} />
+                {seeking && (
+                  <div className="absolute -top-9 left-0 -translate-x-1/2 rounded-full border fh2-border fh2-panel px-2 py-1 text-[9px] font-semibold tabular-nums shadow-xl pointer-events-none" style={{ left: `${Math.min(92, Math.max(8, ((time - appliedFrom) / (appliedTo - appliedFrom || 1)) * 100))}%` }}>
+                    {appliedTo - appliedFrom > 2 * DAY_MS ? fmtFull(time) : fmt(time)}
+                  </div>
+                )}
               </div>
               <div className="flex justify-between text-[9px] fh2-muted mt-1 tabular-nums">
                 <span>{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate(appliedFrom) : fmt(appliedFrom)}</span>

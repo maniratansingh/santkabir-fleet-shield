@@ -408,6 +408,8 @@ export default {
       let batt = parseFloat(url.searchParams.get('batt') || url.searchParams.get('battery') || '100');
       let chargeParam = url.searchParams.get('charge');
       let charge = chargeParam === 'true' || chargeParam === '1';
+      const mockParam = url.searchParams.get('mock');
+      let isMock = mockParam === 'true' || mockParam === '1';
 
       let timestamp = Date.now();
       const tsParam = url.searchParams.get('timestamp') || url.searchParams.get('time');
@@ -432,6 +434,7 @@ export default {
             if (body.accuracy !== undefined) accuracy = parseFloat(body.accuracy);
             if (body.batt !== undefined || body.battery !== undefined) batt = parseFloat(body.batt || body.battery);
             if (body.charge !== undefined) charge = Boolean(body.charge);
+            if (body.mock !== undefined) isMock = body.mock === true || body.mock === 'true' || body.mock === 1 || body.mock === '1';
             if (body.timestamp) timestamp = normalizeEpochMs(body.timestamp);
           } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
             const formData = await request.formData();
@@ -445,6 +448,7 @@ export default {
             if (formData.has('accuracy')) accuracy = parseFloat(formData.get('accuracy'));
             if (formData.has('batt')) batt = parseFloat(formData.get('batt') || formData.get('battery'));
             if (formData.has('charge')) charge = formData.get('charge') === 'true' || formData.get('charge') === '1';
+            if (formData.has('mock')) isMock = formData.get('mock') === 'true' || formData.get('mock') === '1';
           }
         } catch (e) {
           // Empty body is standard for Traccar OsmAnd query-param POST
@@ -464,6 +468,12 @@ export default {
       }
 
       const vehId = canonicalVehicleId(id);
+      if (isMock) {
+        return new Response(JSON.stringify({ success: true, skipped: 'mock' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
       const existing = liveVehicles.get(vehId) || {};
 
       let filter = vehicleFilters.get(vehId);
@@ -1315,6 +1325,8 @@ export class FleetHistory {
       );
       try { this.state.storage.sql.exec('ALTER TABLE history_points ADD COLUMN raw_lat REAL'); } catch (e) {}
       try { this.state.storage.sql.exec('ALTER TABLE history_points ADD COLUMN raw_lon REAL'); } catch (e) {}
+      try { this.state.storage.sql.exec('ALTER TABLE history_points ADD COLUMN altitude REAL'); } catch (e) {}
+      try { this.state.storage.sql.exec('ALTER TABLE history_points ADD COLUMN charge INTEGER'); } catch (e) {}
       this.state.storage.sql.exec(`
         INSERT OR IGNORE INTO history_points
           (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
@@ -1420,6 +1432,7 @@ export class FleetHistory {
     const lon = Number(record.lon);
     if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) return historyJson({ error: 'Invalid vehicle' }, 400);
 
+    if (record.mock) return historyJson({ success: true, skipped: 'mock', id });
     const stored = { ...record, id, name: id, lat, lon };
     const previous = this.fleet.get(id);
     if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) {
@@ -1473,8 +1486,8 @@ export class FleetHistory {
 
     this.state.storage.sql.exec(
       `INSERT INTO history_points (
-         vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon, altitude, charge
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(vehicle_id, device_time) DO UPDATE SET
          received_at = excluded.received_at,
          lat = excluded.lat,
@@ -1484,7 +1497,9 @@ export class FleetHistory {
          accuracy = excluded.accuracy,
          battery = excluded.battery,
          raw_lat = excluded.raw_lat,
-         raw_lon = excluded.raw_lon`,
+         raw_lon = excluded.raw_lon,
+         altitude = excluded.altitude,
+         charge = excluded.charge`,
       id,
       deviceTime,
       now,
@@ -1495,7 +1510,9 @@ export class FleetHistory {
       Number.isFinite(accuracy) ? accuracy : 0,
       Number.isFinite(battery) ? Math.round(battery) : null,
       Number.isFinite(Number(record.rawLat)) ? Number(record.rawLat) : lat,
-      Number.isFinite(Number(record.rawLon)) ? Number(record.rawLon) : lon
+      Number.isFinite(Number(record.rawLon)) ? Number(record.rawLon) : lon,
+      Number.isFinite(Number(record.altitude)) ? Number(record.altitude) : 0,
+      record.charge ? 1 : 0
     );
 
     if (now - (this.lastPruneAt || 0) > 3600000) {
@@ -1709,7 +1726,7 @@ export class FleetHistory {
 
     const points = this.state.storage.sql
       .exec(
-        `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon
+        `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon, altitude, charge
          FROM history_points
          WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
          ORDER BY device_time ASC

@@ -58,6 +58,7 @@ export function coerceTelemetryPacket(raw) {
       accuracy: raw.accuracy ?? 0,
       batt: raw.batt ?? raw.battery ?? 100,
       charge: raw.charge === true || raw.charge === 'true' || raw.charge === 1 || raw.charge === '1',
+      mock: raw.mock === true || raw.mock === 'true' || raw.mock === 1 || raw.mock === '1',
       timestamp: raw.timestamp ?? raw.time ?? Date.now(),
     };
   }
@@ -80,6 +81,7 @@ export function processTelemetryPacket(packet, options = {}) {
   const rawLat = Number(packet.lat);
   const rawLon = Number(packet.lon);
 
+  if (packet.mock) return null;
   if (!cleanId || !Number.isFinite(rawLat) || !Number.isFinite(rawLon)) return null;
   if (rawLat < -90 || rawLat > 90 || rawLon < -180 || rawLon > 180) return null;
 
@@ -107,7 +109,14 @@ export function processTelemetryPacket(packet, options = {}) {
   const colors = getUniqueVehicleColor(cleanId);
 
   const rawSpeed = Number(packet.speedKnots) || 0;
-  const speedKmH = rawSpeed > 0 ? Math.min(130, Math.round(rawSpeed * 1.852)) : 0;
+  let speedKmH = rawSpeed > 0 ? Math.min(130, Math.round(rawSpeed * 1.852)) : 0;
+  if (!speedKmH && existing.lat && existing.lon && Number.isFinite(Number(existing.lastSeen))) {
+    const dtHours = (timestamp - Number(existing.lastSeen)) / 3600000;
+    if (dtHours > 0) {
+      const derived = calculateDistanceKm(existing.lat, existing.lon, filteredLat, filteredLon) / dtHours;
+      if (derived > 3 && derived < 160) speedKmH = Math.round(derived);
+    }
+  }
 
   let computedBearing = Math.round(((Number(packet.bearing) || 0) % 360 + 360) % 360);
   if (

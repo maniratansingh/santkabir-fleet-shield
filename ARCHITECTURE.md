@@ -201,6 +201,9 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - HTTP `/api/track` processes the packet, then calls one `/ingest` on the DO. No 30-second forward throttle.
 - WebSocket tracker packets do the same locally and ack the sender.
 - A stale packet (older `lastSeen`) is ignored before it can overwrite a newer position.
+- `mock=true` locations are rejected before they reach live state or history.
+- If the device reports 0 km/h while moving, speed is derived from distance/time when the implied speed is above 3 km/h.
+- `altitude` and `charge` are stored in `history_points` alongside raw and filtered coordinates.
 - Invalid coordinates and points older than 30 days are rejected.
 - Device timestamps are normalised: seconds → milliseconds, ISO strings accepted, future clocks clamped.
 
@@ -212,6 +215,7 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - Trips split at a stop, a gap over ~2.5× the median interval (minimum 10 minutes), or an IST day boundary. Trips under 0.2 km / 2 minutes are dropped as noise.
 - Stops are clusters within 150 m for at least 5 minutes, merged within 250 m / 20 minutes.
 - Impossible jumps (over 1.2 km implying more than 180 km/h) are excluded from the drawn trail.
+- Live road snapping is skipped when the fix accuracy is worse than 30 m, so poor fixes stay at their raw position.
 
 **UI**
 

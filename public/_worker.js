@@ -1930,6 +1930,7 @@ function coerceTelemetryPacket(raw) {
       accuracy: raw.accuracy ?? 0,
       batt: raw.batt ?? raw.battery ?? 100,
       charge: raw.charge === true || raw.charge === "true" || raw.charge === 1 || raw.charge === "1",
+      mock: raw.mock === true || raw.mock === "true" || raw.mock === 1 || raw.mock === "1",
       timestamp: raw.timestamp ?? raw.time ?? Date.now()
     };
   }
@@ -1940,6 +1941,7 @@ function processTelemetryPacket(packet, options = {}) {
   const cleanId = canonicalVehicleId(packet.id);
   const rawLat = Number(packet.lat);
   const rawLon = Number(packet.lon);
+  if (packet.mock) return null;
   if (!cleanId || !Number.isFinite(rawLat) || !Number.isFinite(rawLon)) return null;
   if (rawLat < -90 || rawLat > 90 || rawLon < -180 || rawLon > 180) return null;
   const existing = options.existing || {};
@@ -1962,7 +1964,14 @@ function processTelemetryPacket(packet, options = {}) {
   const ruralLoc = resolveVillage(filteredLat, filteredLon);
   const colors = getUniqueVehicleColor(cleanId);
   const rawSpeed = Number(packet.speedKnots) || 0;
-  const speedKmH = rawSpeed > 0 ? Math.min(130, Math.round(rawSpeed * 1.852)) : 0;
+  let speedKmH = rawSpeed > 0 ? Math.min(130, Math.round(rawSpeed * 1.852)) : 0;
+  if (!speedKmH && existing.lat && existing.lon && Number.isFinite(Number(existing.lastSeen))) {
+    const dtHours = (timestamp - Number(existing.lastSeen)) / 36e5;
+    if (dtHours > 0) {
+      const derived = calculateDistanceKm(existing.lat, existing.lon, filteredLat, filteredLon) / dtHours;
+      if (derived > 3 && derived < 160) speedKmH = Math.round(derived);
+    }
+  }
   let computedBearing = Math.round(((Number(packet.bearing) || 0) % 360 + 360) % 360);
   if (computedBearing === 0 && existing.lat && existing.lon && (existing.lat !== filteredLat || existing.lon !== filteredLon)) {
     computedBearing = calculateBearing(
@@ -2374,6 +2383,8 @@ var worker_default = {
       let batt = parseFloat(url.searchParams.get("batt") || url.searchParams.get("battery") || "100");
       let chargeParam = url.searchParams.get("charge");
       let charge = chargeParam === "true" || chargeParam === "1";
+      const mockParam = url.searchParams.get("mock");
+      let isMock = mockParam === "true" || mockParam === "1";
       let timestamp = Date.now();
       const tsParam = url.searchParams.get("timestamp") || url.searchParams.get("time");
       if (tsParam) {
@@ -2395,6 +2406,7 @@ var worker_default = {
             if (body.accuracy !== void 0) accuracy = parseFloat(body.accuracy);
             if (body.batt !== void 0 || body.battery !== void 0) batt = parseFloat(body.batt || body.battery);
             if (body.charge !== void 0) charge = Boolean(body.charge);
+            if (body.mock !== void 0) isMock = body.mock === true || body.mock === "true" || body.mock === 1 || body.mock === "1";
             if (body.timestamp) timestamp = normalizeEpochMs(body.timestamp);
           } else if (contentType2.includes("application/x-www-form-urlencoded") || contentType2.includes("multipart/form-data")) {
             const formData = await request.formData();
@@ -2408,6 +2420,7 @@ var worker_default = {
             if (formData.has("accuracy")) accuracy = parseFloat(formData.get("accuracy"));
             if (formData.has("batt")) batt = parseFloat(formData.get("batt") || formData.get("battery"));
             if (formData.has("charge")) charge = formData.get("charge") === "true" || formData.get("charge") === "1";
+            if (formData.has("mock")) isMock = formData.get("mock") === "true" || formData.get("mock") === "1";
           }
         } catch (e) {
         }
@@ -2424,6 +2437,12 @@ var worker_default = {
         });
       }
       const vehId = canonicalVehicleId(id);
+      if (isMock) {
+        return new Response(JSON.stringify({ success: true, skipped: "mock" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
       const existing = liveVehicles.get(vehId) || {};
       let filter = vehicleFilters.get(vehId);
       if (!filter) {
@@ -3189,6 +3208,14 @@ var FleetHistory = class {
         this.state.storage.sql.exec("ALTER TABLE history_points ADD COLUMN raw_lon REAL");
       } catch (e) {
       }
+      try {
+        this.state.storage.sql.exec("ALTER TABLE history_points ADD COLUMN altitude REAL");
+      } catch (e) {
+      }
+      try {
+        this.state.storage.sql.exec("ALTER TABLE history_points ADD COLUMN charge INTEGER");
+      } catch (e) {
+      }
       this.state.storage.sql.exec(`
         INSERT OR IGNORE INTO history_points
           (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
@@ -3295,6 +3322,7 @@ var FleetHistory = class {
     const lat = Number(record.lat);
     const lon = Number(record.lon);
     if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) return historyJson({ error: "Invalid vehicle" }, 400);
+    if (record.mock) return historyJson({ success: true, skipped: "mock", id });
     const stored = { ...record, id, name: id, lat, lon };
     const previous = this.fleet.get(id);
     if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) {
@@ -3340,8 +3368,8 @@ var FleetHistory = class {
     const battery = Number(record.batt ?? record.battery);
     this.state.storage.sql.exec(
       `INSERT INTO history_points (
-         vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon, altitude, charge
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(vehicle_id, device_time) DO UPDATE SET
          received_at = excluded.received_at,
          lat = excluded.lat,
@@ -3351,7 +3379,9 @@ var FleetHistory = class {
          accuracy = excluded.accuracy,
          battery = excluded.battery,
          raw_lat = excluded.raw_lat,
-         raw_lon = excluded.raw_lon`,
+         raw_lon = excluded.raw_lon,
+         altitude = excluded.altitude,
+         charge = excluded.charge`,
       id,
       deviceTime,
       now,
@@ -3362,7 +3392,9 @@ var FleetHistory = class {
       Number.isFinite(accuracy) ? accuracy : 0,
       Number.isFinite(battery) ? Math.round(battery) : null,
       Number.isFinite(Number(record.rawLat)) ? Number(record.rawLat) : lat,
-      Number.isFinite(Number(record.rawLon)) ? Number(record.rawLon) : lon
+      Number.isFinite(Number(record.rawLon)) ? Number(record.rawLon) : lon,
+      Number.isFinite(Number(record.altitude)) ? Number(record.altitude) : 0,
+      record.charge ? 1 : 0
     );
     if (now - (this.lastPruneAt || 0) > 36e5) {
       this.lastPruneAt = now;
@@ -3582,7 +3614,7 @@ var FleetHistory = class {
       Math.max(1, Number(url.searchParams.get("limit") || 1e5))
     );
     const points = this.state.storage.sql.exec(
-      `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon
+      `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon, altitude, charge
          FROM history_points
          WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
          ORDER BY device_time ASC
