@@ -1076,7 +1076,7 @@ export default function HistoryAppV2() {
             <div>
               <div className="text-[10px] fh2-muted flex items-center gap-1.5">
                 {rangeLabel} · {fmtDate(appliedFrom)}
-                {confidence.low && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/25">Low-confidence data</span>}
+                {advanced && confidence.low && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/25">Low-confidence data</span>}
               </div>
               <div className="flex items-baseline gap-1.5 mt-0.5">
                 <b className="text-[30px] tracking-tight tabular-nums">{stats.km.toFixed(1)}</b>
