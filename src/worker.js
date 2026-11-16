@@ -18,7 +18,7 @@ const vehicleFilters = new Map();
 // Durable Object hub forwarding. HTTP trackers are throttled so the free
 // Workers Free / Durable Objects request quota is not exhausted. Trackers that
 // move to the WebSocket path get immediate updates without this throttle.
-const HUB_NAME = 'purvanchal-fleet';
+const HUB_NAME = 'fleet-history';
 const HUB_FORWARD_INTERVAL_MS = 30000;
 const HUB_PERSIST_INTERVAL_MS = 5000;
 const lastHubForward = new Map();
@@ -156,8 +156,8 @@ async function verifyHistorySession(token, secret) {
 }
 
 function historyStub(env) {
-  if (!env.HISTORY_DB) return null;
-  return env.HISTORY_DB.get(env.HISTORY_DB.idFromName(HISTORY_NAME));
+  if (!env.FLEET_HUB) return null;
+  return env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME));
 }
 
 function auditHistory(env, action, vehicleId = '', detail = '', actor = 'admin') {
@@ -352,34 +352,24 @@ export default {
         });
       }
 
-      // Store in edge memory cache
+      // Store in edge memory cache for this isolate, then hand the fix to the
+      // single Durable Object. That one call updates live state, writes the
+      // history row and broadcasts the delta.
       liveVehicles.set(vehId, record);
 
-      // Write to the separate history store. This is intentionally async:
-      // a history failure must never delay or block the live response.
-      if (env.HISTORY_DB) {
-        const historyPush = writeHistory(env, record);
-        if (ctx?.waitUntil) ctx.waitUntil(historyPush);
-      }
-
-      // Mirror the processed record into the global Durable Object hub.
-      // HTTP ingestion is throttled to one forward per vehicle per 30 s so the
-      // free DO request quota is not exhausted. WebSocket trackers bypass this.
       if (env.FLEET_HUB) {
-        const nowMs = Date.now();
-        const lastForward = lastHubForward.get(vehId) || 0;
-        if (nowMs - lastForward >= HUB_FORWARD_INTERVAL_MS) {
-          lastHubForward.set(vehId, nowMs);
-          const hubPush = env.FLEET_HUB
-            .get(env.FLEET_HUB.idFromName(HUB_NAME))
-            .fetch('https://fleet-hub/track', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(record),
-            })
-            .catch(() => null);
-          if (ctx?.waitUntil) ctx.waitUntil(hubPush);
-        }
+        const ingest = env.FLEET_HUB
+          .get(env.FLEET_HUB.idFromName(HUB_NAME))
+          .fetch('https://fleet-hub/ingest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(record),
+          })
+          .catch((error) => {
+            console.error('ingest failed', error?.message || error);
+            return null;
+          });
+        if (ctx?.waitUntil) ctx.waitUntil(ingest);
       }
 
       // Immediate HTTP 200 OK required by Android app
@@ -564,14 +554,22 @@ export default {
     // of the last packet maps to live / no signal / parked / offline.
     if (url.pathname === '/api/vehicles' || url.pathname === '/api/vehicles/') {
       const now = Date.now();
+      let list = [];
 
-      const reportedList = Array.from(liveVehicles.values()).map(vVal => ({
-        ...vVal,
-        ...computeVehicleAgeState(vVal, now),
-      }));
+      if (env.FLEET_HUB) {
+        try {
+          const hub = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME));
+          const res = await hub.fetch('https://fleet-hub/live', { headers: { 'Content-Type': 'application/json' } });
+          const data = await res.json().catch(() => ({}));
+          if (Array.isArray(data.vehicles)) list = data.vehicles;
+        } catch (error) {
+          console.error('live snapshot failed', error?.message || error);
+        }
+      }
 
-      // Clean Live Telemetry Mode: Return reported live telemetry (0 dummy data)
-      const list = reportedList;
+      if (!list.length) {
+        list = Array.from(liveVehicles.values()).map(vVal => ({ ...vVal, ...computeVehicleAgeState(vVal, now) }));
+      }
 
       return new Response(JSON.stringify({
         success: true,
@@ -1098,6 +1096,14 @@ export class FleetHistory {
     this.ctx = ctx;
     this.state = ctx;
     this.env = env;
+    this.vehicles = new Map();
+    this.filters = new Map();
+    this.wsTrackerIds = new Set();
+    this.lastSnapshotAt = 0;
+
+    if (typeof WebSocketRequestResponsePair !== 'undefined') {
+      this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    }
 
     this.state.blockConcurrencyWhile(async () => {
       this.state.storage.sql.exec(`
@@ -1128,12 +1134,66 @@ export class FleetHistory {
           actor TEXT
         )
       `);
+      // New single-row-per-fix table. Keeps the old slot table as a backup.
+      this.state.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS history_points (
+          vehicle_id TEXT NOT NULL,
+          device_time INTEGER NOT NULL,
+          received_at INTEGER NOT NULL,
+          lat REAL NOT NULL,
+          lon REAL NOT NULL,
+          speed REAL,
+          bearing REAL,
+          accuracy REAL,
+          battery INTEGER,
+          PRIMARY KEY (vehicle_id, device_time)
+        )
+      `);
+      this.state.storage.sql.exec(
+        'CREATE INDEX IF NOT EXISTS history_points_time ON history_points(vehicle_id, device_time)'
+      );
+      this.state.storage.sql.exec(`
+        INSERT OR IGNORE INTO history_points
+          (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
+        SELECT vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
+        FROM history
+      `);
+
+      const saved = await this.state.storage.get('fleet_snapshot');
+      if (Array.isArray(saved)) {
+        const next = new Map();
+        for (const v of saved) {
+          if (!v) continue;
+          const id = canonicalVehicleId(v.id);
+          if (!id) continue;
+          next.set(id, { ...v, id, name: id });
+        }
+        this.vehicles = next;
+      }
     });
   }
 
   async fetch(request) {
     const url = new URL(request.url);
 
+    if (url.pathname.endsWith('/ws')) {
+      return this.handleSocket(request);
+    }
+    if (url.pathname.endsWith('/ingest') && request.method === 'POST') {
+      return this.ingest(request);
+    }
+    if (url.pathname.endsWith('/track') && request.method === 'POST') {
+      return this.ingest(request);
+    }
+    if (url.pathname.endsWith('/live')) {
+      return this.live();
+    }
+    if (url.pathname.endsWith('/clear') && (request.method === 'DELETE' || request.method === 'POST')) {
+      return this.clearLive();
+    }
+    if (url.pathname.endsWith('/remove') && (request.method === 'POST' || request.method === 'DELETE')) {
+      return this.removeLive(request);
+    }
     if (url.pathname.endsWith('/write') && request.method === 'POST') {
       return this.write(request);
     }
@@ -1153,54 +1213,88 @@ export class FleetHistory {
     return historyJson({ error: 'Not found' }, 404);
   }
 
-  async write(request) {
-    const record = await request.json().catch(() => null);
-    if (!record) return historyJson({ error: 'Invalid body' }, 400);
+  handleSocket(request) {
+    const upgrade = request.headers.get('Upgrade');
+    if (!upgrade || upgrade.toLowerCase() !== 'websocket') {
+      return historyJson({ error: 'Expected WebSocket upgrade' }, 426);
+    }
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    const role = new URL(request.url).searchParams.get('role') === 'tracker' ? 'tracker' : 'dashboard';
+    this.ctx.acceptWebSocket(server);
+    try { server.serializeAttachment({ role }); } catch (e) {}
+    try {
+      if (role === 'dashboard') {
+        server.send(JSON.stringify({ type: 'snapshot', vehicles: this.getFleetSnapshot(), timestamp: Date.now() }));
+      } else {
+        server.send(JSON.stringify({ type: 'ready', role: 'tracker', timestamp: Date.now() }));
+      }
+    } catch (e) {}
+    return new Response(null, { status: 101, webSocket: client });
+  }
 
+  async ingest(request) {
+    let record = null;
+    try { record = await request.json(); } catch (e) { record = null; }
+    if (!record) return historyJson({ error: 'Invalid body' }, 400);
     const id = canonicalVehicleId(record.id);
     const lat = Number(record.lat);
     const lon = Number(record.lon);
-    if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) {
-      return historyJson({ error: 'Invalid vehicle' }, 400);
+    if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) return historyJson({ error: 'Invalid vehicle' }, 400);
+
+    const stored = { ...record, id, name: id, lat, lon };
+    const previous = this.vehicles.get(id);
+    if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) {
+      return historyJson({ success: true, skipped: 'stale', id });
     }
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      return historyJson({ error: 'Invalid coordinates' }, 400);
-    }
+    this.vehicles.set(id, stored);
+    this.writeRecord(stored);
+    this.broadcast({ type: 'delta', vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
+    this.persistSnapshotIfDue();
+    return historyJson({ success: true, id, count: this.vehicles.size });
+  }
+
+  live() {
+    return historyJson({
+      success: true,
+      vehicles: this.getFleetSnapshot(),
+      count: this.vehicles.size,
+      timestamp: Date.now(),
+    });
+  }
+
+  writeRecord(record) {
+    if (!record) return { success: false, skipped: 'empty' };
+    const id = canonicalVehicleId(record.id);
+    const lat = Number(record.lat);
+    const lon = Number(record.lon);
+    if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) return { success: false, skipped: 'invalid' };
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return { success: false, skipped: 'invalid' };
 
     const now = Date.now();
     let deviceTime = Number(record.lastSeen ?? record.updatedAt ?? now);
     if (!Number.isFinite(deviceTime)) deviceTime = now;
-
-    // Drop a backlog older than the ring window. A future clock is clamped to
-    // server time so a bad device clock cannot poison the ring.
-    if (deviceTime < now - HISTORY_RETENTION_MS) {
-      return historyJson({ success: true, skipped: 'too-old' });
-    }
+    if (deviceTime < now - HISTORY_RETENTION_MS) return { success: false, skipped: 'too-old' };
     if (deviceTime > now + 5 * 60 * 1000) deviceTime = now;
 
-    const slot = Math.floor(deviceTime / HISTORY_BUCKET_MS) % HISTORY_SLOTS;
     const speed = Number(record.speed);
     const bearing = Number(record.bearing);
     const accuracy = Number(record.accuracy);
-    const battery = Number(record.batt);
+    const battery = Number(record.batt ?? record.battery);
 
     this.state.storage.sql.exec(
-      `INSERT INTO history (
-         vehicle_id, slot, device_time, received_at,
-         lat, lon, speed, bearing, accuracy, battery
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(vehicle_id, slot) DO UPDATE SET
-         device_time = excluded.device_time,
+      `INSERT INTO history_points (
+         vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(vehicle_id, device_time) DO UPDATE SET
          received_at = excluded.received_at,
          lat = excluded.lat,
          lon = excluded.lon,
          speed = excluded.speed,
          bearing = excluded.bearing,
          accuracy = excluded.accuracy,
-         battery = excluded.battery
-       WHERE excluded.device_time >= history.device_time`,
+         battery = excluded.battery`,
       id,
-      slot,
       deviceTime,
       now,
       lat,
@@ -1211,7 +1305,134 @@ export class FleetHistory {
       Number.isFinite(battery) ? Math.round(battery) : null
     );
 
-    return historyJson({ success: true, id, slot, deviceTime });
+    if (now - (this.lastPruneAt || 0) > 3600000) {
+      this.lastPruneAt = now;
+      try { this.state.storage.sql.exec('DELETE FROM history_points WHERE device_time < ?', now - HISTORY_RETENTION_MS); } catch (e) {}
+    }
+    return { success: true, id, deviceTime };
+  }
+
+  webSocketMessage(ws, message) {
+    const attachment = ws.deserializeAttachment?.() || {};
+    if (attachment.role === 'tracker') {
+      let raw = message;
+      if (typeof raw !== 'string') {
+        try { raw = new TextDecoder().decode(raw); } catch (e) { raw = ''; }
+      }
+      const packet = coerceTelemetryPacket(raw);
+      if (!packet) return;
+      const id = canonicalVehicleId(packet.id);
+      if (!id) return;
+      const existing = this.vehicles.get(id) || {};
+      let filter = this.filters.get(id);
+      if (!filter) { filter = createKinematicFilter(); this.filters.set(id, filter); }
+      const record = processTelemetryPacket(packet, { existing, filter, now: Date.now() });
+      if (!record) return;
+      this.vehicles.set(record.id, record);
+      this.wsTrackerIds.add(record.id);
+      this.writeRecord(record);
+      try { ws.serializeAttachment({ role: 'tracker', id: record.id }); } catch (e) {}
+      this.broadcast({ type: 'delta', vehicle: { ...record, ...computeVehicleAgeState(record) } });
+      this.persistSnapshotIfDue();
+      try { ws.send(JSON.stringify({ type: 'ack', id: record.id, timestamp: Date.now() })); } catch (e) {}
+      return;
+    }
+
+    try {
+      const data = JSON.parse(message);
+      if (data?.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+      } else if (data?.type === 'subscribe') {
+        ws.send(JSON.stringify({ type: 'snapshot', vehicles: this.getFleetSnapshot(), timestamp: Date.now() }));
+      } else if (data?.type === 'track' && data.vehicle?.id) {
+        const id = canonicalVehicleId(data.vehicle.id);
+        if (!id) return;
+        const stored = { ...data.vehicle, id, name: id };
+        const previous = this.vehicles.get(id);
+        if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) return;
+        this.vehicles.set(id, stored);
+        this.writeRecord(stored);
+        this.broadcast({ type: 'delta', vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
+        this.persistSnapshotIfDue();
+      }
+    } catch (e) {
+      if (message === 'ping') {
+        try { ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() })); } catch (err) {}
+      }
+    }
+  }
+
+  webSocketClose(ws, code, reason, wasClean) {
+    const attachment = ws.deserializeAttachment?.() || {};
+    if (attachment.role === 'tracker' && attachment.id) this.wsTrackerIds.delete(String(attachment.id));
+    try { ws.close(code, 'Hub closing connection'); } catch (e) {}
+  }
+
+  webSocketError(ws, error) {
+    try { ws.close(1011, 'Hub socket error'); } catch (e) {}
+  }
+
+  broadcast(message) {
+    const payload = JSON.stringify(message);
+    for (const ws of this.state.getWebSockets()) {
+      const role = ws.deserializeAttachment?.()?.role;
+      if (role === 'tracker') continue;
+      try { ws.send(payload); } catch (e) {}
+    }
+  }
+
+  getFleetSnapshot() {
+    const now = Date.now();
+    return Array.from(this.vehicles.values()).map((record) => ({ ...record, ...computeVehicleAgeState(record, now) }));
+  }
+
+  persistSnapshotIfDue() {
+    const now = Date.now();
+    if (now - this.lastSnapshotAt < HUB_PERSIST_INTERVAL_MS) return;
+    this.lastSnapshotAt = now;
+    const snapshot = Array.from(this.vehicles.values());
+    if (this.state.waitUntil) this.state.waitUntil(this.state.storage.put('fleet_snapshot', snapshot));
+    else this.state.storage.put('fleet_snapshot', snapshot).catch(() => {});
+  }
+
+  clearLive() {
+    this.vehicles.clear();
+    this.filters.clear();
+    this.wsTrackerIds.clear();
+    this.broadcast({ type: 'clear', timestamp: Date.now() });
+    if (this.state.waitUntil) this.state.waitUntil(this.state.storage.put('fleet_snapshot', []));
+    return historyJson({ success: true, count: 0 });
+  }
+
+  async removeLive(request) {
+    let ids = [];
+    try {
+      const body = await request.json();
+      if (body?.id) ids.push(body.id);
+      if (Array.isArray(body?.ids)) ids.push(...body.ids);
+    } catch (e) {
+      ids = new URL(request.url).searchParams.getAll('id');
+    }
+    ids = Array.from(new Set(ids.map(canonicalVehicleId).filter(Boolean)));
+    const removed = [];
+    for (const id of ids) {
+      if (this.vehicles.delete(id)) removed.push(id);
+      this.filters.delete(id);
+      this.wsTrackerIds.delete(id);
+    }
+    if (removed.length) {
+      await this.state.storage.put('fleet_snapshot', Array.from(this.vehicles.values()));
+      this.broadcast({ type: 'remove', ids: removed, timestamp: Date.now() });
+    }
+    return historyJson({ success: true, removed, count: this.vehicles.size });
+  }
+
+  async write(request) {
+    const record = await request.json().catch(() => null);
+    if (!record) return historyJson({ error: 'Invalid body' }, 400);
+    const result = this.writeRecord(record);
+    if (!result.success && result.skipped === 'invalid') return historyJson({ error: 'Invalid vehicle' }, 400);
+    return historyJson(result);
   }
 
   vehicles() {
@@ -1220,7 +1441,7 @@ export class FleetHistory {
         `SELECT vehicle_id AS id,
                 MAX(device_time) AS last_seen,
                 COUNT(*) AS points
-         FROM history
+         FROM history_points
          GROUP BY vehicle_id
          ORDER BY last_seen DESC`
       )
@@ -1243,7 +1464,7 @@ export class FleetHistory {
     const points = this.state.storage.sql
       .exec(
         `SELECT device_time, received_at, lat, lon, speed, bearing, accuracy, battery
-         FROM history
+         FROM history_points
          WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
          ORDER BY device_time ASC
          LIMIT ?`,
@@ -1274,15 +1495,13 @@ export class FleetHistory {
     if (!all && !id) return historyJson({ error: 'Missing id' }, 400);
 
     if (all) {
+      this.state.storage.sql.exec('DELETE FROM history_points');
       this.state.storage.sql.exec('DELETE FROM history');
     } else if (id && Number.isFinite(from) && Number.isFinite(to) && from > 0 && to > 0) {
-      this.state.storage.sql.exec(
-        'DELETE FROM history WHERE vehicle_id = ? AND device_time BETWEEN ? AND ?',
-        id,
-        from,
-        to
-      );
+      this.state.storage.sql.exec('DELETE FROM history_points WHERE vehicle_id = ? AND device_time BETWEEN ? AND ?', id, from, to);
+      this.state.storage.sql.exec('DELETE FROM history WHERE vehicle_id = ? AND device_time BETWEEN ? AND ?', id, from, to);
     } else {
+      this.state.storage.sql.exec('DELETE FROM history_points WHERE vehicle_id = ?', id);
       this.state.storage.sql.exec('DELETE FROM history WHERE vehicle_id = ?', id);
     }
 

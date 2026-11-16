@@ -1,4 +1,6 @@
 name = "purvanchal-fleet-hub"
+workers_dev = false
+preview_urls = false
 main = "src/worker.js"
 compatibility_date = "2026-11-10"
 
@@ -8,10 +10,6 @@ binding = "ASSETS"
 
 [[durable_objects.bindings]]
 name = "FLEET_HUB"
-class_name = "PurvanchalFleetHub"
-
-[[durable_objects.bindings]]
-name = "HISTORY_DB"
 class_name = "FleetHistory"
 
 [[migrations]]
