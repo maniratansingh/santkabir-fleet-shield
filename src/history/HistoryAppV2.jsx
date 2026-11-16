@@ -986,6 +986,15 @@ export default function HistoryAppV2() {
     setReportTab('map');
   };
 
+  const toggleAdvanced = () => {
+    setAdvanced((v) => !v);
+    setQuality(false);
+    setSpeedColor(false);
+    setSelectedTrip(null);
+    setReportTab('map');
+    setMode('maps');
+  };
+
   const exportCsv = () => {
     const rows = reports[reportTab] || [];
     if (!rows.length) return;
@@ -1096,7 +1105,7 @@ export default function HistoryAppV2() {
               <button onClick={() => setMode('maps')} className={`px-3 h-7 rounded-full ${mode === 'maps' ? 'fh2-active' : 'fh2-muted'}`}>Maps</button>
               <button onClick={() => setMode('trips')} className={`px-3 h-7 rounded-full ${mode === 'trips' ? 'fh2-active' : 'fh2-muted'}`}>Trips</button>
             </div>}
-            <button onClick={() => setAdvanced((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${advanced ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>{advanced ? 'Advanced on' : 'Advanced'}</button>
+            <button onClick={toggleAdvanced} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${advanced ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>{advanced ? 'Advanced on' : 'Advanced'}</button>
             {advanced && <button onClick={() => setQuality((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>}
             {advanced && <button onClick={() => setSpeedColor((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${speedColor ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Speed</button>}
           </div>
@@ -1140,7 +1149,7 @@ export default function HistoryAppV2() {
             {reportTab !== 'map' && <button onClick={exportCsv} className="h-7 px-2 rounded-full fh2-muted" title="Download CSV">CSV</button>}
           </div>}
 
-          {reportTab !== 'map' ? (
+          {advanced && reportTab !== 'map' ? (
             <div className="mt-3 max-h-[230px] overflow-auto rounded-[12px] border fh2-border">
               {reportLoading ? (
                 <div className="p-4 text-[11px] fh2-muted">Loading {reportTab}…</div>
@@ -1177,7 +1186,7 @@ export default function HistoryAppV2() {
             </div>
           )}
 
-          {reportTab === 'map' && <div className="mt-3 flex items-center gap-3">
+          {(!advanced || reportTab === 'map') && <div className="mt-3 flex items-center gap-3">
             <button onClick={() => setPlaying((v) => !v)} className="w-9 h-9 rounded-full fh2-active grid place-items-center shadow-lg" aria-label="Play">{playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}</button>
             <button onClick={() => setPlayRate((r) => ({ 1: 2, 2: 4, 4: 8, 8: 16, 16: 1 }[r] || 1))} className="h-8 px-2 rounded-full border fh2-border fh2-muted text-[10px] font-semibold tabular-nums" title="Playback speed" aria-label={`Playback speed ${playRate}x`}>{playRate}×</button>
             <button onClick={() => setFollow((v) => !v)} className={`w-8 h-8 rounded-full border grid place-items-center ${follow ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-muted'}`} title="Follow vehicle" aria-label="Follow vehicle"><LocateFixed className="w-3.5 h-3.5" /></button>
