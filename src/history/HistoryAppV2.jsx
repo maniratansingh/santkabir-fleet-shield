@@ -351,6 +351,7 @@ export default function HistoryAppV2() {
 
   const [mode, setMode] = useState('maps');
   const [quality, setQuality] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -843,7 +844,8 @@ export default function HistoryAppV2() {
               <button onClick={() => setMode('maps')} className={`px-3 h-7 rounded-full ${mode === 'maps' ? 'fh2-active' : 'fh2-muted'}`}>Maps</button>
               <button onClick={() => setMode('trips')} className={`px-3 h-7 rounded-full ${mode === 'trips' ? 'fh2-active' : 'fh2-muted'}`}>Trips</button>
             </div>
-            <button onClick={() => setQuality((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-[var(--bg)] border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>
+            <button onClick={() => setAdvanced((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${advanced ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>{advanced ? 'Advanced on' : 'Advanced'}</button>
+            {advanced && <button onClick={() => setQuality((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-[var(--text)] border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>}
             <button onClick={() => setLegendOpen((v) => !v)} className="w-9 h-9 rounded-full border fh2-border fh2-panel fh2-soft" aria-label="Key"><Info className="w-4 h-4" /></button>
           </div>
         </div>
@@ -861,13 +863,15 @@ export default function HistoryAppV2() {
               </div>
               <div className="text-[11px] fh2-muted mt-0.5">{trips.length} trip{trips.length === 1 ? '' : 's'} · {stats.stops} stop{stats.stops === 1 ? '' : 's'}</div>
             </div>
-            <div className="ml-auto grid grid-cols-2 gap-x-5 gap-y-2 text-[11px]">
+            <div className={`ml-auto grid ${advanced ? 'grid-cols-2' : 'grid-cols-1'} gap-x-5 gap-y-2 text-[11px] text-right`}>
               <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Moving</div><div className="font-semibold tabular-nums">{fmtDur(stats.moving)}</div></div>
-              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Sampling</div><div className="font-semibold tabular-nums">{Math.round(stats.interval)}s</div></div>
-              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Accuracy</div><div className="font-semibold tabular-nums">{stats.accuracy}m</div></div>
-              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Poor fixes</div><div className="font-semibold tabular-nums">{stats.badPct}%</div></div>
-              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Avg speed</div><div className="font-semibold tabular-nums">{Math.round(stats.avgSpeed)} km/h</div></div>
-              <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Max speed</div><div className="font-semibold tabular-nums">{Math.round(stats.maxSpeed)} km/h</div></div>
+              {advanced && <>
+                <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Sampling</div><div className="font-semibold tabular-nums">{Math.round(stats.interval)}s</div></div>
+                <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Accuracy</div><div className="font-semibold tabular-nums">{stats.accuracy}m</div></div>
+                <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Poor fixes</div><div className="font-semibold tabular-nums">{stats.badPct}%</div></div>
+                <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Avg speed</div><div className="font-semibold tabular-nums">{Math.round(stats.avgSpeed)} km/h</div></div>
+                <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Max speed</div><div className="font-semibold tabular-nums">{Math.round(stats.maxSpeed)} km/h</div></div>
+              </>}
             </div>
           </div>
 

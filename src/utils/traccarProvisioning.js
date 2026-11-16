@@ -6,7 +6,7 @@ export const TRACCAR_SETTINGS = {
   interval: 30,
   angle: 0,
   heartbeat: 60,
-  buffer: false,
+  buffer: true,
   wakelock: true,
   stop_detection: true,
   prefer_platform_providers: false,
