@@ -622,10 +622,10 @@ export default function HistoryAppV2() {
     if (!map || !mapReady || !map.isStyleLoaded()) return undefined;
     markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
     markersRef.current = [];
-    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'area-centre', 'speed-line', 'bridges', 'unified-line'].forEach((id) => {
+    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'area-centre', 'speed-line', 'bridges', 'gap-anchors', 'unified-line'].forEach((id) => {
       if (map.getLayer(id)) map.removeLayer(id);
     });
-    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'area-centre', 'speed', 'bridges', 'unified'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
+    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'area-centre', 'speed', 'bridges', 'gap-anchors', 'unified'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
 
     if (!points.length) return undefined;
     if (!advanced && reportTab !== 'map') return undefined;
@@ -649,7 +649,7 @@ export default function HistoryAppV2() {
     });
     if (unified.length) {
       map.addSource('unified', { type: 'geojson', data: { type: 'FeatureCollection', features: unified.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) } });
-      map.addLayer({ id: 'unified-line', type: 'line', source: 'unified', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': 2.2, 'line-opacity': 0.22, 'line-blur': 0.6 } });
+      map.addLayer({ id: 'unified-line', type: 'line', source: 'unified', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': 2.4, 'line-opacity': theme === 'dark' ? 0.38 : 0.3, 'line-blur': 0.2 } });
     }
 
     map.addLayer({
@@ -673,6 +673,8 @@ export default function HistoryAppV2() {
 
     if (!advanced && !confidence.low) {
       const bridges = [];
+      const anchors = [];
+      const gapColor = theme === 'dark' ? '#ffd60a' : '#b45309';
       const ordered = [...prepared.runs].sort((a, b) => a.start - b.start);
       for (let i = 1; i < ordered.length; i++) {
         const prev = ordered[i - 1];
@@ -680,12 +682,29 @@ export default function HistoryAppV2() {
         const a = prev.coords[prev.coords.length - 1];
         const b = next.coords[0];
         const meters = haversine(a, b) * 1000;
-        if (meters <= 500) bridges.push({ type: 'Feature', properties: { kind: 'bridge' }, geometry: { type: 'LineString', coordinates: [a, b] } });
-        else if (meters <= 20000) bridges.push({ type: 'Feature', properties: { kind: 'link' }, geometry: { type: 'LineString', coordinates: [a, b] } });
+        if (meters <= 500) {
+          bridges.push({ type: 'Feature', properties: { kind: 'bridge' }, geometry: { type: 'LineString', coordinates: [a, b] } });
+        } else if (meters <= 20000) {
+          bridges.push({ type: 'Feature', properties: { kind: 'link' }, geometry: { type: 'LineString', coordinates: [a, b] } });
+          anchors.push([a, b]);
+        }
       }
       if (bridges.length) {
         map.addSource('bridges', { type: 'geojson', data: { type: 'FeatureCollection', features: bridges } });
-        map.addLayer({ id: 'bridges', type: 'line', source: 'bridges', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': ['case', ['==', ['get', 'kind'], 'bridge'], 3.4, 1.3], 'line-opacity': ['case', ['==', ['get', 'kind'], 'bridge'], 0.55, 0.18] } });
+        map.addLayer({
+          id: 'bridges', type: 'line', source: 'bridges',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': ['case', ['==', ['get', 'kind'], 'bridge'], vehicleColor, gapColor],
+            'line-width': ['case', ['==', ['get', 'kind'], 'bridge'], 3.4, 2.2],
+            'line-opacity': ['case', ['==', ['get', 'kind'], 'bridge'], 0.7, 0.55],
+          },
+        });
+      }
+      if (anchors.length) {
+        const features = anchors.flat().map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: c } }));
+        map.addSource('gap-anchors', { type: 'geojson', data: { type: 'FeatureCollection', features } });
+        map.addLayer({ id: 'gap-anchors', type: 'circle', source: 'gap-anchors', paint: { 'circle-radius': 2.8, 'circle-color': gapColor, 'circle-stroke-color': theme === 'dark' ? '#081321' : '#ffffff', 'circle-stroke-width': 1.2, 'circle-opacity': 0.9 } });
       }
     }
 
