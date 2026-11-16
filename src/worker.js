@@ -731,6 +731,14 @@ export default {
       });
     }
 
+    if (url.pathname === '/api/history/health') {
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: 'History store is not configured' }, 503);
+      const response = await stub.fetch('https://history/health');
+      const data = await response.json().catch(() => ({}));
+      return historyJson(data, response.status);
+    }
+
     if (url.pathname === '/api/history/vehicles') {
       const unauthorized = await requireHistoryAuth(request, env);
       if (unauthorized) return unauthorized;
@@ -1188,6 +1196,9 @@ export class FleetHistory {
     if (url.pathname.endsWith('/live')) {
       return this.live();
     }
+    if (url.pathname.endsWith('/health')) {
+      return this.health();
+    }
     if (url.pathname.endsWith('/clear') && (request.method === 'DELETE' || request.method === 'POST')) {
       return this.clearLive();
     }
@@ -1252,6 +1263,17 @@ export class FleetHistory {
     this.broadcast({ type: 'delta', vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
     this.persistSnapshotIfDue();
     return historyJson({ success: true, id, count: this.vehicles.size });
+  }
+
+  health() {
+    const row = this.state.storage.sql
+      .exec(`SELECT (SELECT COUNT(*) FROM history) AS oldCount,
+                    (SELECT COUNT(*) FROM history_points) AS newCount,
+                    (SELECT COUNT(DISTINCT vehicle_id) FROM history_points) AS vehicles,
+                    (SELECT MIN(device_time) FROM history_points) AS oldest,
+                    (SELECT MAX(device_time) FROM history_points) AS newest`)
+      .toArray()[0] || {};
+    return historyJson({ success: true, ...row });
   }
 
   live() {
