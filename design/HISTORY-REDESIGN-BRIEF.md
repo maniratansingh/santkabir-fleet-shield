@@ -31,9 +31,11 @@ Do not copy Apple assets or branding. Translate HIG principles only.
 ### Data truth (must be reflected, not hidden)
 1. History stores Kalman-smoothed coordinates, not raw fixes. The official
    Traccar view shows raw fixes, which is why it looks more accurate.
-2. `buffer=false` in the provisioning QR drops fixes when upload fails.
-3. `stop_detection=true` produces normal stationary gaps, but the UI draws them
-   as "no data" dotted diagonals across fields.
+2. `buffer=false` in the provisioning QR dropped fixes when upload failed. The
+   fleet profile now uses `buffer=true`.
+3. `stop_detection=true` produced stationary gaps because the app stopped
+   location updates. The fleet profile now uses `stop_detection=false`; the UI
+   still draws genuine network gaps as dotted diagonals.
 4. `accuracy=0` (missing) is rendered as High accuracy.
 5. Gap threshold `max(90s, median*3)` hides 60–90 s holes as solid line.
 6. `Return` trips are inferred and drawn 55 m offset — fabricated geometry.

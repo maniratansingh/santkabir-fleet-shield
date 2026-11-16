@@ -80,6 +80,7 @@ is removed from the hub state.
 | REST contract | Telemetry setup | JSON or form posts to `/api/track` or `/api/location`. |
 | Test ingestion | Provisioning dialog | Sends a test packet and reports the response and latency. |
 | Protocol tab | Provisioning dialog | Shows the Traccar QR URI and the settings it applies. |
+| Fleet profile | All provisioning paths | `stop_detection=false` and `prefer_platform_providers=true`; see README "Provisioning contract". |
 
 ## Presentation
 

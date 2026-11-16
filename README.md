@@ -450,20 +450,71 @@ driver sets the app password manually after scanning.
 
 **Traccar Client URI (current):**
 ```text
-https://fleet.mrps.in/api/track?id=RAMESH%20YADAV&accuracy=highest&distance=0&interval=30&angle=0&heartbeat=60&buffer=false&wakelock=true&stop_detection=true&prefer_platform_providers=false
+https://fleet.mrps.in/api/track?id=RAMESH%20YADAV&accuracy=highest&distance=0&interval=30&angle=15&heartbeat=60&buffer=true&wakelock=true&stop_detection=false&prefer_platform_providers=true
 ```
 
-| Setting | Value |
-|---|---|
-| `accuracy` | `highest` |
-| `distance` | `0` |
-| `interval` | `30` seconds |
-| `angle` | `0` |
-| `heartbeat` | `60` seconds |
-| `buffer` | `false` |
-| `wakelock` | `true` |
-| `stop_detection` | `true` |
-| `prefer_platform_providers` | `false` |
+| Setting | Value | Why |
+|---|---|---|
+| `accuracy` | `highest` | Asks for `PRIORITY_HIGH_ACCURACY` / the GPS provider. |
+| `distance` | `0` | Time is the only trigger, so no fix is skipped for being too close. |
+| `interval` | `30` seconds | Target cadence while the vehicle is moving. |
+| `angle` | `15` | Also send a fix when heading changes by 15°, so turns and lane changes are captured. |
+| `heartbeat` | `60` seconds | Inert while stop detection is off; kept so a temporarily enabled heartbeat still has a sane value. |
+| `buffer` | `true` | Queue fixes while offline and flush them when data returns. |
+| `wakelock` | `true` | Keep the CPU awake while the foreground service runs. |
+| `stop_detection` | `false` | Never pause location updates. |
+| `prefer_platform_providers` | `true` | Use Android's own GPS provider, not Google Fused Location. |
+
+#### Why `stop_detection` is always `false`
+
+Stop detection is not a reporting feature. When it is enabled the app registers
+Activity Recognition and Geofences, and once it decides the vehicle is
+stationary it switches the tracker to `Stationary` mode. In that mode the app
+**stops requesting location updates** and only wakes on the heartbeat alarm.
+That is why a parked or slow-moving ambulance can vanish from the map for tens
+of minutes and why the same day can look like a series of disconnected
+fragments.
+
+For fleet history, gaps are worse than extra points: they break trips, inflate
+stop clusters and corrupt distance and average-speed maths. This project
+therefore never optimises for stop detection, and the provisioning profile
+always sets it to `false`. Stationary detection is done on the server from the
+stored points instead, which is display-only and never affects whether the
+device uploads.
+
+#### What `prefer_platform_providers` means
+
+`prefer_platform_providers` chooses which Android location API the app uses:
+
+| Value | Provider | Behaviour |
+|---|---|---|
+| `false` (app default) | Google Fused Location | Blends GPS, Wi-Fi and cell towers, smooths results, faster indoor fix, lower battery. Google may infer a position even without a GPS fix. |
+| `true` (fleet default) | Android `LocationManager` | Asks the OS directly. With `accuracy=highest` that is `GPS_PROVIDER`, i.e. GNSS only. No Wi-Fi/cell blending and no fused smoothing. |
+
+The fleet uses `true` because the vehicles run on rural and highway lanes where
+Wi-Fi and cell positioning are unreliable and fused results can drift or snap
+onto the wrong road. Raw GNSS keeps the recorded trail honest, which matters
+more than the battery saving. The trade-off is a slower first fix indoors or
+under a bridge, and slightly higher battery use.
+
+In the app's settings screen this switch is labelled **Use system location**.
+`stop_detection` is labelled **Stop detection**.
+
+> Devices provisioned before this profile must re-scan the QR, or set
+> **Stop detection = off** and **Use system location = on** manually. The QR
+> only applies settings when it is scanned.
+
+#### Phone settings the QR cannot change
+
+The QR writes app preferences only. On every phone also confirm:
+
+- Location permission → **Allow all the time**, not "While using the app".
+- Battery usage → **Unrestricted** for Traccar Client (disable optimisation).
+- Background data → allowed.
+- The persistent foreground notification stays visible while tracking.
+
+Without the battery exemption Android throttles the foreground service and the
+effective cadence drifts from 30 s to several minutes, regardless of `interval`.
 
 **Legacy JSON QR schema (old Sant Kabir APK only):**
 ```json
