@@ -11,8 +11,8 @@
 
 - **Base**: Sant Kabir Eye Hospital, Basti — `26.797313, 82.718401`. One base only. Khalilabad is not a base, hub, or route origin.
 - **Hosting**: Cloudflare Worker with static assets (`wrangler deploy`), not Cloudflare Pages.
-- **Live state**: one SQLite-backed Durable Object, `PurvanchalFleetHub`, with WebSocket Hibernation.
-- **History state**: a second SQLite-backed Durable Object, `FleetHistory`, stores one point per 30-second slot for 7 days and serves the password-protected `/history` page.
+- **Single state object**: one SQLite-backed Durable Object, `FleetHistory` (binding `FLEET_HUB`), owns live state, the history points, reports and the WebSocket. One `/ingest` per fix updates all three.
+- **History retention**: `history_points` keyed by `(vehicle_id, device_time)`, **30 days**, pruned hourly.
 - **Dashboard stream**: `wss://<host>/api/ws` sends a snapshot, then vehicle deltas.
 - **Tracker stream**: `wss://<host>/api/ws?role=tracker` accepts JSON or compact arrays; speed is in knots.
 - **Fallback polling**: the dashboard polls `/api/vehicles` every 10 seconds only when the WebSocket is disconnected.
@@ -59,16 +59,10 @@ The hospital operates a network of outreach ambulances, mobile surgical units, a
                    │                       +---------------------------+
                    │
 +------------------▼--------------------------------------------+
-| PurvanchalFleetHub — one SQLite-backed Durable Object         |
-| live fleet state · WebSocket broadcast · 60s snapshot          |
+| FleetHistory — one SQLite-backed Durable Object               |
+| live fleet state · WebSocket broadcast · snapshot              |
+| history_points (30 days) · reports · history_audit             |
 | hibernating sockets · tracker ack/delta                        |
-+---------------------------------------------------------------+
-                 │ async waitUntil (HTTP ingest + tracker WS)
-                 ▼
-+---------------------------------------------------------------+
-| FleetHistory — separate SQLite-backed Durable Object          |
-| 30-second ring buffer · 7 days · 20,160 slots/vehicle          |
-| history + history_audit · password-protected /history page     |
 +---------------------------------------------------------------+
 ```
 
@@ -187,48 +181,58 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 
 ### 3.10. Fleet History Service (`FleetHistory` Durable Object)
 
+**One object**
+
+- `FleetHistory`, binding `FLEET_HUB`, name `fleet-history`, is the only stateful object. It owns live fleet state, history, reports and the WebSocket.
+- A fix triggers one `/ingest` call. That call updates live state, writes one `history_points` row and broadcasts one delta. There is no second DO and no duplicate write.
+- The former `PurvanchalFleetHub` binding is removed. Its class remains in the file, unbound, until the soak period ends.
+
 **Storage model**
 
-- Separate SQLite-backed Durable Object, binding `HISTORY_DB`, class `FleetHistory`.
-- `history` table: one row per vehicle per 30-second slot, primary key `(vehicle_id, slot)`.
-- `slot = floor(device_time / 30_000) % 20_160`; the ring covers exactly 7 days. A newer packet in the same slot replaces the older one.
-- `history_audit` table records logins, failed logins and history deletes.
-- No purge job and no D1. Points older than the 7-day window are overwritten by the ring.
+- `history_points`: primary key `(vehicle_id, device_time)`.
+- Retention **30 days**; rows older than the window are pruned hourly.
+- Columns: `device_time`, `received_at`, `lat`, `lon`, `raw_lat`, `raw_lon`, `speed`, `bearing`, `accuracy`, `battery`.
+- The old `history` slot table remains as a backup; new writes never use it.
+- `history_audit` records logins, failed logins and deletes.
+- Fleet snapshot is persisted as `fleet_snapshot` and rehydrated on boot.
 
 **Write path**
 
-- HTTP `/api/track` writes to history asynchronously with `ctx.waitUntil`; a history failure never delays the live response.
-- WebSocket tracker packets call `pushHistory(record)` from the hub after processing, so both ingestion paths populate the same store.
-- Invalid coordinates and points older than 7 days are rejected; slow speed, zero speed and poor accuracy are stored as-is.
-- Stored fields: `device_time`, `received_at`, `lat`, `lon`, `speed`, `bearing`, `accuracy`, `battery`.
+- HTTP `/api/track` processes the packet, then calls one `/ingest` on the DO. No 30-second forward throttle.
+- WebSocket tracker packets do the same locally and ack the sender.
+- A stale packet (older `lastSeen`) is ignored before it can overwrite a newer position.
+- Invalid coordinates and points older than 30 days are rejected.
+- Device timestamps are normalised: seconds → milliseconds, ISO strings accepted, future clocks clamped.
 
 **Read path**
 
-- `GET /api/history` returns up to 25,000 points; a full 7-day trail is 20,160 points, so nothing is downsampled.
-- The page draws in progressive chunks with a progress bar and never drops a point.
-- Trips split at an IST day boundary or a gap over 15 minutes. Each trip gets a colour from an 8-colour palette.
-- A trip is tagged `Return` when it starts within 2 km of the previous trip’s end and ends within 2 km of its start. The tag is an inference, not GPS truth; return paths are drawn 55 m offset.
-- Accuracy rendering: high (≤20 m) as a small point, medium (20–50 m) with an
-  amber ring, low (>50 m) with a red halo. Buffered uploads and suspect-speed
-  segments keep their own styles.
-- Trip presentation: one **Colour by trip** switch; the unified spine stays
-  visible under coloured trips. A trip ribbon gives every trip a proportional
-  block with a minimum width, short trips get numbered map beads, and a
-  horizontal trip chip row selects a trip. Trip boundaries are joined only by
-  faint dotted no-data connectors.
-- Desktop controls are collapsible: vehicle picker and period at the top, map key and management actions collapsed by default.
+- `GET /api/history` reads up to **100,000** rows and downsamples the map to ~7,000 points. Reports use the full range.
+- `GET /api/history/reports/all` computes daily summary, trips and stops in one pass. Individual `reports/summary`, `reports/trips` and `reports/stops` endpoints remain.
+- Trips and stops are server-side and are the single source of truth for the hero numbers, timeline, stop bubbles and tables.
+- Trips split at a stop, a gap over ~2.5× the median interval (minimum 10 minutes), or an IST day boundary. Trips under 0.2 km / 2 minutes are dropped as noise.
+- Stops are clusters within 150 m for at least 5 minutes, merged within 250 m / 20 minutes.
+- Impossible jumps (over 1.2 km implying more than 180 km/h) are excluded from the drawn trail.
 
-**Authentication**
+**UI**
 
-- Password is stored only as a PBKDF2-SHA256 hash with a random salt. Iterations are 100,000 because the Workers runtime rejects counts above that limit.
-- Login sets an HMAC-signed, HttpOnly, SameSite=Strict cookie valid for 8 hours.
-- Required deployment secret: `HISTORY_SESSION_SECRET`. `HISTORY_PASSWORD` is not used.
+- Simple: vehicle, range, one unified trail, 3D ambulance, speed pill, play/speed/follow, timeline.
+- Advanced: Maps/Trips, Summary/Trips/Stops tables, chips, accuracy overlay, speed colouring, sampling/accuracy/poor-fix metrics, CSV.
+- The unified trail threads all trips and days; short stop gaps use the vehicle colour, real breaks use amber links with anchors.
+- Vehicle and range changes stop any camera animation and fly out/in to the new bounds.
+- Playback 1× completes the range in about 3 minutes; 16× is available. Loading shows a deliberate progress card while the single report call and points load.
 
-**Latency**
+**Authentication and latency**
 
-- Live board: about 1 second after a packet arrives, over WebSocket.
-- History write: asynchronous, normally well under a second after ingestion.
-- History page: reads on load/range apply; the user presses **Refresh** to pull newly stored points. There is no automatic polling on the history page.
+- Password is a PBKDF2-SHA256 hash with a random salt, 100,000 iterations.
+- Login sets an HMAC-signed HttpOnly SameSite=Strict cookie for 8 hours.
+- Required secret: `HISTORY_SESSION_SECRET`.
+- Live board updates about 1 second after a packet over WebSocket. History is written in the same `/ingest` call. The history page reads on load/range apply; Refresh pulls new points.
+
+**Capacity (30 days)**
+
+- 30 s cadence: 86,400 rows/vehicle, ~13 MB/vehicle. 10 GB DO ≈ 790 vehicles; free 1 GB ≈ 79.
+- 100 s cadence: 25,920 rows/vehicle, ~3.9 MB/vehicle. 10 GB ≈ 2,570; free 1 GB ≈ 257.
+- Map queries are downsampled; reports are capped at 100,000 rows per vehicle.
 
 ---
 
@@ -294,7 +298,8 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - `POST /api/history/login` — `{ "password": "..." }`; sets the 8-hour HMAC session cookie.
 - `POST /api/history/logout` — clears the cookie.
 - `GET /api/history/vehicles` — authenticated; returns `id`, `last_seen`, `points` per vehicle.
-- `GET /api/history?id=...&from=...&to=...&limit=...` — authenticated; returns points in time order, up to 25,000.
+- `GET /api/history?id=...&from=...&to=...&limit=...` — authenticated; returns points in time order, up to 100,000, downsampled to ~7,000 for the map.
+- `GET /api/history/reports/all?id=...&from=...&to=...` — authenticated; returns `days`, `trips` and `stops` from one server analysis.
 - `POST /api/history/delete` — authenticated; `{ "id": "..." }`, `{ "id": "...", "from": ..., "to": ... }`, or `{ "all": true }`.
 
 All history routes except login/logout require a valid session cookie. Unauthenticated calls return `401`.

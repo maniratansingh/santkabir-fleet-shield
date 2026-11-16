@@ -79,7 +79,7 @@ Checks:
 | Map tiles | Esri ArcGIS light/dark/satellite/streets |
 | Place names | Local 195-place gazetteer |
 | Telemetry | Android tracker via HTTP or WebSocket |
-| Fleet live state | `PurvanchalFleetHub` Durable Object SQLite |
+| Fleet live state | `FleetHistory` Durable Object SQLite (binding `FLEET_HUB`) |
 
 ## Is OSRM used at runtime?
 

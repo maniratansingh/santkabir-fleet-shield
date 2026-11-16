@@ -5,53 +5,42 @@ and `main` only receive work from the branch below them.
 
 | Branch | Role | Deployed | Direct edits |
 |---|---|---|---|
-| `main` | Production wallboard | **Yes** — `fleet.mrps.in` | No. Merge from `testing` only. |
-| `testing` | Integration and QA gate | No | No. Merge from `experimental` only. |
-| `experimental` | Active development | No | Yes. Features, fixes, docs and screenshots live here first. |
+| `main` | Production wallboard | Promotion target | No. Merge from `testing` only. |
+| `testing` | Active history work + deployed verification | **Yes** — `fleet.mrps.in` | Yes, for this phase. |
+| `experimental` | Frozen reference base | No | **No.** Do not edit or push. |
 
 `main` is the GitHub default branch.
 
 ## Rules by branch
 
-### `experimental` — work here
+### `testing` — work and verify here
 
-This is the working branch. Every new feature, UI change, bug fix, document
-update and screenshot refresh starts here.
+This is the working branch for the history redesign and the branch deployed at
+`fleet.mrps.in`.
 
-- Assume it may be broken between commits.
-- Keep commits focused and use `experiment:`, `fix:` or `docs:` prefixes.
+- Commit focused changes with `feat:`, `fix:`, `perf:` or `docs:` prefixes.
 - Run the build and at least `npm test` before calling a change finished.
-- Do not merge `experimental` directly into `main`.
-- Do not push to `testing` or `main` while experimenting.
+- Run `npm run test:kalman` and `npm run test:map-matching` for telemetry or
+  rendering changes.
+- Do visual checks at desktop and mobile widths, in both themes.
+- Push to `testing` only.
 
-### `testing` — verify here
+### `experimental` — frozen reference
 
-This branch is the QA gate, not a workspace.
-
-- It should only move by merging a verified `experimental`.
-- Run the full suite before promoting anything to `main`:
-  - `npm test`
-  - `npm run test:kalman`
-  - `npm run test:map-matching`
-  - `npm run test:routes`
-  - `npm run test:do-ws` with `wrangler dev` running
-- Do visual checks at desktop and mobile widths.
-- If a test fails, fix it on `experimental` and merge again. Do not patch
-  `testing` directly.
+- It is the base the history work was built on.
+- Do not edit, commit, or push to it in this phase.
+- Read it for reference only.
 
 ### `main` — release here
 
-Production only.
-
-- Only receives merges from `testing`.
+- Receives verified merges from `testing` only.
 - Every commit must build and pass the route-anchor guard.
-- No experimental work, no direct commits, no force-pushes.
 - Deployment follows `npm run build` and `npx wrangler deploy`.
 
 ## Promotion flow
 
 ```text
-experimental  →  testing  →  main
+testing  →  main
   active work     QA gate     production
 ```
 

@@ -23,110 +23,43 @@ The dashboard features Apple Maps-style precision aesthetics, 3D isometric vehic
 
 <p align="center"><em>Fleet overview — base-anchored routes, compact tags at overview zoom, and the fleet sheet in its peek state.</em></p>
 
-## 🆕 Latest Changes (12 November 2026)
+## 🆕 Latest Changes (16 November 2026)
 
-The board no longer forgets a driver when the phone goes quiet.
+The history service is now a full map-first reporting experience, backed by one
+Durable Object.
 
-- **Persistent records.** A vehicle is never deleted at 35 minutes. Its age now
-  maps to **Live** (<60 s), **No signal** (60 s – 15 min), **Parked**
-  (15 – 35 min) or **Offline** (>35 min).
-- **Offline is visible, not live.** An offline vehicle keeps its name and last
-  position, shows a grey marker and “Last seen X ago”, loses its route trail,
-  and is excluded from live counts and the TV auto-tour. It returns to Live the
-  moment the same phone reports again.
-- **Offline filter.** The fleet sheet now has five tabs: All, En route, On
-  scene, No signal and Offline.
-- **One identity.** `canonicalVehicleId` trims, collapses internal spaces and
-  uppercases the driver name. The Worker, Durable Object, dashboard and QR all
-  use it, so `ramesh  yadav` and `RAMESH YADAV` are one record, not a ghost.
-- **Manual remove.** Test devices, uninstalled phones, renamed drivers and
-  ghosts can be removed from the fleet sheet. The action asks for the admin key
-  once per browser session and calls `POST /api/remove`.
-- **Ghost reconciliation.** The dashboard requests a fresh snapshot every 60
-  seconds, so an ID removed on the server disappears from an already-open board.
-- **No fake connectors.** Trails follow precomputed roads and stop at the last
-  road point. If no precomputed route matches, the board shows a clean gap
-  instead of a straight or jagged line.
-- **Mobile navigation.** On mobile only, a bottom bar provides Map, Fleet,
-  Alerts and More. The desktop dock and layout are unchanged.
-- **Driver provisioning.** One driver-name field, a Traccar Client URI QR, and
-  the password is set manually after scanning.
+- **One state object.** `FleetHistory` (binding `FLEET_HUB`) owns live state,
+  history, reports and the single WebSocket. One `/ingest` per fix updates all
+  three; the second DO, duplicate write and 30-second forward throttle are gone.
+- **30-day history.** `history_points` is keyed by `(vehicle_id, device_time)`
+  and keeps 30 days. Raw and filtered coordinates are stored. Reads allow up to
+  100,000 rows; the map is downsampled to ~7,000 points.
+- **Server-side reports.** `/api/history/reports/all` returns daily summary,
+  trips and stops in one analysis. The hero, timeline, stops and tables all use
+  that result, so they cannot disagree.
+- **Simple and Advanced views.** Simple is vehicle, range, one unified trail, 3D
+  ambulance, speed pill, play/speed/follow and the timeline. Advanced adds
+  Maps/Trips, Summary/Trips/Stops tables, chips, accuracy, speed colouring and
+  CSV. Toggling Advanced resets Advanced-only state.
+- **Unified trail and breaks.** All trips and days are threaded into one picture.
+  Stop gaps use the vehicle colour; real data breaks use amber links with
+  anchors in dark and light mode.
+- **Moving vehicle.** The 3D ambulance is shared with the live board, rotates
+  with heading, shows live speed, and the camera flies to the new bounds on a
+  vehicle or range change.
+- **Playback.** 1× takes about 3 minutes for the range; 2×/4×/8×/16× available.
+  Loading uses one report call and a deliberate progress card.
+- **Telemetry.** Live window is 180 seconds (matching the real ~100 s cadence),
+  timestamps normalise seconds/ISO to milliseconds, offline buffering is on, and
+  the dashboard ignores empty poll responses and half-open sockets.
+- **Deploy.** Wrangler 4.162.0 with the `fleet.mrps.in` custom-domain route;
+  `workers.dev` and preview URLs disabled.
 
-`experimental` is currently the branch deployed at `https://fleet.mrps.in`.
-`testing` and `main` remain untouched until an explicit promotion.
+`testing` is the branch deployed at `https://fleet.mrps.in`.
+`experimental` and `main` are untouched.
 
-Verified on 12 November 2026: build pass, master contract 28/28, route anchors
-240/240, Kalman 8/8, map matching 6/6, Durable Object / WebSocket 13/13.
-
-### Fleet History (live on fleet.mrps.in)
-
-The history service is deployed to `fleet.mrps.in` with Wrangler. It runs
-alongside the live board, which keeps the same vehicle records and
-offline/persistence behaviour. See `ARCHITECTURE.md` §3.10 for the storage,
-write/read paths, and authentication design.
-
-- A second SQLite-backed Durable Object, `FleetHistory`, stores one point per
-  **30-second slot** for **7 days** in a fixed ring buffer (20,160 slots per
-  vehicle). Old slots are overwritten; there is no purge job. If a device sends
-  several packets inside one 30-second slot, the newest packet is kept.
-- Points are never filtered by speed or accuracy. Slow movement, 0 km/h and poor
-  GPS fixes are stored and drawn. Accuracy is shown as high (≤20 m), medium
-  (20–50 m) or low (>50 m); suspect speed appears as an orange dashed segment.
-- The history API returns up to 25,000 points, so a full 7-day trail (20,160
-  points) is returned without downsampling.
-- The history page draws the trail progressively in chunks with a visible
-  progress bar, so a large 7-day range does not block the page.
-- Sparse trails are drawn as direct point-to-point segments, so a handful of
-  points shows visible jumps. The page does not invent road paths between them;
-  real time gaps use a faint dotted "no data" link.
-- New live points appear on the board immediately over WebSocket. The history
-  page updates when **Refresh** is pressed or the range is re-applied.
-- The live telemetry path writes to it asynchronously with `ctx.waitUntil`.
-  A history failure cannot delay or block the live dashboard.
-- All vehicles are currently allowed. An allowlist can be added later.
-- The separate page is at `/history` and is password-protected. Login sets an
-  HMAC-signed, HttpOnly, SameSite=Strict session cookie (8 hours).
-- The page has 24-hour, 7-day, Today and Yesterday presets, plus a custom
-  Apple-style calendar + time range, a mobile bottom sheet, and a light/dark
-  theme toggle.
-- On desktop the control sidebar is collapsible. A vehicle dropdown and the
-  period picker sit at the top, followed by the high/medium/low accuracy key.
-  The map key and history-management actions are collapsed by default, leaving
-  more room for the map.
-- Points are split into trips at a day boundary or after a gap longer than
-  15 minutes. Each trip gets its own colour from an 8-colour palette. A trip
-  ribbon gives every trip a proportional block with a minimum width, and short
-  trips also appear as numbered beads on the map. A horizontal trip chip row
-  selects a trip and fits the map to it.
-- When a trip returns along the same road, it is detected as a return trip and
-  drawn as a **55 m offset dashed line**, so outbound and return are both
-  visible instead of hiding each other. Selecting the return trip shows it as
-  a solid offset line while the other trip fades.
-- The trail is controlled by one **Colour by trip** switch. On: a faint unified
-  spine stays visible under the coloured trips. Off: one continuous line for the
-  whole range while the trip ribbon and list remain. Trip boundaries are joined
-  by a faint dotted connector, never a solid invented path, so sparse data still
-  reads as one picture without pretending the road was recorded.
-- Sample trails can be seeded locally at several densities: `SAMPLE OUT AND
-  BACK`, `EXCELLENT`, `VERY GOOD`, `GOOD`, `MEDIUM`, `POOR` and `BAD`. They
-  use real road coordinates from `src/data/allVillagesRoadRoutes.json`; sparse
-  samples deliberately show visible jumps rather than invented roads.
-- Ingest events, logins and history deletes are recorded in `history_audit`.
-- History deletion is separate from the live record. You can delete one
-  vehicle's history, a range, or all history without touching the live fleet.
-- The history password is stored as a **PBKDF2-SHA256 hash** (100,000
-  iterations, random salt — the Workers runtime caps PBKDF2 at 100,000) in
-  `src/worker.js`. The plaintext password is never committed.
-- Required secret for deployment:
-
-```bash
-npx wrangler secret put HISTORY_SESSION_SECRET
-```
-
-`HISTORY_PASSWORD` is no longer required. `HISTORY_DB` is bound in
-`wrangler.toml` with migration `v2`.
-
----
+Verified on 16 November 2026: build pass, 240/240 route anchors, 8/8 Kalman,
+6/6 map matching.
 
 ## 🌟 Current Architecture & Capabilities
 
@@ -150,9 +83,9 @@ npx wrangler secret put HISTORY_SESSION_SECRET
 +---------┬----------------+
           │
 +---------▼-------------------------------------------+
-| PurvanchalFleetHub (one SQLite-backed Durable Object)|
-| persistent fleet state · WebSocket broadcast         |
-| 5 s storage · live/no-signal/parked/offline          |
+| FleetHistory (one SQLite-backed Durable Object)      |
+| live fleet · WebSocket · history · reports           |
+| 30-day points · live/no-signal/parked/offline        |
 +------------------------------------------------------+
 ```
 
@@ -164,7 +97,7 @@ npx wrangler secret put HISTORY_SESSION_SECRET
 
 ### 2. Cloudflare Worker + Durable Object
 - The app deploys as a **Worker with static assets** (`wrangler deploy`), not the legacy Pages dashboard.
-- `PurvanchalFleetHub` is a single SQLite-backed Durable Object and the live source of truth.
+- `FleetHistory` (binding `FLEET_HUB`) is the single SQLite-backed Durable Object and owns live state, history, reports and WebSocket broadcast.
 - Dashboard clients connect to `wss://<host>/api/ws`; trackers use `wss://<host>/api/ws?role=tracker`.
 - WebSocket Hibernation keeps idle sockets cheap.
 - The hub persists changes to its own SQLite within **5 seconds** and keeps fleet records long-term. Going quiet marks a record **Offline**; it does not delete it.
@@ -185,13 +118,14 @@ npx wrangler secret put HISTORY_SESSION_SECRET
 - Offline records are excluded from live counts, trails and the TV auto-tour, but stay visible under the **Offline** filter.
 
 ### 3. Telemetry and free-tier limits
-- WebSocket is the primary tracker path. After the upgrade, messages do not count as new Worker requests.
+- The field path is **HTTP**: Traccar Client posts to `/api/track`. Each fix is one HTTP request and one Durable Object `/ingest` call.
 - HTTP telemetry still works, but every request counts against the Workers Free request quota.
 - 25 vehicles at 5-second HTTP = **432,000 requests/day**, which exceeds the free 100k/day allowance.
 - WebSocket messages are billed to the Durable Object at roughly 20:1; 432,000 messages/day ≈ **21,600 billed DO requests/day**.
-- HTTP telemetry is mirrored into the hub at most once every 30 seconds per vehicle. That throttle does not reduce the incoming Worker request count.
+- HTTP telemetry is no longer throttled before the hub. The 30-second forward throttle was removed with the single-DO refactor.
 - The dashboard uses a **10-second HTTP polling fallback** only when the WebSocket is not connected. In demo mode it refreshes every 2 seconds.
-- While the socket is connected, the dashboard requests a fresh snapshot every **60 seconds** to reconcile browser state and drop removed IDs.
+- While the socket is connected, the dashboard requests a fresh snapshot every **60 seconds** to reconcile browser state and drop removed IDs. A 45-second pong watchdog closes half-open sockets.
+- Live/no-signal uses a **180-second** window, matching the real ~100-second device cadence.
 
 ### 4. Precomputed, base-anchored routes
 - `src/data/allVillagesRoadRoutes.json` contains **195 routes**, all starting at Basti.
@@ -226,10 +160,10 @@ npx wrangler secret put HISTORY_SESSION_SECRET
 - **Themes:** dark and light, with compact map attribution.
 
 ### 7. Branch model
-- **`main`** — production promotion target. Only receives verified merges from `testing`.
-- **`testing`** — QA gate. Only receives verified merges from `experimental`.
-- **`experimental`** — active work and the branch currently deployed at `https://fleet.mrps.in`. Features, fixes, documentation and screenshots start here.
-- Do not edit `testing` or `main` directly, and do not merge `experimental` into `main`.
+- **`main`** — production promotion target. Receives verified merges from `testing`.
+- **`testing`** — active history work and the branch currently deployed at `https://fleet.mrps.in`. This phase is committed and pushed here.
+- **`experimental`** — frozen reference base for this phase. Do not edit or push to it.
+- Do not merge `testing` into `experimental`; promote `testing` to `main` only after verification.
 - Old merged branches are archived as tags.
 - Full rules and promotion commands: [docs/BRANCHING.md](docs/BRANCHING.md).
 
@@ -436,11 +370,11 @@ npx wrangler deploy
 |---|---|
 | Domain | `https://fleet.mrps.in` |
 | Worker | `purvanchal-fleet-hub` |
-| Live Durable Object | `PurvanchalFleetHub` / binding `FLEET_HUB` / name `purvanchal-fleet` |
-| History Durable Object | `FleetHistory` / binding `HISTORY_DB` / migration `v2` |
+| Durable Object | `FleetHistory` / binding `FLEET_HUB` / name `fleet-history` (live + history + WebSocket) |
+| Wrangler | 4.162.0 |
 | History page | `https://fleet.mrps.in/history` (password-protected) |
 | History demo | `https://fleet.mrps.in/history-demo` (synthetic, no real data) |
-| Deployed branch | `experimental` |
+| Deployed branch | `testing` |
 | Storage | Durable Object SQLite only (no D1) |
 
 Set the admin key used by `POST/DELETE /api/clear` and `POST/DELETE /api/remove`:
@@ -461,10 +395,11 @@ ADMIN_SECRET_KEY=dev-admin-key npm run dev
 
 The project now deploys as a Worker with static assets (`wrangler deploy`), not
 through the legacy Pages dashboard. `wrangler.toml` binds one SQLite-backed
-`PurvanchalFleetHub` Durable Object:
+`FleetHistory` Durable Object:
 
 - Dashboard clients connect to `wss://<host>/api/ws`.
-- Field trackers connect to `wss://<host>/api/ws?role=tracker` and send either a
+- Field trackers normally use HTTP `/api/track`; an optional tracker socket is
+  available at `wss://<host>/api/ws?role=tracker` and can send either a
   JSON telemetry object or a compact array
   `[id, lat, lon, speed, bearing, timestamp]`. Speed is in knots, matching the
   Traccar/OsmAnd contract. The hub processes the packet with the shared

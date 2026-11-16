@@ -45,6 +45,21 @@ marketing figures.
 After 15 minutes without a fix the vehicle is marked parked. After 35 minutes it
 is removed from the hub state.
 
+## History
+
+| Feature | Behaviour |
+|---|---|
+| One object | `FleetHistory` owns live state, history, reports and the single WebSocket. One `/ingest` per fix. |
+| Retention | 30 days of points in `history_points`, keyed by vehicle and device time. Raw and filtered coordinates stored. |
+| Simple view | Vehicle, range, one unified trail, 3D ambulance, speed pill, play/speed/follow, timeline. |
+| Advanced view | Maps/Trips, Summary/Trips/Stops tables, chips, accuracy overlay, speed colouring, sampling/accuracy metrics, CSV. Turning it off resets Advanced-only state. |
+| Ranges | 24 hours, 7 days, 30 days, Today, Yesterday, custom calendar + time. |
+| Reports | Server-side daily summary, trips and stops in one `/api/history/reports/all` call. |
+| Missing data | Short stop gaps use the vehicle colour; real breaks use an amber link with anchors, in both themes. |
+| Vehicle switch | Stops any camera animation and flies out/in to the new vehicle bounds. |
+| Playback | 1× ≈ 3 minutes for the range; 2×/4×/8×/16×; rAF-smooth. |
+| Loading | Single report call plus map points; deliberate progress card, no jump from the previous vehicle. |
+
 ## TV wallboard
 
 | Feature | Behaviour |
@@ -86,7 +101,7 @@ is removed from the hub state.
 | Route guard | `npm run test:routes` checks every route origin. |
 | Gazetteer | 195 local named places. Place labels come from the current GPS fix. |
 | Runtime routing | No OSRM call at runtime. Routes are generated offline and committed. |
-| Live state | One SQLite-backed Durable Object, `PurvanchalFleetHub`. |
+| Live state | One SQLite-backed Durable Object, `FleetHistory` (binding `FLEET_HUB`). |
 | Transports | WebSocket snapshot + deltas, with a 10-second HTTP fallback. |
 
 ## API
