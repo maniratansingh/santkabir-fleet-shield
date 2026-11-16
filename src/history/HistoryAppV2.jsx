@@ -634,7 +634,7 @@ export default function HistoryAppV2() {
     });
 
     /* stops as bubbles, not path */
-    if (prepared.stops.length) {
+    if (prepared.stops.length && !confidence.low) {
       map.addSource('stops', {
         type: 'geojson',
         data: {
@@ -861,7 +861,7 @@ export default function HistoryAppV2() {
                 <b className="text-[30px] tracking-tight tabular-nums">{confidence.low ? confidence.area.toFixed(2) : stats.km.toFixed(1)}</b>
                 <span className="text-xs fh2-muted">{confidence.low ? 'km² area' : 'km'}</span>
               </div>
-              <div className="text-[11px] fh2-muted mt-0.5">{trips.length} trip{trips.length === 1 ? '' : 's'} · {stats.stops} stop{stats.stops === 1 ? '' : 's'}</div>
+              <div className="text-[11px] fh2-muted mt-0.5">{confidence.low ? `${prepared.clean.length} fixes · area view` : `${trips.length} trip${trips.length === 1 ? '' : 's'} · ${stats.stops} stop${stats.stops === 1 ? '' : 's'}`}</div>
             </div>
             <div className={`ml-auto grid ${advanced ? 'grid-cols-2' : 'grid-cols-1'} gap-x-5 gap-y-2 text-[11px] text-right`}>
               <div><div className="text-[9px] uppercase tracking-wider fh2-muted">Moving</div><div className="font-semibold tabular-nums">{fmtDur(stats.moving)}</div></div>
@@ -901,7 +901,7 @@ export default function HistoryAppV2() {
             <div className="text-xs font-semibold tabular-nums">{fmt(time || appliedFrom)}</div>
           </div>
 
-          <div className="flex gap-1.5 mt-3 overflow-x-auto">
+          {!confidence.low && <div className="flex gap-1.5 mt-3 overflow-x-auto">
             <button onClick={() => setSelectedTrip(null)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold ${selectedTrip === null ? 'border-sky-400/50 bg-sky-500/10' : 'fh2-border fh2-muted'}`}>All</button>
             {trips.map((t) => (
               <button key={t.index} onClick={() => setSelectedTrip(selectedTrip === t.index ? null : t.index)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold flex items-center gap-1.5 ${selectedTrip === t.index ? 'border-sky-400/50 bg-sky-500/10' : 'fh2-border fh2-muted'}`}>
@@ -910,7 +910,7 @@ export default function HistoryAppV2() {
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: QUALITY_COLOR[t.quality] }} />
               </button>
             ))}
-          </div>
+          </div>}
 
           <div className="mt-2 text-[10px] fh2-muted flex items-center gap-1.5"><ShieldCheck className="w-3 h-3" /> Built by <a href="https://mrps.in" className="underline decoration-white/20">Mani Ratan Singh</a> · mrps.in</div>
         </section>

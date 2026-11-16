@@ -1104,7 +1104,7 @@ export class FleetHistory {
     this.ctx = ctx;
     this.state = ctx;
     this.env = env;
-    this.vehicles = new Map();
+    this.fleet = new Map();
     this.filters = new Map();
     this.wsTrackerIds = new Set();
     this.lastSnapshotAt = 0;
@@ -1176,7 +1176,7 @@ export class FleetHistory {
           if (!id) continue;
           next.set(id, { ...v, id, name: id });
         }
-        this.vehicles = next;
+        this.fleet = next;
       }
     });
   }
@@ -1254,15 +1254,15 @@ export class FleetHistory {
     if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) return historyJson({ error: 'Invalid vehicle' }, 400);
 
     const stored = { ...record, id, name: id, lat, lon };
-    const previous = this.vehicles.get(id);
+    const previous = this.fleet.get(id);
     if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) {
       return historyJson({ success: true, skipped: 'stale', id });
     }
-    this.vehicles.set(id, stored);
+    this.fleet.set(id, stored);
     this.writeRecord(stored);
     this.broadcast({ type: 'delta', vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
     this.persistSnapshotIfDue();
-    return historyJson({ success: true, id, count: this.vehicles.size });
+    return historyJson({ success: true, id, count: this.fleet.size });
   }
 
   health() {
@@ -1280,7 +1280,7 @@ export class FleetHistory {
     return historyJson({
       success: true,
       vehicles: this.getFleetSnapshot(),
-      count: this.vehicles.size,
+      count: this.fleet.size,
       timestamp: Date.now(),
     });
   }
@@ -1345,12 +1345,12 @@ export class FleetHistory {
       if (!packet) return;
       const id = canonicalVehicleId(packet.id);
       if (!id) return;
-      const existing = this.vehicles.get(id) || {};
+      const existing = this.fleet.get(id) || {};
       let filter = this.filters.get(id);
       if (!filter) { filter = createKinematicFilter(); this.filters.set(id, filter); }
       const record = processTelemetryPacket(packet, { existing, filter, now: Date.now() });
       if (!record) return;
-      this.vehicles.set(record.id, record);
+      this.fleet.set(record.id, record);
       this.wsTrackerIds.add(record.id);
       this.writeRecord(record);
       try { ws.serializeAttachment({ role: 'tracker', id: record.id }); } catch (e) {}
@@ -1370,9 +1370,9 @@ export class FleetHistory {
         const id = canonicalVehicleId(data.vehicle.id);
         if (!id) return;
         const stored = { ...data.vehicle, id, name: id };
-        const previous = this.vehicles.get(id);
+        const previous = this.fleet.get(id);
         if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) return;
-        this.vehicles.set(id, stored);
+        this.fleet.set(id, stored);
         this.writeRecord(stored);
         this.broadcast({ type: 'delta', vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
         this.persistSnapshotIfDue();
@@ -1405,20 +1405,20 @@ export class FleetHistory {
 
   getFleetSnapshot() {
     const now = Date.now();
-    return Array.from(this.vehicles.values()).map((record) => ({ ...record, ...computeVehicleAgeState(record, now) }));
+    return Array.from(this.fleet.values()).map((record) => ({ ...record, ...computeVehicleAgeState(record, now) }));
   }
 
   persistSnapshotIfDue() {
     const now = Date.now();
     if (now - this.lastSnapshotAt < HUB_PERSIST_INTERVAL_MS) return;
     this.lastSnapshotAt = now;
-    const snapshot = Array.from(this.vehicles.values());
+    const snapshot = Array.from(this.fleet.values());
     if (this.state.waitUntil) this.state.waitUntil(this.state.storage.put('fleet_snapshot', snapshot));
     else this.state.storage.put('fleet_snapshot', snapshot).catch(() => {});
   }
 
   clearLive() {
-    this.vehicles.clear();
+    this.fleet.clear();
     this.filters.clear();
     this.wsTrackerIds.clear();
     this.broadcast({ type: 'clear', timestamp: Date.now() });
@@ -1438,15 +1438,15 @@ export class FleetHistory {
     ids = Array.from(new Set(ids.map(canonicalVehicleId).filter(Boolean)));
     const removed = [];
     for (const id of ids) {
-      if (this.vehicles.delete(id)) removed.push(id);
+      if (this.fleet.delete(id)) removed.push(id);
       this.filters.delete(id);
       this.wsTrackerIds.delete(id);
     }
     if (removed.length) {
-      await this.state.storage.put('fleet_snapshot', Array.from(this.vehicles.values()));
+      await this.state.storage.put('fleet_snapshot', Array.from(this.fleet.values()));
       this.broadcast({ type: 'remove', ids: removed, timestamp: Date.now() });
     }
-    return historyJson({ success: true, removed, count: this.vehicles.size });
+    return historyJson({ success: true, removed, count: this.fleet.size });
   }
 
   async write(request) {
