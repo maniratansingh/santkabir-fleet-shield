@@ -402,7 +402,6 @@ export default function HistoryAppV2() {
   const [playRate, setPlayRate] = useState(1);
   const [reportTab, setReportTab] = useState('map');
   const [reports, setReports] = useState({ summary: [], trips: [], stops: [] });
-  const [reportLoading, setReportLoading] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -545,43 +544,41 @@ export default function HistoryAppV2() {
   useEffect(() => { loadVehicles(); }, [loadVehicles]);
 
   useEffect(() => {
-    if (authed !== true || !selectedId || !appliedFrom || !appliedTo) { setPoints([]); return undefined; }
+    if (authed !== true || !selectedId || !appliedFrom || !appliedTo) {
+      setPoints([]);
+      return undefined;
+    }
     let cancelled = false;
+    const started = Date.now();
     setLoading(true);
     setError('');
-    api(`/api/history?id=${encodeURIComponent(selectedId)}&from=${appliedFrom}&to=${appliedTo}`)
-      .then((data) => { if (!cancelled) setPoints(Array.isArray(data.points) ? data.points : []); })
+    setPoints([]);
+    setReports({ summary: [], trips: [], stops: [] });
+    Promise.all([
+      api(`/api/history?id=${encodeURIComponent(selectedId)}&from=${appliedFrom}&to=${appliedTo}`),
+      api(`/api/history/reports/all?id=${encodeURIComponent(selectedId)}&from=${appliedFrom}&to=${appliedTo}`).catch(() => ({ days: [], trips: [], stops: [] })),
+    ])
+      .then(([history, report]) => {
+        if (cancelled) return;
+        setPoints(Array.isArray(history.points) ? history.points : []);
+        setReports({
+          summary: Array.isArray(report.days) ? report.days : [],
+          trips: Array.isArray(report.trips) ? report.trips : [],
+          stops: Array.isArray(report.stops) ? report.stops : [],
+        });
+      })
       .catch((err) => {
         if (cancelled) return;
         if (err.status === 401) setAuthed(false);
         else setError(err.message || 'Could not load history');
       })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => {
+        if (cancelled) return;
+        const wait = Math.max(0, 700 - (Date.now() - started));
+        setTimeout(() => { if (!cancelled) setLoading(false); }, wait);
+      });
     return () => { cancelled = true; };
   }, [authed, selectedId, appliedFrom, appliedTo, refreshKey]);
-
-  useEffect(() => {
-    setSelectedTrip(null);
-    setTime(appliedFrom);
-    setReportTab('map');
-  }, [selectedId, appliedFrom, appliedTo]);
-
-  useEffect(() => {
-    if (!selectedId || !appliedFrom || !appliedTo) return undefined;
-    let cancelled = false;
-    setReportLoading(true);
-    Promise.all(['summary', 'trips', 'stops'].map((kind) =>
-      api(`/api/history/reports/${kind}?id=${encodeURIComponent(selectedId)}&from=${appliedFrom}&to=${appliedTo}`)
-        .then((data) => ({ kind, rows: Array.isArray(data[kind === 'summary' ? 'days' : kind]) ? data[kind === 'summary' ? 'days' : kind] : [] }))
-        .catch(() => ({ kind, rows: [] }))
-    )).then((results) => {
-      if (cancelled) return;
-      const next = { summary: [], trips: [], stops: [] };
-      results.forEach((r) => { next[r.kind] = r.rows; });
-      setReports(next);
-    }).finally(() => { if (!cancelled) setReportLoading(false); });
-    return () => { cancelled = true; };
-  }, [selectedId, appliedFrom, appliedTo, refreshKey]);
 
   /* map */
   useEffect(() => {
@@ -1068,6 +1065,8 @@ export default function HistoryAppV2() {
         .fh-3d svg { width: 52px; height: 66px; display: block; }
         .fh-car-speed { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; box-shadow: 0 6px 16px -8px rgba(0,0,0,.5); }
 
+        .fh-loadbar { animation: fh-load 1.1s ease-in-out infinite; }
+        @keyframes fh-load { 0% { transform: translateX(-120%); } 100% { transform: translateX(220%); } }
         @media (prefers-reduced-motion: reduce) {
           .fh2 *, .fh2 *::before, .fh2 *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
         }
@@ -1090,6 +1089,21 @@ export default function HistoryAppV2() {
 
       <main className="relative flex-1 min-h-0">
         <div className="absolute inset-0"><div ref={mapContainerRef} className="h-full w-full" /></div>
+
+        {loading && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none px-6">
+            <div className="w-[260px] rounded-[20px] border fh2-border fh2-panel px-5 py-4 shadow-2xl backdrop-blur-xl">
+              <div className="flex items-center gap-2 text-[11px] font-semibold">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-500" />
+                Loading {Math.max(1, Math.round((appliedTo - appliedFrom) / DAY_MS))} {Math.max(1, Math.round((appliedTo - appliedFrom) / DAY_MS)) === 1 ? 'day' : 'days'}…
+              </div>
+              <div className="mt-2 text-[9.5px] fh2-muted">Preparing route, trips and stops</div>
+              <div className="mt-3 h-1 rounded-full overflow-hidden" style={{ background: 'var(--track)' }}>
+                <span className="fh-loadbar block h-full w-1/2 rounded-full" style={{ background: 'var(--text)' }} />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="absolute top-3 left-3 right-3 flex flex-wrap items-center gap-2 z-10">
           <button onClick={() => setVehiclesOpen((v) => !v)} className="h-10 pl-2.5 pr-3 rounded-full border fh2-border fh2-panel backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl">
@@ -1151,7 +1165,7 @@ export default function HistoryAppV2() {
 
           {advanced && reportTab !== 'map' ? (
             <div className="mt-3 max-h-[230px] overflow-auto rounded-[12px] border fh2-border">
-              {reportLoading ? (
+              {loading ? (
                 <div className="p-4 text-[11px] fh2-muted">Loading {reportTab}…</div>
               ) : (reports[reportTab] || []).length === 0 ? (
                 <div className="p-4 text-[11px] fh2-muted">No {reportTab} in this range.</div>
