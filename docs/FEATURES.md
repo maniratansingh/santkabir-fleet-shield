@@ -57,7 +57,7 @@ is removed from the hub state.
 | Reports | Server-side daily summary, trips and stops in one `/api/history/reports/all` call. |
 | Missing data | Short stop gaps use the vehicle colour; real breaks use an amber link with anchors, in both themes. |
 | Vehicle switch | Stops any camera animation and flies out/in to the new vehicle bounds. |
-| Playback | 1× ≈ 3 minutes for the range; 2×/4×/8×/16×; rAF-smooth. |
+| Playback | 1× covers the whole range at a pace scaled to its length (24 h ≈ 3 min, 7 d ≈ 5 min, 30 d ≈ 10 min); 0.25×/0.5×/1×/2×/4×/8×/16×; rAF-smooth. |
 | Loading | Single report call plus map points; deliberate progress card, no jump from the previous vehicle. |
 
 ## TV wallboard

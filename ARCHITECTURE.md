@@ -223,7 +223,7 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - Advanced: Maps/Trips, Summary/Trips/Stops tables, chips, accuracy overlay, speed colouring, sampling/accuracy/poor-fix metrics, CSV.
 - The unified trail threads all trips and days; short stop gaps use the vehicle colour, real breaks use amber links with anchors.
 - Vehicle and range changes stop any camera animation and fly out/in to the new bounds.
-- Playback 1× completes the range in about 3 minutes; 16× is available. Loading shows a deliberate progress card while the single report call and points load.
+- Playback at 1× is range-aware: about 1 min for 2 hours, 3 min for 24 hours, 5 min for 7 days and 10 min for 30 days, with 0.25×–16× available. Starting from a seek position uses the remaining slice, so the chosen speed stays constant. Loading shows a deliberate progress card while the single report call and points load.
 
 **Authentication and latency**
 

@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import AppleRangePicker from './AppleRangePicker';
-import { DAY_MS, MAX_RANGE_MS, fromLocalInput, toLocalInput } from './dateRange';
+import { DAY_MS, MAX_RANGE_MS, PLAY_RATES, basePlaybackMs, fromLocalInput, toLocalInput } from './dateRange';
 import { getUniqueVehicleColor } from '../utils/colors';
 import { get3DAmbulanceSvg } from '../utils/ambulanceSvg';
 
@@ -401,6 +401,7 @@ export default function HistoryAppV2() {
   const [follow, setFollow] = useState(true);
   const [seeking, setSeeking] = useState(false);
   const [playRate, setPlayRate] = useState(1);
+  const [speedOpen, setSpeedOpen] = useState(false);
   const [reportTab, setReportTab] = useState('map');
   const [reports, setReports] = useState({ summary: [], trips: [], stops: [] });
   const [selectedTrip, setSelectedTrip] = useState(null);
@@ -879,13 +880,16 @@ export default function HistoryAppV2() {
     let lastPaint = 0;
     const from = (time >= appliedTo ? appliedFrom : time) || appliedFrom;
     const span = Math.max(1, appliedTo - appliedFrom);
-    const duration = Math.max(8000, 180000 / Math.max(1, playRate));
+    const remaining = Math.max(1, appliedTo - from);
+    // Scale by the remaining slice, otherwise pressing play at 75% replays the
+    // tail at a quarter of the selected speed.
+    const duration = Math.max(1200, (basePlaybackMs(appliedFrom, appliedTo) * remaining) / span / Math.max(0.25, playRate));
     const started = performance.now();
     const tick = (now) => {
       if (now - lastPaint > 45) {
         lastPaint = now;
         const f = Math.min(1, (now - started) / duration);
-        setTime(from + span * f);
+        setTime(from + remaining * f);
         if (f >= 1) { setPlaying(false); return; }
       }
       raf = requestAnimationFrame(tick);
@@ -1262,9 +1266,21 @@ export default function HistoryAppV2() {
             </div>
           )}
 
-          {(!advanced || reportTab === 'map') && <div className="mt-3 flex items-center gap-3">
-            <button onClick={() => setPlaying((v) => !v)} className="w-9 h-9 rounded-full fh2-active grid place-items-center shadow-lg" aria-label="Play">{playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}</button>
-            <button onClick={() => setPlayRate((r) => ({ 1: 2, 2: 4, 4: 8, 8: 16, 16: 1 }[r] || 1))} className="h-8 px-2 rounded-full border fh2-border fh2-muted text-[10px] font-semibold tabular-nums" title="Playback speed" aria-label={`Playback speed ${playRate}x`}>{playRate}×</button>
+          {(!advanced || reportTab === 'map') && <div className="mt-3">
+            {speedOpen && <div className="mb-2 flex items-center gap-1.5 flex-wrap">
+              <span className="text-[9px] fh2-muted mr-0.5 tabular-nums">1× ≈ {fmtDur(basePlaybackMs(appliedFrom, appliedTo))}</span>
+              {PLAY_RATES.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => { setPlayRate(r); setSpeedOpen(false); }}
+                  className={`h-6 px-2 rounded-full border text-[9px] font-semibold tabular-nums ${Math.abs(playRate - r) < 0.001 ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-muted'}`}
+                  aria-pressed={Math.abs(playRate - r) < 0.001}
+                >{r}×</button>
+              ))}
+            </div>}
+            <div className="flex items-center gap-3">
+            <button onClick={() => { setSpeedOpen(false); setPlaying((v) => !v); }} className="w-9 h-9 rounded-full fh2-active grid place-items-center shadow-lg" aria-label="Play">{playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}</button>
+            <button onClick={() => setSpeedOpen((v) => !v)} className={`h-8 px-2 rounded-full border text-[10px] font-semibold tabular-nums ${speedOpen ? 'border-sky-400/60 bg-sky-500/10 text-sky-500' : 'fh2-border fh2-muted'}`} title="Playback speed" aria-label={`Playback speed ${playRate}x`}>{playRate}×</button>
             <button onClick={() => setFollow((v) => !v)} className={`w-8 h-8 rounded-full border grid place-items-center ${follow ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-muted'}`} title="Follow vehicle" aria-label="Follow vehicle"><LocateFixed className="w-3.5 h-3.5" /></button>
             <div className="flex-1">
               <div
@@ -1308,6 +1324,7 @@ export default function HistoryAppV2() {
             <div className="text-right">
               <div className="text-xs font-semibold tabular-nums">{appliedTo - appliedFrom > 2 * DAY_MS ? fmtFull(time || appliedFrom) : fmt(time || appliedFrom)}</div>
               <div className="text-[9px] fh2-muted tabular-nums">{playSpeed} km/h</div>
+            </div>
             </div>
           </div>}
 

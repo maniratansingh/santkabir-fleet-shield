@@ -47,7 +47,7 @@ Durable Object.
 - **Moving vehicle.** The 3D ambulance is shared with the live board, rotates
   with heading, shows live speed, and the camera flies to the new bounds on a
   vehicle or range change.
-- **Playback.** 1× takes about 3 minutes for the range; 2×/4×/8×/16× available.
+- **Playback.** 1× scales with the range: about 1 min for 2 hours, 3 min for 24 hours, 5 min for 7 days and 10 min for 30 days. Speeds are 0.25×, 0.5×, 1×, 2×, 4×, 8× and 16×, so long ranges can be watched slowly or scanned quickly.
   Loading uses one report call and a deliberate progress card.
 - **Telemetry.** Live window is 180 seconds (matching the real ~100 s cadence),
   timestamps normalise seconds/ISO to milliseconds, offline buffering is on, and
