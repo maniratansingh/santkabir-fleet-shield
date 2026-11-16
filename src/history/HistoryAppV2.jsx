@@ -620,7 +620,7 @@ export default function HistoryAppV2() {
     if (!map || !mapReady || !map.isStyleLoaded()) return undefined;
     markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
     markersRef.current = [];
-    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'area-centre', 'speed-line', 'bridges', 'gap-anchors', 'unified-line'].forEach((id) => {
+    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'area-centre', 'speed-line', 'bridges', 'gap-anchors', 'unified-line'].forEach((id) => {
       if (map.getLayer(id)) map.removeLayer(id);
     });
     ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'area-centre', 'speed', 'bridges', 'gap-anchors', 'unified'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
@@ -790,11 +790,7 @@ export default function HistoryAppV2() {
         id: 'stops-dot', type: 'circle', source: 'stops',
         paint: { 'circle-radius': 5.5, 'circle-color': theme === 'dark' ? '#0b1118' : '#ffffff', 'circle-stroke-color': vehicleColor, 'circle-stroke-width': 2.5 },
       });
-      map.addLayer({
-        id: 'stops-label', type: 'symbol', source: 'stops', minzoom: 10.5,
-        layout: { 'text-field': ['get', 'label'], 'text-size': 10, 'text-offset': [0, 1.8], 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-font': ['Open Sans Regular'] },
-        paint: { 'text-color': theme === 'dark' ? '#e2e8f0' : '#0f172a', 'text-halo-color': theme === 'dark' ? 'rgba(2,7,12,.85)' : 'rgba(255,255,255,.9)', 'text-halo-width': 2 },
-      });
+
     }
 
     /* gap caps */
@@ -856,6 +852,7 @@ export default function HistoryAppV2() {
     const padding = mobile
       ? { top: 110, bottom: 260, left: 30, right: 30 }
       : { top: 120, bottom: 290, left: 80, right: 80 };
+    map.stop();
     const camera = map.cameraForBounds(bounds, { padding, maxZoom: 13.5 });
     if (camera?.center) {
       map.flyTo({
@@ -1120,7 +1117,7 @@ export default function HistoryAppV2() {
             <div className="w-[260px] rounded-[20px] border fh2-border fh2-panel px-5 py-4 shadow-2xl backdrop-blur-xl">
               <div className="flex items-center gap-2 text-[11px] font-semibold">
                 <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-500" />
-                Loading {Math.max(1, Math.round((appliedTo - appliedFrom) / DAY_MS))} {Math.max(1, Math.round((appliedTo - appliedFrom) / DAY_MS)) === 1 ? 'day' : 'days'}…
+                Loading {selectedId || 'history'} · {Math.max(1, Math.round((appliedTo - appliedFrom) / DAY_MS))} {Math.max(1, Math.round((appliedTo - appliedFrom) / DAY_MS)) === 1 ? 'day' : 'days'}…
               </div>
               <div className="mt-2 text-[9.5px] fh2-muted">Preparing route, trips and stops</div>
               <div className="mt-3 h-1 rounded-full overflow-hidden" style={{ background: 'var(--track)' }}>
