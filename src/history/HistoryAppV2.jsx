@@ -415,6 +415,7 @@ export default function HistoryAppV2() {
   const markersRef = useRef([]);
   const movingMarkerRef = useRef(null);
   const lastFollowRef = useRef(0);
+  const lastViewKeyRef = useRef('');
   const [mapReady, setMapReady] = useState(false);
 
   const trips = useMemo(() => {
@@ -816,11 +817,6 @@ export default function HistoryAppV2() {
     endEl.style.cssText = 'z-index:2;width:12px;height:12px;border-radius:99px;background:#ff453a;border:2.5px solid #04121c;box-shadow:0 0 0 3px rgba(0,0,0,.18)';
     markersRef.current.push(new maplibregl.Marker({ element: endEl }).setLngLat([prepared.clean[prepared.clean.length - 1].lon, prepared.clean[prepared.clean.length - 1].lat]).addTo(map));
 
-    const coords = prepared.clean.map((p) => [p.lon, p.lat]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
-    if (coords.length) {
-      const b = coords.reduce((acc, c) => acc.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
-      map.fitBounds(b, { padding: { top: 150, bottom: 280, left: 90, right: 90 }, maxZoom: 14, duration: 400 });
-    }
     return undefined;
   }, [prepared, reports.stops, confidence, mapReady, mode, viewMode, advanced, reportTab, quality, speedColor, theme, vehicleColor, selectedTrip]);
 
@@ -846,6 +842,35 @@ export default function HistoryAppV2() {
       }
     }
   }, [time, prepared, mapReady, follow, playing]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || loading || !prepared.clean.length) return;
+    const key = `${selectedId}|${appliedFrom}|${appliedTo}|${prepared.clean.length}|${theme}`;
+    if (lastViewKeyRef.current === key) return;
+    lastViewKeyRef.current = key;
+    const coords = prepared.clean.map((p) => [p.lon, p.lat]).filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b));
+    if (!coords.length) return;
+    const bounds = coords.reduce((acc, c) => acc.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
+    const mobile = window.innerWidth < 760;
+    const padding = mobile
+      ? { top: 110, bottom: 260, left: 30, right: 30 }
+      : { top: 120, bottom: 290, left: 80, right: 80 };
+    const camera = map.cameraForBounds(bounds, { padding, maxZoom: 13.5 });
+    if (camera?.center) {
+      map.flyTo({
+        center: camera.center,
+        zoom: Math.min(13.5, camera.zoom || map.getZoom()),
+        bearing: 0,
+        pitch: 0,
+        duration: 1200,
+        curve: 1.35,
+        essential: true,
+      });
+    } else {
+      map.fitBounds(bounds, { padding, maxZoom: 13.5, duration: 900 });
+    }
+  }, [prepared, mapReady, loading, selectedId, appliedFrom, appliedTo, theme]);
 
   useEffect(() => {
     if (!playing) return undefined;
