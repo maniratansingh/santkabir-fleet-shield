@@ -406,6 +406,7 @@ export default function HistoryAppV2() {
     return buildTrips(points);
   }, [reports.trips, points]);
   const prepared = useMemo(() => prepareTrail(points, trips), [points, trips]);
+  const viewMode = advanced ? mode : 'trips';
   const confidence = useMemo(() => {
     const ints = [];
     const accs = [];
@@ -428,7 +429,8 @@ export default function HistoryAppV2() {
       const lat = prepared.clean.reduce((s, p) => s + p.lat, 0) / prepared.clean.length;
       area = Math.abs(sum / 2) * (111.32 * 111.32 * Math.cos(rad(lat)));
     }
-    return { low: medInt >= 300 || medAcc >= 60, medInt, medAcc, area };
+    const reportKm = reports.trips.reduce((s, t) => s + (t.distanceKm || 0), 0);
+    return { low: medInt >= 300 || (medAcc >= 60 && reportKm < 5), medInt, medAcc, area };
   }, [prepared, reports]);
   const selected = vehicles.find((v) => v.id === selectedId);
   const vehicleColor = selectedId ? getUniqueVehicleColor(selectedId).line : '#38bdf8';
@@ -593,12 +595,13 @@ export default function HistoryAppV2() {
     if (!map || !mapReady || !map.isStyleLoaded()) return undefined;
     markersRef.current.forEach((m) => { try { m.remove(); } catch {} });
     markersRef.current = [];
-    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'speed-line'].forEach((id) => {
+    ['quality-line', 'trail', 'casing', 'stops-dot', 'stops-halo', 'stops-label', 'gap-caps', 'bad-ring', 'arrows', 'cloud', 'hull-fill', 'hull-line', 'speed-line', 'bridges'].forEach((id) => {
       if (map.getLayer(id)) map.removeLayer(id);
     });
-    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'speed'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
+    ['runs', 'quality', 'stops', 'caps', 'bad', 'arrows', 'cloud', 'hull', 'speed', 'bridges'].forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
 
     if (!points.length) return undefined;
+    if (!advanced && reportTab !== 'map') return undefined;
 
     if (confidence.low) {
       const cloud = prepared.clean.map((p) => ({ type: 'Feature', properties: { accuracy: p.accuracy || 50 }, geometry: { type: 'Point', coordinates: [p.lon, p.lat] } }));
@@ -623,7 +626,7 @@ export default function HistoryAppV2() {
     const runs = confidence.low ? [] : prepared.runs;
     const features = runs.map((r) => ({
       type: 'Feature',
-      properties: { trip: r.trip, color: mode === 'trips' ? TRIP_COLORS[r.trip % TRIP_COLORS.length] : vehicleColor },
+      properties: { trip: r.trip, color: viewMode === 'trips' ? TRIP_COLORS[r.trip % TRIP_COLORS.length] : vehicleColor },
       geometry: { type: 'LineString', coordinates: r.coords },
     }));
     map.addSource('runs', { type: 'geojson', data: { type: 'FeatureCollection', features } });
@@ -632,7 +635,7 @@ export default function HistoryAppV2() {
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': theme === 'dark' ? 'rgba(2,7,12,.9)' : 'rgba(255,255,255,.96)',
-        'line-width': mode === 'trips' ? 8 : 9,
+        'line-width': viewMode === 'trips' ? 8 : 9,
         'line-opacity': selectedTrip === null ? 0.95 : ['case', ['==', ['get', 'trip'], selectedTrip], 0.95, 0.25],
       },
     });
@@ -641,10 +644,26 @@ export default function HistoryAppV2() {
       layout: { 'line-cap': 'round', 'line-join': 'round', visibility: speedColor ? 'none' : 'visible' },
       paint: {
         'line-color': ['get', 'color'],
-        'line-width': mode === 'trips' ? 3.8 : 4.6,
+        'line-width': viewMode === 'trips' ? 3.8 : 4.6,
         'line-opacity': selectedTrip === null ? 1 : ['case', ['==', ['get', 'trip'], selectedTrip], 1, 0.18],
       },
     });
+
+    if (!advanced && !confidence.low) {
+      const bridges = [];
+      const ordered = [...prepared.runs].sort((a, b) => a.start - b.start);
+      for (let i = 1; i < ordered.length; i++) {
+        const prev = ordered[i - 1];
+        const next = ordered[i];
+        const a = prev.coords[prev.coords.length - 1];
+        const b = next.coords[0];
+        if (haversine(a, b) * 1000 <= 500) bridges.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [a, b] } });
+      }
+      if (bridges.length) {
+        map.addSource('bridges', { type: 'geojson', data: { type: 'FeatureCollection', features: bridges } });
+        map.addLayer({ id: 'bridges', type: 'line', source: 'bridges', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': 3.4, 'line-opacity': 0.55 } });
+      }
+    }
 
     /* direction arrows */
     const arrowId = theme === 'dark' ? 'fh-arrow-light' : 'fh-arrow-dark';
@@ -714,7 +733,7 @@ export default function HistoryAppV2() {
     });
 
     /* stops as bubbles, not path */
-    if (reports.stops.length && !confidence.low) {
+    if (advanced && reports.stops.length && !confidence.low) {
       map.addSource('stops', {
         type: 'geojson',
         data: {
@@ -761,7 +780,7 @@ export default function HistoryAppV2() {
       map.fitBounds(b, { padding: { top: 150, bottom: 280, left: 90, right: 90 }, maxZoom: 14, duration: 400 });
     }
     return undefined;
-  }, [prepared, reports.stops, confidence, mapReady, mode, quality, speedColor, theme, vehicleColor, selectedTrip]);
+  }, [prepared, reports.stops, confidence, mapReady, mode, viewMode, advanced, reportTab, quality, speedColor, theme, vehicleColor, selectedTrip]);
 
   useEffect(() => {
     const p = nearestByTime(prepared.clean, time || appliedFrom);
@@ -998,10 +1017,10 @@ export default function HistoryAppV2() {
             {rangeLabel} <ChevronDown className="w-3.5 h-3.5 fh2-muted" />
           </button>
           <div className="ml-auto flex items-center gap-1.5">
-            <div className="flex p-1 rounded-full border fh2-border fh2-panel backdrop-blur-xl text-[11px] font-semibold">
+            {advanced && <div className="flex p-1 rounded-full border fh2-border fh2-panel backdrop-blur-xl text-[11px] font-semibold">
               <button onClick={() => setMode('maps')} className={`px-3 h-7 rounded-full ${mode === 'maps' ? 'fh2-active' : 'fh2-muted'}`}>Maps</button>
               <button onClick={() => setMode('trips')} className={`px-3 h-7 rounded-full ${mode === 'trips' ? 'fh2-active' : 'fh2-muted'}`}>Trips</button>
-            </div>
+            </div>}
             <button onClick={() => setAdvanced((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${advanced ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>{advanced ? 'Advanced on' : 'Advanced'}</button>
             {advanced && <button onClick={() => setQuality((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>}
             {advanced && <button onClick={() => setSpeedColor((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${speedColor ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Speed</button>}
@@ -1033,7 +1052,7 @@ export default function HistoryAppV2() {
             </div>
           </div>
 
-          <div className="mt-3 flex items-center gap-1 p-1 rounded-full border fh2-border fh2-track text-[10px] font-semibold">
+          {advanced && <div className="mt-3 flex items-center gap-1 p-1 rounded-full border fh2-border fh2-track text-[10px] font-semibold">
             {['map', 'summary', 'trips', 'stops'].map((tab) => (
               <button
                 key={tab}
@@ -1044,7 +1063,7 @@ export default function HistoryAppV2() {
               </button>
             ))}
             {reportTab !== 'map' && <button onClick={exportCsv} className="h-7 px-2 rounded-full fh2-muted" title="Download CSV">CSV</button>}
-          </div>
+          </div>}
 
           {reportTab !== 'map' ? (
             <div className="mt-3 max-h-[230px] overflow-auto rounded-[12px] border fh2-border">
@@ -1099,7 +1118,7 @@ export default function HistoryAppV2() {
                   const left = ((b.start - appliedFrom) / span) * 100;
                   const width = Math.max(0.6, ((b.end - b.start) / span) * 100);
                   return (
-                    <button key={b.index} onClick={() => { setSelectedTrip(selectedTrip === b.index ? null : b.index); setTime(b.start); }} className="absolute top-0 bottom-0" style={{ left: `${left}%`, width: `${width}%`, background: mode === 'trips' ? TRIP_COLORS[b.index % TRIP_COLORS.length] : vehicleColor, opacity: selectedTrip === null || selectedTrip === b.index ? 0.95 : 0.25 }} title={`Trip ${b.index + 1}`} />
+                    <button key={b.index} onClick={() => { setSelectedTrip(selectedTrip === b.index ? null : b.index); setTime(b.start); }} className="absolute top-0 bottom-0" style={{ left: `${left}%`, width: `${width}%`, background: viewMode === 'trips' ? TRIP_COLORS[b.index % TRIP_COLORS.length] : vehicleColor, opacity: selectedTrip === null || selectedTrip === b.index ? 0.95 : 0.25 }} title={`Trip ${b.index + 1}`} />
                   );
                 })}
                 <div id="fh-head" className="absolute top-[-3px] bottom-[-3px] w-0.5 bg-white" style={{ left: '0%' }} />
@@ -1112,11 +1131,11 @@ export default function HistoryAppV2() {
             </div>
           </div>}
 
-          {reportTab === 'map' && !confidence.low && <div className="flex gap-1.5 mt-3 overflow-x-auto">
+          {advanced && reportTab === 'map' && !confidence.low && <div className="flex gap-1.5 mt-3 overflow-x-auto">
             <button onClick={() => setSelectedTrip(null)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold ${selectedTrip === null ? 'border-sky-400/50 bg-sky-500/10' : 'fh2-border fh2-muted'}`}>All</button>
             {trips.map((t) => (
               <button key={t.index} onClick={() => setSelectedTrip(selectedTrip === t.index ? null : t.index)} className={`shrink-0 h-7 px-2.5 rounded-full border text-[10px] font-semibold flex items-center gap-1.5 ${selectedTrip === t.index ? 'border-sky-400/50 bg-sky-500/10' : 'fh2-border fh2-muted'}`}>
-                <span className="w-2 h-2 rounded-full" style={{ background: mode === 'trips' ? TRIP_COLORS[t.index % TRIP_COLORS.length] : vehicleColor }} />
+                <span className="w-2 h-2 rounded-full" style={{ background: viewMode === 'trips' ? TRIP_COLORS[t.index % TRIP_COLORS.length] : vehicleColor }} />
                 Trip {t.index + 1}
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: QUALITY_COLOR[t.quality] }} />
               </button>
