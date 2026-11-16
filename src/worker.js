@@ -1627,7 +1627,7 @@ export class FleetHistory {
         `SELECT device_time, lat, lon, speed, accuracy
          FROM history_points
          WHERE vehicle_id = ? AND device_time >= ? AND device_time <= ?
-         ORDER BY device_time ASC LIMIT 60000`,
+         ORDER BY device_time ASC LIMIT 100000`,
         id, from, to
       )
       .toArray();
@@ -1685,8 +1685,8 @@ export class FleetHistory {
     const from = Number(url.searchParams.get('from') || now - HISTORY_RETENTION_MS);
     const to = Number(url.searchParams.get('to') || now);
     const limit = Math.min(
-      60000,
-      Math.max(1, Number(url.searchParams.get('limit') || 60000))
+      100000,
+      Math.max(1, Number(url.searchParams.get('limit') || 100000))
     );
 
     const points = this.state.storage.sql
