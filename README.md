@@ -33,10 +33,11 @@ Durable Object.
   three; the second DO, duplicate write and 30-second forward throttle are gone.
 - **30-day history.** `history_points` is keyed by `(vehicle_id, device_time)`
   and keeps 30 days. Raw and filtered coordinates are stored. Reads allow up to
-  100,000 rows; the map is downsampled to ~7,000 points.
-- **Server-side reports.** `/api/history/reports/all` returns daily summary,
-  trips and stops in one analysis. The hero, timeline, stops and tables all use
-  that result, so they cannot disagree.
+  100,000 rows; the map is downsampled to ~7,000 points. One history call returns
+  the points plus the reports, so a range change scans the rows once.
+- **Server-side reports.** `/api/history` returns daily summary, trips and stops
+  computed from the same rows the map uses. The hero, timeline, stops and tables
+  all come from that one response, so they cannot disagree.
 - **Simple and Advanced views.** Simple is vehicle, range, one unified trail, 3D
   ambulance, speed pill, play/speed/follow and the timeline. Advanced adds
   Maps/Trips, Summary/Trips/Stops tables, chips, accuracy, speed colouring and

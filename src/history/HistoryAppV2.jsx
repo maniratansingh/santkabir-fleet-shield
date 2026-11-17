@@ -564,17 +564,14 @@ export default function HistoryAppV2() {
     setError('');
     setPoints([]);
     setReports({ summary: [], trips: [], stops: [] });
-    Promise.all([
-      api(`/api/history?id=${encodeURIComponent(selectedId)}&from=${appliedFrom}&to=${appliedTo}`),
-      api(`/api/history/reports/all?id=${encodeURIComponent(selectedId)}&from=${appliedFrom}&to=${appliedTo}`).catch(() => ({ days: [], trips: [], stops: [] })),
-    ])
-      .then(([history, report]) => {
+    api(`/api/history?id=${encodeURIComponent(selectedId)}&from=${appliedFrom}&to=${appliedTo}`)
+      .then((history) => {
         if (cancelled) return;
         setPoints(Array.isArray(history.points) ? history.points : []);
         setReports({
-          summary: Array.isArray(report.days) ? report.days : [],
-          trips: Array.isArray(report.trips) ? report.trips : [],
-          stops: Array.isArray(report.stops) ? report.stops : [],
+          summary: Array.isArray(history.days) ? history.days : [],
+          trips: Array.isArray(history.trips) ? history.trips : [],
+          stops: Array.isArray(history.stops) ? history.stops : [],
         });
       })
       .catch((err) => {

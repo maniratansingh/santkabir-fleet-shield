@@ -190,9 +190,11 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 **Storage model**
 
 - `history_points`: primary key `(vehicle_id, device_time)`.
-- Retention **30 days**; rows older than the window are pruned hourly.
+- Retention **30 days**; expired rows are pruned hourly by a Durable Object alarm using the `device_time` index.
+- `history_stats` keeps `last_seen` and a point count per vehicle, so the picker never runs a full `GROUP BY`.
 - Columns: `device_time`, `received_at`, `lat`, `lon`, `raw_lat`, `raw_lon`, `speed`, `bearing`, `accuracy`, `battery`.
-- The old `history` slot table remains as a backup; new writes never use it.
+- The old `history` slot table is empty after the one-time import. It is kept for old admin paths and is never scanned on boot.
+- The legacy import is guarded by a persisted flag. It used to run on every Durable Object start, re-reading the whole old table on each wake-up and burning the rows_read quota.
 - `history_audit` records logins, failed logins and deletes.
 - Fleet snapshot is persisted as `fleet_snapshot` and rehydrated on boot.
 
@@ -209,8 +211,9 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 
 **Read path**
 
-- `GET /api/history` reads up to **100,000** rows and downsamples the map to ~7,000 points. Reports use the full range.
-- `GET /api/history/reports/all` computes daily summary, trips and stops in one pass. Individual `reports/summary`, `reports/trips` and `reports/stops` endpoints remain.
+- `GET /api/history` reads up to **100,000** rows and returns the points, daily summary, trips and stops in one response. The map downsamples to ~7,000 points; reports use the full range.
+- The UI makes one history call per range. The separate `reports/all`, `reports/summary`, `reports/trips` and `reports/stops` endpoints remain for compatibility but are no longer used by the history page.
+- `GET /api/history/vehicles` reads the small `history_stats` table instead of grouping the whole history table.
 - Trips and stops are server-side and are the single source of truth for the hero numbers, timeline, stop bubbles and tables.
 - Trips split at a stop, a gap over ~2.5× the median interval (minimum 10 minutes), or an IST day boundary. Trips under 0.2 km / 2 minutes are dropped as noise.
 - Stops are clusters within 150 m for at least 5 minutes, merged within 250 m / 20 minutes.
@@ -223,7 +226,7 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - Advanced: Maps/Trips, Summary/Trips/Stops tables, chips, accuracy overlay, speed colouring, sampling/accuracy/poor-fix metrics, CSV.
 - The unified trail threads all trips and days; short stop gaps use the vehicle colour, real breaks use amber links with anchors.
 - Vehicle and range changes stop any camera animation and fly out/in to the new bounds.
-- Playback at 1× is range-aware: about 1 min for 2 hours, 3 min for 24 hours, 5 min for 7 days and 10 min for 30 days, with 0.25×–16× available. Starting from a seek position uses the remaining slice, so the chosen speed stays constant. Loading shows a deliberate progress card while the single report call and points load.
+- Playback at 1× is range-aware: about 1 min for 2 hours, 3 min for 24 hours, 5 min for 7 days and 10 min for 30 days, with 0.25×–16× available. Starting from a seek position uses the remaining slice, so the chosen speed stays constant. Loading shows a deliberate progress card while the single history call (points plus reports) loads.
 
 **Authentication and latency**
 

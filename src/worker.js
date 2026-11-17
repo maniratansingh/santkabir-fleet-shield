@@ -47,6 +47,8 @@ const HISTORY_COOKIE = 'history_session';
 const HISTORY_SESSION_SECONDS = 8 * 60 * 60;
 const HISTORY_BUCKET_MS = 30 * 1000; // 30-second samples
 const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const HISTORY_PRUNE_INTERVAL_MS = 60 * 60 * 1000; // hourly alarm
+const HISTORY_MIGRATION_KEY = 'history_schema_v3';
 const HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS); // 20,160
 const HISTORY_PASSWORD_SALT = 'mQ7B7fLda1aEC-GS4-oOIQ';
 const HISTORY_PASSWORD_HASH = 'NhEnOhRT75TkiWp-ntanopnnRUL2NXzJFJZZsGL8PwA';
@@ -1260,8 +1262,8 @@ export class PurvanchalFleetHub {
   }
 }
 
-// Separate history store. One SQLite-backed Durable Object with a fixed
-// 7-day, 30-minute ring buffer. It never blocks the live telemetry path.
+// Separate history store. One SQLite-backed Durable Object with a 30-day
+// retention window. It never blocks the live telemetry path.
 export class FleetHistory {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -1327,12 +1329,48 @@ export class FleetHistory {
       try { this.state.storage.sql.exec('ALTER TABLE history_points ADD COLUMN raw_lon REAL'); } catch (e) {}
       try { this.state.storage.sql.exec('ALTER TABLE history_points ADD COLUMN altitude REAL'); } catch (e) {}
       try { this.state.storage.sql.exec('ALTER TABLE history_points ADD COLUMN charge INTEGER'); } catch (e) {}
+      // Index on device_time alone. The retention delete and MIN/MAX must not
+      // scan the whole table.
+      this.state.storage.sql.exec(
+        'CREATE INDEX IF NOT EXISTS history_points_device ON history_points(device_time)'
+      );
+      // Per-vehicle counters so the vehicle picker never runs a full GROUP BY.
       this.state.storage.sql.exec(`
-        INSERT OR IGNORE INTO history_points
-          (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
-        SELECT vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
-        FROM history
+        CREATE TABLE IF NOT EXISTS history_stats (
+          vehicle_id TEXT PRIMARY KEY,
+          last_seen INTEGER NOT NULL,
+          points INTEGER NOT NULL
+        )
       `);
+
+      // One-time legacy import. This used to run on every Durable Object start,
+      // re-reading the whole old table on each wake-up and burning rows_read.
+      const migrated = await this.state.storage.get(HISTORY_MIGRATION_KEY);
+      if (!migrated) {
+        const legacy = this.state.storage.sql
+          .exec('SELECT COUNT(*) AS n FROM history')
+          .toArray()[0]?.n || 0;
+        if (legacy > 0) {
+          this.state.storage.sql.exec(`
+            INSERT OR IGNORE INTO history_points
+              (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
+            SELECT vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
+            FROM history
+          `);
+        }
+        // Keep the table for old admin paths but stop paying for its rows.
+        this.state.storage.sql.exec('DELETE FROM history');
+        this.state.storage.sql.exec(`
+          INSERT OR REPLACE INTO history_stats (vehicle_id, last_seen, points)
+          SELECT vehicle_id, MAX(device_time), COUNT(*) FROM history_points GROUP BY vehicle_id
+        `);
+        await this.state.storage.put(HISTORY_MIGRATION_KEY, true);
+      }
+
+      const pendingAlarm = await this.state.storage.getAlarm();
+      if (pendingAlarm === null) {
+        await this.state.storage.setAlarm(Date.now() + HISTORY_PRUNE_INTERVAL_MS);
+      }
 
       const saved = await this.state.storage.get('fleet_snapshot');
       if (Array.isArray(saved)) {
@@ -1446,14 +1484,22 @@ export class FleetHistory {
   }
 
   health() {
-    const row = this.state.storage.sql
-      .exec(`SELECT (SELECT COUNT(*) FROM history) AS oldCount,
-                    (SELECT COUNT(*) FROM history_points) AS newCount,
-                    (SELECT COUNT(DISTINCT vehicle_id) FROM history_points) AS vehicles,
-                    (SELECT MIN(device_time) FROM history_points) AS oldest,
-                    (SELECT MAX(device_time) FROM history_points) AS newest`)
+    const sql = this.state.storage.sql;
+    const stats = sql
+      .exec('SELECT COALESCE(SUM(points), 0) AS newCount, COUNT(*) AS vehicles FROM history_stats')
       .toArray()[0] || {};
-    return historyJson({ success: true, ...row });
+    const range = sql
+      .exec('SELECT MIN(device_time) AS oldest, MAX(device_time) AS newest FROM history_points')
+      .toArray()[0] || {};
+    const oldCount = sql.exec('SELECT COUNT(*) AS n FROM history').toArray()[0]?.n || 0;
+    return historyJson({
+      success: true,
+      oldCount,
+      newCount: stats.newCount || 0,
+      vehicles: stats.vehicles || 0,
+      oldest: range.oldest ?? null,
+      newest: range.newest ?? null,
+    });
   }
 
   live() {
@@ -1485,21 +1531,9 @@ export class FleetHistory {
     const battery = Number(record.batt ?? record.battery);
 
     this.state.storage.sql.exec(
-      `INSERT INTO history_points (
+      `INSERT OR IGNORE INTO history_points (
          vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery, raw_lat, raw_lon, altitude, charge
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(vehicle_id, device_time) DO UPDATE SET
-         received_at = excluded.received_at,
-         lat = excluded.lat,
-         lon = excluded.lon,
-         speed = excluded.speed,
-         bearing = excluded.bearing,
-         accuracy = excluded.accuracy,
-         battery = excluded.battery,
-         raw_lat = excluded.raw_lat,
-         raw_lon = excluded.raw_lon,
-         altitude = excluded.altitude,
-         charge = excluded.charge`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       deviceTime,
       now,
@@ -1515,11 +1549,53 @@ export class FleetHistory {
       record.charge ? 1 : 0
     );
 
-    if (now - (this.lastPruneAt || 0) > 3600000) {
-      this.lastPruneAt = now;
-      try { this.state.storage.sql.exec('DELETE FROM history_points WHERE device_time < ?', now - HISTORY_RETENTION_MS); } catch (e) {}
+    const inserted = (this.state.storage.sql.exec('SELECT changes() AS n').toArray()[0]?.n || 0) > 0;
+    if (inserted) {
+      this.state.storage.sql.exec(
+        `INSERT INTO history_stats (vehicle_id, last_seen, points) VALUES (?, ?, 1)
+         ON CONFLICT(vehicle_id) DO UPDATE SET
+           last_seen = MAX(last_seen, excluded.last_seen),
+           points = points + 1`,
+        id,
+        deviceTime
+      );
+    } else {
+      this.state.storage.sql.exec(
+        'UPDATE history_stats SET last_seen = MAX(last_seen, ?) WHERE vehicle_id = ?',
+        deviceTime,
+        id
+      );
     }
     return { success: true, id, deviceTime };
+  }
+
+  // Hourly retention. Alarms survive hibernation, so a cold start never
+  // triggers a full-table prune.
+  async alarm() {
+    try {
+      const cutoff = Date.now() - HISTORY_RETENTION_MS;
+      const sql = this.state.storage.sql;
+      const expired = sql
+        .exec(
+          'SELECT vehicle_id, COUNT(*) AS n FROM history_points WHERE device_time < ? GROUP BY vehicle_id',
+          cutoff
+        )
+        .toArray();
+      if (expired.length) {
+        sql.exec('DELETE FROM history_points WHERE device_time < ?', cutoff);
+        for (const row of expired) {
+          sql.exec(
+            'UPDATE history_stats SET points = MAX(0, points - ?) WHERE vehicle_id = ?',
+            row.n,
+            row.vehicle_id
+          );
+        }
+      }
+    } catch (e) {
+      // A failed prune must not stop future alarms.
+    } finally {
+      await this.state.storage.setAlarm(Date.now() + HISTORY_PRUNE_INTERVAL_MS);
+    }
   }
 
   webSocketMessage(ws, message) {
@@ -1648,11 +1724,9 @@ export class FleetHistory {
   vehicles() {
     const rows = this.state.storage.sql
       .exec(
-        `SELECT vehicle_id AS id,
-                MAX(device_time) AS last_seen,
-                COUNT(*) AS points
-         FROM history_points
-         GROUP BY vehicle_id
+        `SELECT vehicle_id AS id, last_seen, points
+         FROM history_stats
+         WHERE points > 0
          ORDER BY last_seen DESC`
       )
       .toArray();
@@ -1738,6 +1812,11 @@ export class FleetHistory {
       )
       .toArray();
 
+    // Compute the reports from the same rows the map needs. Previously the UI
+    // fetched /reports/all too, which scanned the identical range a second time.
+    const analysis = analyzeHistory(points);
+    const days = summarizeHistoryDays(analysis);
+
     const MAX_MAP_POINTS = 7000;
     let out = points;
     if (points.length > MAX_MAP_POINTS) {
@@ -1753,6 +1832,9 @@ export class FleetHistory {
       total: points.length,
       downsampled: out.length !== points.length,
       points: out,
+      days,
+      trips: analysis.trips,
+      stops: analysis.stops,
     });
   }
 
@@ -1768,12 +1850,27 @@ export class FleetHistory {
     if (all) {
       this.state.storage.sql.exec('DELETE FROM history_points');
       this.state.storage.sql.exec('DELETE FROM history');
+      this.state.storage.sql.exec('DELETE FROM history_stats');
     } else if (id && Number.isFinite(from) && Number.isFinite(to) && from > 0 && to > 0) {
       this.state.storage.sql.exec('DELETE FROM history_points WHERE vehicle_id = ? AND device_time BETWEEN ? AND ?', id, from, to);
       this.state.storage.sql.exec('DELETE FROM history WHERE vehicle_id = ? AND device_time BETWEEN ? AND ?', id, from, to);
+      const row = this.state.storage.sql
+        .exec('SELECT MAX(device_time) AS last_seen, COUNT(*) AS points FROM history_points WHERE vehicle_id = ?', id)
+        .toArray()[0];
+      if (row?.points) {
+        this.state.storage.sql.exec(
+          'INSERT OR REPLACE INTO history_stats (vehicle_id, last_seen, points) VALUES (?, ?, ?)',
+          id,
+          row.last_seen,
+          row.points
+        );
+      } else {
+        this.state.storage.sql.exec('DELETE FROM history_stats WHERE vehicle_id = ?', id);
+      }
     } else {
       this.state.storage.sql.exec('DELETE FROM history_points WHERE vehicle_id = ?', id);
       this.state.storage.sql.exec('DELETE FROM history WHERE vehicle_id = ?', id);
+      this.state.storage.sql.exec('DELETE FROM history_stats WHERE vehicle_id = ?', id);
     }
 
     this.state.storage.sql.exec(
