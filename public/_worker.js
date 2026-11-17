@@ -3246,6 +3246,16 @@ var FleetHistory = class {
         `);
         await this.state.storage.put(HISTORY_MIGRATION_KEY, true);
       }
+      const statsCount = this.state.storage.sql.exec("SELECT COUNT(*) AS n FROM history_stats").toArray()[0]?.n || 0;
+      if (!statsCount) {
+        const hasPoints = this.state.storage.sql.exec("SELECT 1 AS n FROM history_points LIMIT 1").toArray()[0]?.n;
+        if (hasPoints) {
+          this.state.storage.sql.exec(`
+            INSERT OR REPLACE INTO history_stats (vehicle_id, last_seen, points)
+            SELECT vehicle_id, MAX(device_time), COUNT(*) FROM history_points GROUP BY vehicle_id
+          `);
+        }
+      }
       const pendingAlarm = await this.state.storage.getAlarm();
       if (pendingAlarm === null) {
         await this.state.storage.setAlarm(Date.now() + HISTORY_PRUNE_INTERVAL_MS);
