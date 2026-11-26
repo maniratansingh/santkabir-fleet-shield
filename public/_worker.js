@@ -2092,7 +2092,6 @@ var HISTORY_SESSION_SECONDS = 8 * 60 * 60;
 var HISTORY_BUCKET_MS = 30 * 1e3;
 var HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var HISTORY_PRUNE_INTERVAL_MS = 60 * 60 * 1e3;
-var HISTORY_MIGRATION_KEY = "history_schema_v3";
 var HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS);
 var HISTORY_PASSWORD_SALT = "mQ7B7fLda1aEC-GS4-oOIQ";
 var HISTORY_PASSWORD_HASH = "NhEnOhRT75TkiWp-ntanopnnRUL2NXzJFJZZsGL8PwA";
@@ -3228,33 +3227,23 @@ var FleetHistory = class {
           points INTEGER NOT NULL
         )
       `);
-      const migrated = await this.state.storage.get(HISTORY_MIGRATION_KEY);
-      if (!migrated) {
-        const legacy = this.state.storage.sql.exec("SELECT COUNT(*) AS n FROM history").toArray()[0]?.n || 0;
-        if (legacy > 0) {
-          this.state.storage.sql.exec(`
-            INSERT OR IGNORE INTO history_points
-              (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
-            SELECT vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
-            FROM history
-          `);
-        }
+      const legacy = this.state.storage.sql.exec("SELECT COUNT(*) AS n FROM history").toArray()[0]?.n || 0;
+      if (legacy > 0) {
+        this.state.storage.sql.exec(`
+          INSERT OR IGNORE INTO history_points
+            (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
+          SELECT vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
+          FROM history
+        `);
         this.state.storage.sql.exec("DELETE FROM history");
+      }
+      const newestPoint = this.state.storage.sql.exec("SELECT MAX(device_time) AS newest FROM history_points").toArray()[0]?.newest || 0;
+      const newestStat = this.state.storage.sql.exec("SELECT MAX(last_seen) AS newest FROM history_stats").toArray()[0]?.newest || 0;
+      if (newestPoint > newestStat) {
         this.state.storage.sql.exec(`
           INSERT OR REPLACE INTO history_stats (vehicle_id, last_seen, points)
           SELECT vehicle_id, MAX(device_time), COUNT(*) FROM history_points GROUP BY vehicle_id
         `);
-        await this.state.storage.put(HISTORY_MIGRATION_KEY, true);
-      }
-      const statsCount = this.state.storage.sql.exec("SELECT COUNT(*) AS n FROM history_stats").toArray()[0]?.n || 0;
-      if (!statsCount) {
-        const hasPoints = this.state.storage.sql.exec("SELECT 1 AS n FROM history_points LIMIT 1").toArray()[0]?.n;
-        if (hasPoints) {
-          this.state.storage.sql.exec(`
-            INSERT OR REPLACE INTO history_stats (vehicle_id, last_seen, points)
-            SELECT vehicle_id, MAX(device_time), COUNT(*) FROM history_points GROUP BY vehicle_id
-          `);
-        }
       }
       const pendingAlarm = await this.state.storage.getAlarm();
       if (pendingAlarm === null) {

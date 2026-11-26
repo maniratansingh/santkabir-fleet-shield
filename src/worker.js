@@ -48,7 +48,6 @@ const HISTORY_SESSION_SECONDS = 8 * 60 * 60;
 const HISTORY_BUCKET_MS = 30 * 1000; // 30-second samples
 const HISTORY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const HISTORY_PRUNE_INTERVAL_MS = 60 * 60 * 1000; // hourly alarm
-const HISTORY_MIGRATION_KEY = 'history_schema_v3';
 const HISTORY_SLOTS = Math.ceil(HISTORY_RETENTION_MS / HISTORY_BUCKET_MS); // 20,160
 const HISTORY_PASSWORD_SALT = 'mQ7B7fLda1aEC-GS4-oOIQ';
 const HISTORY_PASSWORD_HASH = 'NhEnOhRT75TkiWp-ntanopnnRUL2NXzJFJZZsGL8PwA';
@@ -1343,45 +1342,36 @@ export class FleetHistory {
         )
       `);
 
-      // One-time legacy import. This used to run on every Durable Object start,
-      // re-reading the whole old table on each wake-up and burning rows_read.
-      const migrated = await this.state.storage.get(HISTORY_MIGRATION_KEY);
-      if (!migrated) {
-        const legacy = this.state.storage.sql
-          .exec('SELECT COUNT(*) AS n FROM history')
-          .toArray()[0]?.n || 0;
-        if (legacy > 0) {
-          this.state.storage.sql.exec(`
-            INSERT OR IGNORE INTO history_points
-              (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
-            SELECT vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
-            FROM history
-          `);
-        }
-        // Keep the table for old admin paths but stop paying for its rows.
+      // Import whatever the legacy slot table still holds, then empty it.
+      // Once empty this costs nothing, and it heals the table if an older
+      // worker repopulated it during a rollback.
+      const legacy = this.state.storage.sql
+        .exec('SELECT COUNT(*) AS n FROM history')
+        .toArray()[0]?.n || 0;
+      if (legacy > 0) {
+        this.state.storage.sql.exec(`
+          INSERT OR IGNORE INTO history_points
+            (vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery)
+          SELECT vehicle_id, device_time, received_at, lat, lon, speed, bearing, accuracy, battery
+          FROM history
+        `);
         this.state.storage.sql.exec('DELETE FROM history');
+      }
+
+      // Safety net: rebuild the counters when they are missing or stale.
+      // Stats can fall behind if an older worker wrote points without updating
+      // them, which is exactly what happened during the experimental rollback.
+      const newestPoint = this.state.storage.sql
+        .exec('SELECT MAX(device_time) AS newest FROM history_points')
+        .toArray()[0]?.newest || 0;
+      const newestStat = this.state.storage.sql
+        .exec('SELECT MAX(last_seen) AS newest FROM history_stats')
+        .toArray()[0]?.newest || 0;
+      if (newestPoint > newestStat) {
         this.state.storage.sql.exec(`
           INSERT OR REPLACE INTO history_stats (vehicle_id, last_seen, points)
           SELECT vehicle_id, MAX(device_time), COUNT(*) FROM history_points GROUP BY vehicle_id
         `);
-        await this.state.storage.put(HISTORY_MIGRATION_KEY, true);
-      }
-
-      // Safety net: if the stats table was ever lost while points remained,
-      // rebuild it once instead of showing an empty vehicle picker.
-      const statsCount = this.state.storage.sql
-        .exec('SELECT COUNT(*) AS n FROM history_stats')
-        .toArray()[0]?.n || 0;
-      if (!statsCount) {
-        const hasPoints = this.state.storage.sql
-          .exec('SELECT 1 AS n FROM history_points LIMIT 1')
-          .toArray()[0]?.n;
-        if (hasPoints) {
-          this.state.storage.sql.exec(`
-            INSERT OR REPLACE INTO history_stats (vehicle_id, last_seen, points)
-            SELECT vehicle_id, MAX(device_time), COUNT(*) FROM history_points GROUP BY vehicle_id
-          `);
-        }
       }
 
       const pendingAlarm = await this.state.storage.getAlarm();
