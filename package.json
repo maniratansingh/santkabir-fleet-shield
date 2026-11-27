@@ -17,7 +17,8 @@
     "test:history": "node scripts/verify_history.mjs",
     "seed:history-samples": "node scripts/seed_history_samples.mjs",
     "test:routes": "node scripts/verify_route_anchors.mjs",
-    "data:routes": "node scripts/build_all_75_road_routes.mjs && node scripts/rebuild_fleet_routes.mjs"
+    "data:routes": "node scripts/build_all_75_road_routes.mjs && node scripts/rebuild_fleet_routes.mjs",
+    "preview:real": "npm run build && node scripts/preview-real.mjs 4173"
   },
   "engines": {
     "node": ">=22.0.0"

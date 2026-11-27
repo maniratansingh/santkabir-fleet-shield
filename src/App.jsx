@@ -389,7 +389,8 @@ export default function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const params = new URLSearchParams(window.location.search);
-    const enableWs = window.location.protocol === 'https:' || params.has('ws');
+    const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+    const enableWs = window.location.protocol === 'https:' || isLocalHost || params.has('ws');
     if (!enableWs) return undefined;
 
     let closed = false;
