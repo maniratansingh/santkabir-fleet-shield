@@ -320,6 +320,30 @@ curl -X POST "https://fleet.mrps.in/api/remove?id=TEST%20DEVICE" \
 
 ---
 
+## 🗑️ Delete a Vehicle Forever
+
+Open the vehicle picker on the history page and press the **trash icon** next to a
+name. Confirm the dialog. One action:
+
+- deletes the vehicle's `history_points` and `history_stats`,
+- removes it from the live fleet and the persisted snapshot,
+- inserts the ID into `blocked_vehicles`, so `/ingest` silently drops future
+  packets even if the phone keeps sending.
+
+The vehicle cannot reappear. To restore it, unblock the ID:
+
+```bash
+curl -X POST https://fleet.mrps.in/api/history/unblock \
+  -H "Cookie: history_session=<session>" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"SABBU"}'
+```
+
+`GET /api/history/blocked` lists blocked IDs. All three routes require the
+history session.
+
+---
+
 ## 🔐 Board Access
 
 The live board is closed by default. History keeps its own password and is the

@@ -1177,6 +1177,31 @@ export default function HistoryAppV2() {
     }
   };
 
+  const purgeVehicle = async (id) => {
+    const confirmed = window.confirm(
+      `Delete ${id} forever?\n\nThis removes its history, removes it from the live board, and blocks future packets. It cannot be undone.`
+    );
+    if (!confirmed) return;
+    setError('');
+    try {
+      await api('/api/history/purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      setVehiclesOpen(false);
+      setVehicles((current) => {
+        const next = current.filter((v) => v.id !== id);
+        if (selectedId === id) setSelectedId(next[0]?.id || '');
+        return next;
+      });
+      setRefreshKey((v) => v + 1);
+    } catch (err) {
+      if (err.status === 401) setAuthed(false);
+      else setError(err.message || 'Could not delete the vehicle');
+    }
+  };
+
   const copyDeviceLink = async () => {
     if (!deviceLink) return;
     try {
@@ -1512,10 +1537,20 @@ export default function HistoryAppV2() {
             <input value={vehicleQuery} onChange={(e) => setVehicleQuery(e.target.value)} placeholder="Search driver or ID" className="w-full h-8 rounded-lg border fh2-border fh2-input px-2.5 text-[11px] outline-none" />
             <div className="mt-2 max-h-[300px] overflow-auto">
               {filteredVehicles.map((v) => (
-                <button key={v.id} onClick={() => { setSelectedId(v.id); setVehiclesOpen(false); }} className={`w-full flex items-center gap-2 p-2 rounded-lg text-left ${v.id === selectedId ? 'bg-sky-500/10 border border-sky-400/40' : 'fh2-hover border border-transparent'}`}>
-                  <span className="w-2 h-2 rounded-full" style={{ background: getUniqueVehicleColor(v.id).line }} />
-                  <span className="min-w-0"><span className="block text-[11px] font-semibold truncate">{v.id}</span><span className="block text-[9px] fh2-muted">{v.points} pts</span></span>
-                </button>
+                <div key={v.id} className={`flex items-center gap-1 rounded-lg border ${v.id === selectedId ? 'bg-sky-500/10 border-sky-400/40' : 'fh2-hover border-transparent'}`}>
+                  <button onClick={() => { setSelectedId(v.id); setVehiclesOpen(false); }} className="min-w-0 flex-1 flex items-center gap-2 p-2 text-left">
+                    <span className="w-2 h-2 shrink-0 rounded-full" style={{ background: getUniqueVehicleColor(v.id).line }} />
+                    <span className="min-w-0"><span className="block text-[11px] font-semibold truncate">{v.id}</span><span className="block text-[9px] fh2-muted">{v.points} pts</span></span>
+                  </button>
+                  <button
+                    onClick={() => purgeVehicle(v.id)}
+                    className="shrink-0 p-2 rounded-lg text-rose-400 hover:bg-rose-500/10"
+                    title={`Delete ${v.id} forever`}
+                    aria-label={`Delete ${v.id} forever`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
           </div>

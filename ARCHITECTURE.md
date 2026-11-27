@@ -192,6 +192,7 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - `history_points`: primary key `(vehicle_id, device_time)`.
 - Retention **30 days**; expired rows are pruned hourly by a Durable Object alarm using the `device_time` index.
 - `history_stats` keeps `last_seen` and a point count per vehicle, so the picker never runs a full `GROUP BY`.
+- `blocked_vehicles` holds IDs removed with **Delete forever**. `/ingest` drops blocked packets before live state or history is written, so a phone that keeps sending cannot resurrect the vehicle.
 - Columns: `device_time`, `received_at`, `lat`, `lon`, `raw_lat`, `raw_lon`, `speed`, `bearing`, `accuracy`, `battery`.
 - The old `history` slot table is empty after the one-time import. It is kept for old admin paths and is never scanned on boot.
 - The legacy import is guarded by a persisted flag. It used to run on every Durable Object start, re-reading the whole old table on each wake-up and burning the rows_read quota.
@@ -318,6 +319,9 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - `GET /api/history?id=...&from=...&to=...&limit=...` — authenticated; returns points in time order, up to 100,000, downsampled to ~7,000 for the map.
 - `GET /api/history/reports/all?id=...&from=...&to=...` — authenticated; returns `days`, `trips` and `stops` from one server analysis.
 - `POST /api/history/delete` — authenticated; `{ "id": "..." }`, `{ "id": "...", "from": ..., "to": ... }`, or `{ "all": true }`.
+- `POST /api/history/purge` — authenticated; deletes history, removes the live entry and blocks the ID.
+- `POST /api/history/unblock` — authenticated; removes the ID from the blocklist.
+- `GET /api/history/blocked` — authenticated; lists blocked IDs.
 
 All history routes except login/logout require a valid session cookie. Unauthenticated calls return `401`.
 

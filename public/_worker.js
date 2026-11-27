@@ -2659,6 +2659,13 @@ var worker_default = {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(record)
+        }).then(async (response) => {
+          try {
+            const data = await response.json();
+            if (data?.skipped === "blocked") liveVehicles.delete(vehId);
+          } catch (e) {
+          }
+          return response;
         }).catch((error) => {
           console.error("ingest failed", error?.message || error);
           return null;
@@ -2827,17 +2834,21 @@ var worker_default = {
       }
       const now = Date.now();
       let list = [];
+      let hubOk = false;
       if (env.FLEET_HUB) {
         try {
           const hub = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME));
           const res = await hub.fetch("https://fleet-hub/live", { headers: { "Content-Type": "application/json" } });
           const data = await res.json().catch(() => ({}));
-          if (Array.isArray(data.vehicles)) list = data.vehicles;
+          if (Array.isArray(data.vehicles)) {
+            list = data.vehicles;
+            hubOk = true;
+          }
         } catch (error) {
           console.error("live snapshot failed", error?.message || error);
         }
       }
-      if (!list.length) {
+      if (!hubOk) {
         list = Array.from(liveVehicles.values()).map((vVal) => ({ ...vVal, ...computeVehicleAgeState(vVal, now) }));
       }
       return new Response(JSON.stringify({
@@ -3135,6 +3146,43 @@ var worker_default = {
       const data = await response.json().catch(() => ({ error: "History store error" }));
       return historyJson(data, response.status);
     }
+    if (url.pathname === "/api/history/purge" && request.method === "POST") {
+      const unauthorized = await requireHistoryAuth(request, env);
+      if (unauthorized) return unauthorized;
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: "History store is not configured" }, 503);
+      const body = await request.json().catch(() => ({}));
+      const response = await stub.fetch("https://history/purge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({ error: "Purge error" }));
+      return historyJson(data, response.status);
+    }
+    if (url.pathname === "/api/history/unblock" && request.method === "POST") {
+      const unauthorized = await requireHistoryAuth(request, env);
+      if (unauthorized) return unauthorized;
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: "History store is not configured" }, 503);
+      const body = await request.json().catch(() => ({}));
+      const response = await stub.fetch("https://history/unblock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({ error: "Unblock error" }));
+      return historyJson(data, response.status);
+    }
+    if (url.pathname === "/api/history/blocked") {
+      const unauthorized = await requireHistoryAuth(request, env);
+      if (unauthorized) return unauthorized;
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: "History store is not configured" }, 503);
+      const response = await stub.fetch("https://history/blocked");
+      const data = await response.json().catch(() => ({ error: "Blocked list error" }));
+      return historyJson(data, response.status);
+    }
     for (const report of ["trips", "stops", "summary", "all"]) {
       if (url.pathname === `/api/history/reports/${report}`) {
         const unauthorized = await requireHistoryAuth(request, env);
@@ -3392,6 +3440,7 @@ var PurvanchalFleetHub = class {
       } else if (data?.type === "track" && data.vehicle?.id) {
         const id = canonicalVehicleId(data.vehicle.id);
         if (!id) return;
+        if (this.isBlocked(id)) return;
         const stored = { ...data.vehicle, id, name: id };
         this.vehicles.set(id, stored);
         this.pushHistory(stored);
@@ -3564,6 +3613,13 @@ var FleetHistory = class {
       this.state.storage.sql.exec(
         "CREATE UNIQUE INDEX IF NOT EXISTS board_devices_token ON board_devices(token_hash)"
       );
+      this.state.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS blocked_vehicles (
+          vehicle_id TEXT PRIMARY KEY,
+          blocked_at INTEGER NOT NULL,
+          reason TEXT
+        )
+      `);
       const legacy = this.state.storage.sql.exec("SELECT COUNT(*) AS n FROM history").toArray()[0]?.n || 0;
       if (legacy > 0) {
         this.state.storage.sql.exec(`
@@ -3649,6 +3705,15 @@ var FleetHistory = class {
     if (url.pathname.endsWith("/audit") && request.method === "POST") {
       return this.audit(request);
     }
+    if (url.pathname.endsWith("/purge") && request.method === "POST") {
+      return this.purge(request);
+    }
+    if (url.pathname.endsWith("/unblock") && request.method === "POST") {
+      return this.unblock(request);
+    }
+    if (url.pathname.endsWith("/blocked")) {
+      return this.blockedList();
+    }
     if (url.pathname.endsWith("/board/devices")) {
       if (request.method === "POST") return this.boardCreate(request);
       return this.boardList();
@@ -3700,6 +3765,7 @@ var FleetHistory = class {
     const lon = Number(record.lon);
     if (!id || !Number.isFinite(lat) || !Number.isFinite(lon)) return historyJson({ error: "Invalid vehicle" }, 400);
     if (record.mock) return historyJson({ success: true, skipped: "mock", id });
+    if (this.isBlocked(id)) return historyJson({ success: true, skipped: "blocked", id });
     const stored = { ...record, id, name: id, lat, lon };
     const previous = this.fleet.get(id);
     if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) {
@@ -3817,6 +3883,70 @@ var FleetHistory = class {
     );
     return historyJson({ valid: true });
   }
+  isBlocked(id) {
+    return Boolean(
+      this.state.storage.sql.exec("SELECT 1 AS n FROM blocked_vehicles WHERE vehicle_id = ?", id).toArray()[0]
+    );
+  }
+  async purge(request) {
+    const body = await request.json().catch(() => ({}));
+    const id = canonicalVehicleId(body?.id);
+    if (!id) return historyJson({ error: "Missing id" }, 400);
+    const now = Date.now();
+    const sql = this.state.storage.sql;
+    sql.exec("DELETE FROM history_points WHERE vehicle_id = ?", id);
+    sql.exec("DELETE FROM history WHERE vehicle_id = ?", id);
+    sql.exec("DELETE FROM history_stats WHERE vehicle_id = ?", id);
+    sql.exec(
+      `INSERT INTO blocked_vehicles (vehicle_id, blocked_at, reason) VALUES (?, ?, ?)
+       ON CONFLICT(vehicle_id) DO UPDATE SET blocked_at = excluded.blocked_at, reason = excluded.reason`,
+      id,
+      now,
+      "deleted forever"
+    );
+    const wasLive = this.fleet.delete(id);
+    this.filters.delete(id);
+    this.wsTrackerIds.delete(id);
+    try {
+      await this.state.storage.put("fleet_snapshot", Array.from(this.fleet.values()));
+    } catch (e) {
+    }
+    this.broadcast({ type: "remove", ids: [id], timestamp: now });
+    try {
+      sql.exec(
+        "INSERT INTO history_audit (at, action, vehicle_id, detail, actor) VALUES (?, ?, ?, ?, ?)",
+        now,
+        "purge",
+        id,
+        "history + live + block",
+        "admin"
+      );
+    } catch (e) {
+    }
+    return historyJson({ success: true, id, blocked: true, wasLive });
+  }
+  async unblock(request) {
+    const body = await request.json().catch(() => ({}));
+    const id = canonicalVehicleId(body?.id);
+    if (!id) return historyJson({ error: "Missing id" }, 400);
+    this.state.storage.sql.exec("DELETE FROM blocked_vehicles WHERE vehicle_id = ?", id);
+    try {
+      this.state.storage.sql.exec(
+        "INSERT INTO history_audit (at, action, vehicle_id, detail, actor) VALUES (?, ?, ?, ?, ?)",
+        Date.now(),
+        "unblock",
+        id,
+        "",
+        "admin"
+      );
+    } catch (e) {
+    }
+    return historyJson({ success: true, id, blocked: false });
+  }
+  blockedList() {
+    const rows = this.state.storage.sql.exec("SELECT vehicle_id AS id, blocked_at, reason FROM blocked_vehicles ORDER BY blocked_at DESC").toArray();
+    return historyJson({ success: true, blocked: rows, count: rows.length });
+  }
   live() {
     return historyJson({
       success: true,
@@ -3918,6 +4048,13 @@ var FleetHistory = class {
       if (!packet) return;
       const id = canonicalVehicleId(packet.id);
       if (!id) return;
+      if (this.isBlocked(id)) {
+        try {
+          ws.send(JSON.stringify({ type: "ack", id, skipped: "blocked", timestamp: Date.now() }));
+        } catch (e) {
+        }
+        return;
+      }
       const existing = this.fleet.get(id) || {};
       let filter = this.filters.get(id);
       if (!filter) {
