@@ -3,6 +3,7 @@ import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import {
+  AlertTriangle,
   ChevronDown,
   Eye,
   EyeOff,
@@ -691,14 +692,14 @@ export default function HistoryAppV2() {
     });
     if (unified.length) {
       map.addSource('unified', { type: 'geojson', data: { type: 'FeatureCollection', features: unified.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) } });
-      map.addLayer({ id: 'unified-line', type: 'line', source: 'unified', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': 2.4, 'line-opacity': theme === 'dark' ? 0.38 : 0.3, 'line-blur': 0.2 } });
+      map.addLayer({ id: 'unified-line', type: 'line', source: 'unified', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': vehicleColor, 'line-width': 2.4, 'line-opacity': theme === 'dark' ? 0.38 : 0.42, 'line-blur': 0.2 } });
     }
 
     map.addLayer({
       id: 'casing', type: 'line', source: 'runs',
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': theme === 'dark' ? 'rgba(2,7,12,.9)' : 'rgba(255,255,255,.96)',
+        'line-color': theme === 'dark' ? 'rgba(2,7,12,.9)' : 'rgba(15,23,42,.22)',
         'line-width': viewMode === 'trips' ? 8 : 9,
         'line-opacity': selectedTrip === null ? 0.95 : ['case', ['==', ['get', 'trip'], selectedTrip], 0.95, 0.25],
       },
@@ -1137,7 +1138,7 @@ export default function HistoryAppV2() {
         .maplibregl-ctrl-attrib { background: rgba(11,23,40,.8) !important; color: #94a3b8 !important; }
         .maplibregl-ctrl-attrib a { color: #cbd5e1 !important; }
         .fh2 { --bg:#060d17; --panel:rgba(11,23,40,.92); --border:rgba(255,255,255,.10); --text:#f1f5f9; --muted:#94a3b8; --soft:#cbd5e1; --hover:rgba(255,255,255,.08); --track:rgba(255,255,255,.12); }
-        html.light .fh2 { --bg:#eef1f5; --panel:rgba(255,255,255,.94); --border:rgba(15,23,42,.12); --text:#0f172a; --muted:#64748b; --soft:#334155; --hover:rgba(15,23,42,.06); --track:rgba(15,23,42,.12); }
+        html.light .fh2 { --bg:#eef1f5; --panel:rgba(255,255,255,.95); --border:rgba(15,23,42,.12); --text:#0f172a; --muted:#4b5768; --soft:#334155; --hover:rgba(15,23,42,.06); --track:rgba(15,23,42,.12); }
         .fh2-bg { background: var(--bg); color: var(--text); }
         .fh2-panel { background: var(--panel); border-color: var(--border); }
         .fh2-muted { color: var(--muted); }
@@ -1164,6 +1165,11 @@ export default function HistoryAppV2() {
         .fh2 button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
         .fh2-pop { animation: fh2-pop 200ms cubic-bezier(.2,.9,.3,1); transform-origin: top left; }
         @keyframes fh2-pop { from { opacity: 0; transform: scale(.96) translateY(-4px); } to { opacity: 1; transform: none; } }
+        .fh-fade-in { animation: fh-fade-in 240ms ease-out; }
+        @keyframes fh-fade-in { from { opacity: 0; } to { opacity: 1; } }
+        .fh-sheet[aria-busy="true"] .fh-summary,
+        .fh-sheet[aria-busy="true"] .fh-transport { opacity: .42; transition: opacity 180ms ease; }
+        .fh-sheet[aria-busy="true"] { cursor: progress; }
         .fh2 .tabular-nums { font-variant-numeric: tabular-nums; }
         .fh-car { position: relative; width: 54px; height: 68px; will-change: transform; }
         .fh-3d { position: absolute; inset: 0; display: grid; place-items: center; transform-origin: 50% 58%; transition: transform 420ms cubic-bezier(.2,.8,.2,1); filter: drop-shadow(0 8px 12px rgba(0,0,0,.45)); }
@@ -1181,9 +1187,12 @@ export default function HistoryAppV2() {
       `}</style>
       <header className="shrink-0 border-b fh2-border fh2-panel px-4 py-2.5 flex items-center gap-3 z-20">
         <div className="w-9 h-9 rounded-[12px] bg-sky-500/15 text-sky-400 flex items-center justify-center"><Route className="w-5 h-5" /></div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-sm font-semibold leading-tight">Fleet History</h1>
-          <p className="text-[10px] fh2-muted leading-tight">Sant Kabir Eye Hospital · by Mani Ratan Singh</p>
+          <p className="text-[10px] fh2-muted leading-tight truncate">
+            <span className="sm:hidden">Sant Kabir Eye Hospital</span>
+            <span className="hidden sm:inline">Sant Kabir Eye Hospital · by Mani Ratan Singh</span>
+          </p>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button onClick={() => setRefreshKey((v) => v + 1)} className="p-2.5 rounded-full fh2-hover fh2-soft" aria-label="Refresh"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
@@ -1193,16 +1202,24 @@ export default function HistoryAppV2() {
       </header>
 
       <main className="relative flex-1 min-h-0">
-        <div className="absolute inset-0 z-0"><div ref={mapContainerRef} className="h-full w-full" /></div>
+        <div className="absolute inset-0 z-0">
+          <div ref={mapContainerRef} className="h-full w-full" />
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-20 bg-gradient-to-b from-white/35 to-transparent dark:from-slate-950/40" />
+          <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-52 bg-gradient-to-t from-white/45 to-transparent dark:from-slate-950/50" />
+        </div>
 
         {loading && (
           <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none px-6">
-            <div className="w-[260px] rounded-[20px] border fh2-border fh2-panel px-5 py-4 shadow-2xl backdrop-blur-xl">
-              <div className="flex items-center gap-2 text-[11px] font-semibold">
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-500" />
-                Loading {selectedId || 'history'} · {Math.max(1, Math.round((appliedTo - appliedFrom) / DAY_MS))} {Math.max(1, Math.round((appliedTo - appliedFrom) / DAY_MS)) === 1 ? 'day' : 'days'}…
+            <div className="fh-fade-in w-[270px] rounded-[22px] border fh2-border fh2-panel px-5 py-4 shadow-2xl backdrop-blur-xl">
+              <div className="flex items-center gap-2.5">
+                <span className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sky-500/15">
+                  <Route className="h-4 w-4 text-sky-400" />
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate text-[11px] font-semibold">Preparing {selectedId || 'history'}</div>
+                  <div className="truncate text-[9.5px] fh2-muted">{rangeLabel} · route, trips and stops</div>
+                </div>
               </div>
-              <div className="mt-2 text-[9.5px] fh2-muted">Preparing route, trips and stops</div>
               <div className="mt-3 h-1 rounded-full overflow-hidden" style={{ background: 'var(--track)' }}>
                 <span className="fh-loadbar block h-full w-1/2 rounded-full" style={{ background: 'var(--text)' }} />
               </div>
@@ -1210,11 +1227,31 @@ export default function HistoryAppV2() {
           </div>
         )}
 
+        {error && !loading && (
+          <div className="fh-fade-in absolute left-1/2 top-1/2 z-30 w-[280px] -translate-x-1/2 -translate-y-1/2 rounded-[18px] border border-rose-500/30 fh2-panel px-4 py-3 shadow-2xl">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold">Could not load history</div>
+                <div className="mt-0.5 line-clamp-2 text-[10px] fh2-muted">{error}</div>
+                <button onClick={() => setRefreshKey((v) => v + 1)} className="mt-2 h-7 rounded-full border fh2-border px-2.5 text-[10px] font-semibold fh2-hover">Retry</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && authed === true && points.length === 0 && (
+          <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-[16px] border fh2-border fh2-panel px-4 py-3 text-center shadow-xl backdrop-blur-xl">
+            <div className="text-[11px] font-semibold">No points in this range</div>
+            <div className="mt-0.5 text-[10px] fh2-muted">Try a wider range or another vehicle.</div>
+          </div>
+        )}
+
         <div className="fh-controls absolute left-3 right-3 flex flex-wrap items-center gap-2 z-20">
-          <button onClick={() => setVehiclesOpen((v) => !v)} className="h-10 pl-2.5 pr-3 rounded-full border fh2-border fh2-panel backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl">
-            <span className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: `${vehicleColor}22` }}><span className="w-2 h-2 rounded-full" style={{ background: vehicleColor }} /></span>
-            <span>{selectedId || 'No vehicle'}</span>
-            <ChevronDown className="w-3.5 h-3.5 fh2-muted" />
+          <button onClick={() => setVehiclesOpen((v) => !v)} className="h-10 pl-2.5 pr-3 rounded-full border fh2-border fh2-panel backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl min-w-0">
+            <span className="w-6 h-6 shrink-0 rounded-full flex items-center justify-center" style={{ background: `${vehicleColor}22` }}><span className="w-2 h-2 rounded-full" style={{ background: vehicleColor }} /></span>
+            <span className="truncate max-w-[38vw] sm:max-w-none">{selectedId || 'No vehicle'}</span>
+            <ChevronDown className="w-3.5 h-3.5 shrink-0 fh2-muted" />
           </button>
           <button onClick={() => setRangeOpen((v) => !v)} className="h-10 px-3 rounded-full border fh2-border fh2-panel backdrop-blur-xl flex items-center gap-2 text-xs font-semibold shadow-xl">
             {rangeLabel} <ChevronDown className="w-3.5 h-3.5 fh2-muted" />
@@ -1224,14 +1261,14 @@ export default function HistoryAppV2() {
               <button onClick={() => setMode('maps')} className={`px-3 h-7 rounded-full ${mode === 'maps' ? 'fh2-active' : 'fh2-muted'}`}>Maps</button>
               <button onClick={() => setMode('trips')} className={`px-3 h-7 rounded-full ${mode === 'trips' ? 'fh2-active' : 'fh2-muted'}`}>Trips</button>
             </div>}
-            <button onClick={toggleAdvanced} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${advanced ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>{advanced ? 'Advanced on' : 'Advanced'}</button>
-            {advanced && <button onClick={() => setQuality((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>}
-            {advanced && <button onClick={() => setSpeedColor((v) => !v)} className={`h-9 px-3 rounded-full border text-[11px] font-semibold ${speedColor ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Speed</button>}
+            <button onClick={toggleAdvanced} className={`h-10 sm:h-9 px-3 rounded-full border text-[11px] font-semibold ${advanced ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>{advanced ? 'Advanced on' : 'Advanced'}</button>
+            {advanced && <button onClick={() => setQuality((v) => !v)} className={`h-10 sm:h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>}
+            {advanced && <button onClick={() => setSpeedColor((v) => !v)} className={`h-10 sm:h-9 px-3 rounded-full border text-[11px] font-semibold ${speedColor ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Speed</button>}
           </div>
         </div>
 
-        <section className="fh-sheet absolute left-3 right-3 md:right-auto md:w-[560px] rounded-[22px] border fh2-border fh2-panel backdrop-blur-xl p-4 shadow-2xl z-10">
-          <div className="flex items-start gap-4">
+        <section className="fh-sheet absolute left-3 right-3 md:right-auto md:w-[560px] rounded-[22px] border fh2-border fh2-panel backdrop-blur-xl p-4 shadow-2xl z-10" aria-busy={loading}>
+          <div className="flex items-start gap-4 fh-summary">
             <div>
               <div className="text-[10px] fh2-muted flex items-center gap-1.5">
                 {rangeLabel} · {fmtDate(appliedFrom)}
@@ -1305,7 +1342,7 @@ export default function HistoryAppV2() {
             </div>
           )}
 
-          {(!advanced || reportTab === 'map') && <div className="mt-3">
+          {(!advanced || reportTab === 'map') && (loading || points.length > 0) && <div className="mt-3 fh-transport">
             {speedOpen && <div className="mb-2 flex items-center gap-1.5 flex-wrap">
               <span className="text-[9px] fh2-muted mr-0.5 tabular-nums">1× ≈ {fmtDur(basePlaybackMs(appliedFrom, appliedTo))}</span>
               {PLAY_RATES.map((r) => (
@@ -1324,7 +1361,7 @@ export default function HistoryAppV2() {
             <div className="flex-1">
               <div
                 ref={seekTrackRef}
-                className="fh-seek relative h-5 flex items-center cursor-pointer select-none"
+                className="fh-seek relative h-6 flex items-center cursor-pointer select-none"
                 onPointerDown={startSeek}
                 onPointerMove={moveSeek}
                 onPointerUp={endSeek}
@@ -1354,10 +1391,10 @@ export default function HistoryAppV2() {
                   </div>
                 )}
               </div>
-              <div className="flex justify-between text-[9px] fh2-muted mt-1 tabular-nums">
-                <span>{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate(appliedFrom) : fmt(appliedFrom)}</span>
-                <span>{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate((appliedFrom + appliedTo) / 2) : fmt((appliedFrom + appliedTo) / 2)}</span>
-                <span>{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate(appliedTo) : fmt(appliedTo)}</span>
+              <div className="mt-1 flex items-center justify-between gap-2 text-[9px] fh2-muted tabular-nums">
+                <span className="whitespace-nowrap">{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate(appliedFrom) : fmt(appliedFrom)}</span>
+                <span className="hidden whitespace-nowrap sm:inline">{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate((appliedFrom + appliedTo) / 2) : fmt((appliedFrom + appliedTo) / 2)}</span>
+                <span className="whitespace-nowrap">{appliedTo - appliedFrom > 2 * DAY_MS ? fmtDate(appliedTo) : fmt(appliedTo)}</span>
               </div>
             </div>
             <div className="text-right">

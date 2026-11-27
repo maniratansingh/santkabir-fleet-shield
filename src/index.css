@@ -336,6 +336,18 @@
   from { opacity: 0; transform: scale(0.94); }
   to { opacity: 1; transform: scale(1); }
 }
+
+/* Indeterminate bar used by the live-map preparation screen. */
+@keyframes fh-map-load {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}
+.fh-map-loadbar {
+  animation: fh-map-load 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fh-map-loadbar { animation: none; transform: none; width: 100%; }
+}
 .animate-in {
   animation: ui-rise 0.22s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
@@ -534,6 +546,20 @@ html:not(.dark).tv-wallboard .glass-panel-glow {
 .map-zoom-overview .marker-capsule-text .marker-sep {
   display: none;
 }
+/* Keep the remaining ID tag from growing into a long banner at fleet zoom. */
+.map-zoom-overview .marker-capsule-text .marker-id {
+  display: inline-block;
+  max-width: 7.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+@media (max-width: 640px) {
+  .map-zoom-overview .marker-capsule-text .marker-id {
+    max-width: 5.5rem;
+  }
+}
 .map-zoom-overview .marker-outer-wrapper:hover .marker-capsule-text .marker-speed,
 .map-zoom-overview .marker-outer-wrapper.is-selected .marker-capsule-text .marker-speed {
   display: inline;
@@ -673,7 +699,7 @@ html:not(.dark) ::-webkit-scrollbar-thumb:hover {
 
 @media (max-width: 640px) {
   .map-zoom-far .ambulance-rotator > svg {
-    transform: scale(0.5);
+    transform: scale(0.56);
   }
   .map-zoom-mid .ambulance-rotator > svg {
     transform: scale(0.7);

@@ -233,6 +233,18 @@ function MapView({
   const mapContainer = useRef(null);
   const mapRef = useRef(null);
   const [mapReady, setMapReady] = useState(false);
+  const [overlayVisible, setOverlayVisible] = useState(true);
+
+  // Crossfade: once the style and first tiles are in, fade the canvas in and
+  // fade the preparation screen out instead of swapping them abruptly.
+  useEffect(() => {
+    if (!mapReady) {
+      setOverlayVisible(true);
+      return undefined;
+    }
+    const timer = setTimeout(() => setOverlayVisible(false), 450);
+    return () => clearTimeout(timer);
+  }, [mapReady]);
   const markersRef = useRef({});
   const baseMarkerRef = useRef(null);
   const baseCountRef = useRef(null);
@@ -2026,23 +2038,73 @@ function MapView({
       <div
         ref={mapContainer}
         className="absolute inset-0 w-full h-full"
-        style={{ backgroundColor: theme === 'dark' ? '#3d4248' : '#eef1f5' }}
+        style={{
+          backgroundColor: theme === 'dark' ? '#3d4248' : '#eef1f5',
+          opacity: mapReady ? 1 : 0,
+          transition: 'opacity 600ms cubic-bezier(0.22, 1, 0.36, 1)',
+        }}
+      />
+
+      {/* Soft scrims keep the island and bottom sheet legible over busy tiles. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-24 bg-gradient-to-b from-white/45 to-transparent dark:from-slate-950/60"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-40 bg-gradient-to-t from-white/55 to-transparent dark:from-slate-950/65"
       />
 
       {/* First-load state */}
-      {!mapReady && (
+      {overlayVisible && (
         <div
           role="status"
           aria-live="polite"
-          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-100 dark:bg-slate-900 pointer-events-none"
+          aria-hidden={mapReady}
+          className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 overflow-hidden pointer-events-none transition-opacity duration-500 ${mapReady ? 'opacity-0' : 'opacity-100'}`}
+          style={{
+            background: theme === 'dark'
+              ? 'radial-gradient(120% 90% at 50% 20%, #10233a 0%, #0b1626 55%, #070f1b 100%)'
+              : 'radial-gradient(120% 90% at 50% 20%, #ffffff 0%, #f1f5f9 55%, #e7edf4 100%)',
+          }}
         >
-          <div className="relative w-10 h-10" aria-hidden="true">
-            <span className="absolute inset-0 rounded-full border-2 border-slate-300/80 dark:border-slate-700" />
-            <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-sky-500 animate-spin" />
+          <div
+            className="absolute inset-0 opacity-20"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(148,163,184,.4) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.4) 1px, transparent 1px)',
+              backgroundSize: '44px 44px',
+              maskImage: 'radial-gradient(70% 60% at 50% 45%, #000 30%, transparent 100%)',
+              WebkitMaskImage: 'radial-gradient(70% 60% at 50% 45%, #000 30%, transparent 100%)',
+            }}
+            aria-hidden="true"
+          />
+          <div className="relative flex flex-col items-center gap-4">
+            <div className="relative grid h-14 w-14 place-items-center" aria-hidden="true">
+              <span className="absolute inset-0 rounded-full border border-sky-400/20" />
+              <span className="absolute inset-2 rounded-full border border-sky-400/30 animate-pulse" />
+              <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-sky-400 animate-spin" />
+              <svg viewBox="0 0 24 24" className="h-5 w-5 text-sky-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9h18v8H3zM9 9V6h6v3" />
+                <circle cx="7.5" cy="17.5" r="1.5" />
+                <circle cx="16.5" cy="17.5" r="1.5" />
+              </svg>
+            </div>
+            <div className="text-center">
+              <div className={`type-footnote font-semibold ${theme === 'dark' ? 'text-slate-100' : 'text-slate-800'}`}>
+                Preparing live map
+              </div>
+              <div className={`type-caption mt-1 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+                Loading tiles and fleet positions
+              </div>
+            </div>
+            <div
+              className={`h-1 w-40 overflow-hidden rounded-full ${theme === 'dark' ? 'bg-white/10' : 'bg-slate-900/10'}`}
+              aria-hidden="true"
+            >
+              <span className="fh-map-loadbar block h-full w-1/2 rounded-full bg-sky-400" />
+            </div>
           </div>
-          <span className="type-footnote font-medium text-slate-500 dark:text-slate-400">
-            Loading map and fleet…
-          </span>
         </div>
       )}
     </div>

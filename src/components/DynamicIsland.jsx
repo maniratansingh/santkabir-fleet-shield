@@ -141,7 +141,7 @@ function DynamicIsland({
                 className="flex items-center gap-2.5 pl-3 pr-2.5 py-1.5 rounded-full text-left cursor-pointer transition-colors hover:bg-slate-500/5 dark:hover:bg-white/5"
               >
                 <span
-                  className={`ui-status-dot ${fleetDot}`}
+                  className={`ui-status-dot ${fleetDot} ${vehicles.length === 0 && connectionState !== 'offline' ? 'animate-pulse' : ''}`}
                   aria-hidden="true"
                   title={connection.label}
                 />
