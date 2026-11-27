@@ -62,8 +62,14 @@ function sessionFromSetCookie(setCookie) {
 function isAllowed(method, url) {
   const m = String(method || 'GET').toUpperCase();
   if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return true;
-  // The history page must log in against the real store.
-  return m === 'POST' && (url.startsWith('/api/history/login') || url.startsWith('/api/history/logout'));
+  // Authentication and board management must reach the real store.
+  return m === 'POST' && (
+    url.startsWith('/api/history/login') ||
+    url.startsWith('/api/history/logout') ||
+    url.startsWith('/api/board/login') ||
+    url.startsWith('/api/board/devices') ||
+    url.startsWith('/api/board/revoke')
+  );
 }
 
 function proxyApi(req, res) {
@@ -81,7 +87,10 @@ function proxyApi(req, res) {
   delete headers['accept-encoding'];
   headers['accept-encoding'] = 'identity';
   if (previewSession) {
-    headers.cookie = `history_session=${encodeURIComponent(previewSession)}`;
+    const existing = String(req.headers.cookie || '');
+    headers.cookie = /history_session=/.test(existing)
+      ? existing
+      : `${existing ? `${existing}; ` : ''}history_session=${encodeURIComponent(previewSession)}`;
   }
 
   const upstream = https.request(
@@ -141,7 +150,12 @@ function serveStatic(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  if (req.url.startsWith('/api/')) {
+  if (
+    req.url.startsWith('/api/') ||
+    req.url === '/login' ||
+    req.url.startsWith('/login?') ||
+    req.url.startsWith('/d/')
+  ) {
     proxyApi(req, res);
     return;
   }

@@ -54,6 +54,16 @@ const HISTORY_PASSWORD_HASH = 'NhEnOhRT75TkiWp-ntanopnnRUL2NXzJFJZZsGL8PwA';
 const HISTORY_PASSWORD_ITERATIONS = 100000;
 const historyLoginAttempts = new Map();
 
+// ── Board access ───────────────────────────────────────────────────────────
+// The live board is closed by default. A shared board password gives a 30-day
+// session; a named, single-use device link gives a 1-year session on one
+// browser (the TV). History keeps its own password and is the admin gate.
+const BOARD_COOKIE = 'board_session';
+const BOARD_PASSWORD_SESSION_SECONDS = 30 * 24 * 60 * 60;
+const BOARD_DEVICE_SESSION_SECONDS = 365 * 24 * 60 * 60;
+const BOARD_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const boardLoginAttempts = new Map();
+
 function historyJson(data, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
@@ -118,6 +128,13 @@ async function verifyHistoryPassword(password) {
   return diff === 0;
 }
 
+async function verifyBoardPassword(env, password) {
+  // A dedicated BOARD_PASSWORD wins. Without one, the board accepts the
+  // history password so the gate can be enabled without a new secret.
+  if (env.BOARD_PASSWORD) return safeEqual(password, env.BOARD_PASSWORD);
+  return verifyHistoryPassword(password);
+}
+
 async function hmacSha256(secret, data) {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -155,6 +172,184 @@ async function verifyHistorySession(token, secret) {
   } catch (e) {
     return null;
   }
+}
+
+// ── Board session helpers ──────────────────────────────────────────────────
+function boardSecret(env) {
+  return env.BOARD_SESSION_SECRET || env.HISTORY_SESSION_SECRET || '';
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(value)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function createBoardSession(env, { kind, id = '', name = '', ttlSeconds }) {
+  const secret = boardSecret(env);
+  if (!secret) return '';
+  const payload = toBase64Url(
+    new TextEncoder().encode(
+      JSON.stringify({
+        v: 1,
+        k: kind,
+        id,
+        name,
+        iat: Date.now(),
+        exp: Date.now() + ttlSeconds * 1000,
+      })
+    )
+  );
+  const signature = toBase64Url(await hmacSha256(secret, `board.${payload}`));
+  return `${payload}.${signature}`;
+}
+
+async function verifyBoardToken(token, env) {
+  const secret = boardSecret(env);
+  if (!secret || !token || !token.includes('.')) return null;
+  const [payload, signature] = token.split('.');
+  const expected = await hmacSha256(secret, `board.${payload}`);
+  const supplied = fromBase64Url(signature);
+  if (supplied.length !== expected.length) return null;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= supplied[i] ^ expected[i];
+  if (diff !== 0) return null;
+  try {
+    const data = JSON.parse(new TextDecoder().decode(fromBase64Url(payload)));
+    if (data?.v !== 1 || !data?.exp || data.exp < Date.now()) return null;
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function boardDeviceActive(env, id) {
+  if (!id) return false;
+  const stub = historyStub(env);
+  if (!stub) return false;
+  try {
+    const response = await stub.fetch(`https://history/board/status?id=${encodeURIComponent(id)}`);
+    if (!response.ok) return false;
+    const data = await response.json();
+    return Boolean(data?.valid);
+  } catch (e) {
+    return false;
+  }
+}
+
+async function requireBoardSession(request, env) {
+  const token = getCookie(request, BOARD_COOKIE);
+  const session = await verifyBoardToken(token, env);
+  if (!session) return null;
+  if (session.k === 'device' && !(await boardDeviceActive(env, session.id))) return null;
+  return session;
+}
+
+function boardCookie(token, url, maxAgeSeconds = BOARD_DEVICE_SESSION_SECONDS) {
+  const secure = url.protocol === 'https:' ? '; Secure' : '';
+  return `${BOARD_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure}`;
+}
+
+function boardNotice(title, message, status = 200) {
+  const safeTitle = String(title).replace(/[<>&]/g, '');
+  const safeMessage = String(message).replace(/[<>&]/g, '');
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="robots" content="noindex" />
+<title>${safeTitle}</title>
+<style>
+  body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:24px;background:#060d17;color:#f1f5f9;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif}
+  .card{max-width:360px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:rgba(11,23,40,.92);padding:22px}
+  h1{margin:0 0 8px;font-size:17px} p{margin:0;color:#94a3b8;font-size:12px;line-height:1.6}
+  a{display:inline-block;margin-top:14px;color:#38bdf8;font-size:12px;text-decoration:none}
+</style></head><body><div class="card"><h1>${safeTitle}</h1><p>${safeMessage}</p>
+<a href="/login">Board login</a></div></body></html>`, {
+    status,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Robots-Tag': 'noindex, nofollow',
+    },
+  });
+}
+
+function boardLoginPage() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Fleet Shield · Board access</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+    background: radial-gradient(120% 90% at 50% 0%, #10233a 0%, #0a1526 55%, #060d17 100%); color: #f1f5f9; }
+  .card { width: 100%; max-width: 360px; border: 1px solid rgba(255,255,255,.12); border-radius: 24px;
+    background: rgba(11,23,40,.92); box-shadow: 0 24px 60px -24px rgba(0,0,0,.8); padding: 24px; }
+  .logo { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center;
+    background: rgba(56,189,248,.15); color: #38bdf8; margin-bottom: 14px; }
+  .logo svg { width: 24px; height: 24px; }
+  h1 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+  p { margin: 6px 0 0; color: #94a3b8; font-size: 12px; line-height: 1.5; }
+  label { display: block; margin: 18px 0 6px; font-size: 11px; font-weight: 600; color: #cbd5e1; }
+  input { width: 100%; height: 44px; border-radius: 12px; border: 1px solid rgba(255,255,255,.14);
+    background: rgba(255,255,255,.06); color: #f8fafc; padding: 0 12px; font-size: 14px; outline: none; }
+  input:focus { border-color: rgba(56,189,248,.7); box-shadow: 0 0 0 3px rgba(56,189,248,.15); }
+  button { width: 100%; height: 44px; margin-top: 14px; border: 0; border-radius: 12px;
+    background: #38bdf8; color: #04121c; font-size: 13px; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: default; }
+  .err { margin-top: 12px; font-size: 11px; color: #fda4af; min-height: 14px; }
+  .foot { margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.1);
+    font-size: 10px; color: #64748b; display: flex; align-items: center; gap: 6px; }
+  .foot svg { width: 13px; height: 13px; }
+</style>
+</head>
+<body>
+  <form class="card" id="form">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>
+      </svg>
+    </div>
+    <h1>Fleet Shield</h1>
+    <p>Board access. Enter the board password, or open the device link created for this screen.</p>
+    <label for="password">Board password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" autofocus required placeholder="Enter password" />
+    <button id="submit" type="submit">Open board</button>
+    <div class="err" id="err" role="alert"></div>
+    <div class="foot">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      Sant Kabir Eye Hospital · private board
+    </div>
+  </form>
+<script>
+  const form = document.getElementById('form');
+  const err = document.getElementById('err');
+  const button = document.getElementById('submit');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    err.textContent = '';
+    button.disabled = true;
+    try {
+      const response = await fetch('/api/board/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: document.getElementById('password').value })
+      });
+      if (response.ok) { window.location.replace('/'); return; }
+      const data = await response.json().catch(() => ({}));
+      err.textContent = data.error || 'Could not open the board';
+    } catch (e) {
+      err.textContent = 'Network error. Try again.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>`;
 }
 
 
@@ -362,6 +557,13 @@ export default {
     // The Durable Object holds the single global fleet state and hibernates idle
     // sockets at zero duration cost.
     if (url.pathname === '/api/ws' || url.pathname === '/api/ws/') {
+      const boardSession = await requireBoardSession(request, env);
+      if (!boardSession) {
+        return new Response(JSON.stringify({ error: 'Board access required' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
       if (!env.FLEET_HUB) {
         return new Response(JSON.stringify({ error: 'WebSocket hub not configured' }), {
           status: 503,
@@ -705,6 +907,17 @@ export default {
     // Records are persisted. Going quiet no longer deletes a driver: the age
     // of the last packet maps to live / no signal / parked / offline.
     if (url.pathname === '/api/vehicles' || url.pathname === '/api/vehicles/') {
+      const boardSession = await requireBoardSession(request, env);
+      if (!boardSession) {
+        return new Response(JSON.stringify({ error: 'Board access required' }), {
+          status: 401,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store',
+          },
+        });
+      }
       const now = Date.now();
       let list = [];
 
@@ -837,6 +1050,135 @@ export default {
     }
 
     // 4b. History service (separate store, separate admin gate)
+    // ── Board access ───────────────────────────────────────────────────────
+    if (url.pathname === '/login' && request.method === 'GET') {
+      const session = await requireBoardSession(request, env);
+      if (session) return Response.redirect(new URL('/', request.url), 302);
+      return new Response(boardLoginPage(), {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'X-Robots-Tag': 'noindex, nofollow',
+          'Referrer-Policy': 'no-referrer',
+        },
+      });
+    }
+
+    if (url.pathname === '/api/board/login' && request.method === 'POST') {
+      const ip = request.headers.get('CF-Connecting-IP') || 'local';
+      const now = Date.now();
+      const attempts = (boardLoginAttempts.get(ip) || []).filter((time) => now - time < 10 * 60 * 1000);
+      if (attempts.length >= 5) {
+        return historyJson({ error: 'Too many attempts. Try again later.' }, 429);
+      }
+      let password = '';
+      try {
+        const body = await request.json();
+        password = String(body?.password || '');
+      } catch (e) {
+        password = '';
+      }
+      if (!(await verifyBoardPassword(env, password))) {
+        attempts.push(now);
+        boardLoginAttempts.set(ip, attempts);
+        return historyJson({ error: 'Invalid password' }, 401);
+      }
+      boardLoginAttempts.delete(ip);
+      const token = await createBoardSession(env, {
+        kind: 'password',
+        name: 'Password',
+        ttlSeconds: BOARD_PASSWORD_SESSION_SECONDS,
+      });
+      if (!token) return historyJson({ error: 'Board sessions are not configured' }, 503);
+      return historyJson({ success: true }, 200, {
+        'Set-Cookie': boardCookie(token, url, BOARD_PASSWORD_SESSION_SECONDS),
+      });
+    }
+
+    if (url.pathname.startsWith('/d/') && request.method === 'GET') {
+      const token = decodeURIComponent(url.pathname.slice(3)).trim();
+      if (!token) return boardNotice('Device link', 'This link is missing its token.', 400);
+      const stub = historyStub(env);
+      if (!stub) return boardNotice('Device link', 'The history store is not configured.', 503);
+      const redeemResponse = await stub
+        .fetch('https://history/board/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        })
+        .catch(() => null);
+      const data = redeemResponse ? await redeemResponse.json().catch(() => ({})) : {};
+      if (!redeemResponse || !redeemResponse.ok) {
+        return boardNotice('Device link', data.error || 'This device link is not valid.', redeemResponse?.status || 500);
+      }
+      if (data.already) {
+        const existing = await verifyBoardToken(getCookie(request, BOARD_COOKIE), env);
+        if (existing?.k === 'device' && existing.id === data.device?.id) {
+          return Response.redirect(new URL('/', request.url), 302);
+        }
+        return boardNotice(
+          'Link already used',
+          'This device link has already been opened on another device. Create a new link from History → Advanced → Devices.',
+          410
+        );
+      }
+      const session = await createBoardSession(env, {
+        kind: 'device',
+        id: data.device.id,
+        name: data.device.name,
+        ttlSeconds: BOARD_DEVICE_SESSION_SECONDS,
+      });
+      if (!session) return boardNotice('Device link', 'Board sessions are not configured.', 503);
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: '/',
+          'Set-Cookie': boardCookie(session, url, BOARD_DEVICE_SESSION_SECONDS),
+          'Cache-Control': 'no-store',
+          'Referrer-Policy': 'no-referrer',
+          'X-Robots-Tag': 'noindex, nofollow',
+        },
+      });
+    }
+
+    if (url.pathname === '/api/board/devices') {
+      const unauthorized = await requireHistoryAuth(request, env);
+      if (unauthorized) return unauthorized;
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: 'History store is not configured' }, 503);
+      if (request.method === 'POST') {
+        const response = await stub.fetch('https://history/board/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: await request.text(),
+        });
+        const data = await response.json().catch(() => ({ error: 'Board store error' }));
+        if (data?.token) {
+          const host = request.headers.get('host') || url.host;
+          data.url = `${url.protocol}//${host}/d/${data.token}`;
+        }
+        return historyJson(data, response.status);
+      }
+      const response = await stub.fetch('https://history/board/devices');
+      const data = await response.json().catch(() => ({ error: 'Board store error' }));
+      return historyJson(data, response.status);
+    }
+
+    if (url.pathname === '/api/board/revoke' && request.method === 'POST') {
+      const unauthorized = await requireHistoryAuth(request, env);
+      if (unauthorized) return unauthorized;
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: 'History store is not configured' }, 503);
+      const response = await stub.fetch('https://history/board/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: await request.text(),
+      });
+      const data = await response.json().catch(() => ({ error: 'Board store error' }));
+      return historyJson(data, response.status);
+    }
+
     if (url.pathname === '/api/history/login' && request.method === 'POST') {
       if (!env.HISTORY_SESSION_SECRET) {
         return historyJson({ error: 'History authentication is not configured' }, 503);
@@ -966,6 +1308,18 @@ export default {
       });
     }
 
+    // Board page gate. Telemetry GETs with query params were handled above;
+    // this only sees a plain page request. /?demo stays public for the showcase.
+    if (
+      (url.pathname === '/' || url.pathname === '/index.html') &&
+      request.method === 'GET' &&
+      !url.searchParams.has('demo') &&
+      !url.searchParams.has('dev')
+    ) {
+      const boardSession = await requireBoardSession(request, env);
+      if (!boardSession) return Response.redirect(new URL('/login', request.url), 302);
+    }
+
     // 5. Fallback: Serve static assets with strict Zero-Cache for HTML & Live App
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get('content-type') || '';
@@ -973,6 +1327,7 @@ export default {
 
     if (isHtml) {
       const freshHeaders = new Headers(assetResponse.headers);
+      freshHeaders.set('Referrer-Policy', 'no-referrer');
       freshHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
       freshHeaders.set('Pragma', 'no-cache');
       freshHeaders.set('Expires', '0');
@@ -1341,6 +1696,24 @@ export class FleetHistory {
           points INTEGER NOT NULL
         )
       `);
+      // Named device links for the live board. The token is stored hashed and
+      // can be redeemed once; the session lives in a signed cookie for a year.
+      this.state.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS board_devices (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          token_hash TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          link_expires_at INTEGER NOT NULL,
+          redeemed_at INTEGER,
+          session_expires_at INTEGER,
+          last_seen INTEGER,
+          revoked_at INTEGER
+        )
+      `);
+      this.state.storage.sql.exec(
+        'CREATE UNIQUE INDEX IF NOT EXISTS board_devices_token ON board_devices(token_hash)'
+      );
 
       // Import whatever the legacy slot table still holds, then empty it.
       // Once empty this costs nothing, and it heals the table if an older
@@ -1444,6 +1817,19 @@ export class FleetHistory {
     if (url.pathname.endsWith('/audit') && request.method === 'POST') {
       return this.audit(request);
     }
+    if (url.pathname.endsWith('/board/devices')) {
+      if (request.method === 'POST') return this.boardCreate(request);
+      return this.boardList();
+    }
+    if (url.pathname.endsWith('/board/redeem') && request.method === 'POST') {
+      return this.boardRedeem(request);
+    }
+    if (url.pathname.endsWith('/board/revoke') && request.method === 'POST') {
+      return this.boardRevoke(request);
+    }
+    if (url.pathname.endsWith('/board/status')) {
+      return this.boardStatus(url);
+    }
 
     return historyJson({ error: 'Not found' }, 404);
   }
@@ -1509,9 +1895,111 @@ export class FleetHistory {
     });
   }
 
-  live() {
+  async boardCreate(request) {
+    const body = await request.json().catch(() => ({}));
+    const name = String(body?.name || '').trim().slice(0, 40);
+    if (!name) return historyJson({ error: 'Device name required' }, 400);
+    const id = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    const token = toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const hash = await sha256Hex(token);
+    const now = Date.now();
+    const linkExpires = now + BOARD_LINK_TTL_MS;
+    this.state.storage.sql.exec(
+      `INSERT INTO board_devices (id, name, token_hash, created_at, link_expires_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      id,
+      name,
+      hash,
+      now,
+      linkExpires
+    );
     return historyJson({
       success: true,
+      device: { id, name, created_at: now, link_expires_at: linkExpires },
+      token,
+    });
+  }
+
+  async boardRedeem(request) {
+    const body = await request.json().catch(() => ({}));
+    const token = String(body?.token || '');
+    if (!token) return historyJson({ error: 'Missing token' }, 400);
+    const hash = await sha256Hex(token);
+    const now = Date.now();
+    const row = this.state.storage.sql
+      .exec('SELECT * FROM board_devices WHERE token_hash = ?', hash)
+      .toArray()[0];
+    if (!row) return historyJson({ error: 'Unknown device link' }, 404);
+    if (row.revoked_at) return historyJson({ error: 'This device link was revoked' }, 410);
+    if (row.link_expires_at < now) return historyJson({ error: 'This device link expired' }, 410);
+    if (row.redeemed_at) {
+      return historyJson({
+        success: true,
+        already: true,
+        device: { id: row.id, name: row.name, session_expires_at: row.session_expires_at },
+      });
+    }
+    const sessionExpires = now + BOARD_DEVICE_SESSION_SECONDS * 1000;
+    this.state.storage.sql.exec(
+      'UPDATE board_devices SET redeemed_at = ?, session_expires_at = ?, last_seen = ? WHERE id = ?',
+      now,
+      sessionExpires,
+      now,
+      row.id
+    );
+    return historyJson({
+      success: true,
+      already: false,
+      device: { id: row.id, name: row.name, session_expires_at: sessionExpires },
+    });
+  }
+
+  boardList() {
+    const rows = this.state.storage.sql
+      .exec(
+        `SELECT id, name, created_at, link_expires_at, redeemed_at, session_expires_at, last_seen, revoked_at
+         FROM board_devices ORDER BY created_at DESC`
+      )
+      .toArray();
+    return historyJson({ success: true, devices: rows, count: rows.length });
+  }
+
+  async boardRevoke(request) {
+    const body = await request.json().catch(() => ({}));
+    const now = Date.now();
+    if (body?.all) {
+      this.state.storage.sql.exec(
+        'UPDATE board_devices SET revoked_at = ? WHERE revoked_at IS NULL',
+        now
+      );
+      return historyJson({ success: true, all: true });
+    }
+    const id = String(body?.id || '').trim();
+    if (!id) return historyJson({ error: 'Missing id' }, 400);
+    this.state.storage.sql.exec('UPDATE board_devices SET revoked_at = ? WHERE id = ?', now, id);
+    return historyJson({ success: true, id });
+  }
+
+  boardStatus(url) {
+    const id = String(url.searchParams.get('id') || '');
+    if (!id) return historyJson({ valid: false });
+    const now = Date.now();
+    const row = this.state.storage.sql
+      .exec('SELECT revoked_at, session_expires_at FROM board_devices WHERE id = ?', id)
+      .toArray()[0];
+    if (!row || row.revoked_at) return historyJson({ valid: false });
+    if (row.session_expires_at && row.session_expires_at < now) return historyJson({ valid: false });
+    this.state.storage.sql.exec(
+      'UPDATE board_devices SET last_seen = ? WHERE id = ? AND (last_seen IS NULL OR last_seen < ?)',
+      now,
+      id,
+      now - 5 * 60 * 1000
+    );
+    return historyJson({ valid: true });
+  }
+
+  live() {
+    return historyJson({      success: true,
       vehicles: this.getFleetSnapshot(),
       count: this.fleet.size,
       timestamp: Date.now(),

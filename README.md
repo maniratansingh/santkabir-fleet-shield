@@ -320,6 +320,42 @@ curl -X POST "https://fleet.mrps.in/api/remove?id=TEST%20DEVICE" \
 
 ---
 
+## 🔐 Board Access
+
+The live board is closed by default. History keeps its own password and is the
+admin gate for creating device links.
+
+**Password login** — `https://fleet.mrps.in/login` sets a 30-day board session.
+
+**Device links** — History → Advanced → **Devices**:
+1. Name the device (`TV Basti`, `Mani S24`).
+2. Create the link; open it once on that device.
+3. The link sets a **1-year** board session and cannot be reused.
+4. Revoke a device at any time; it is logged out on its next request.
+
+What is gated: `/`, `/index.html`, `/api/vehicles`, `/api/ws`.
+What stays open: `/api/track`, `/api/location`, `/api/v1/telemetry` (devices),
+`/api/route`, and `/?demo` (simulated showcase only).
+
+Required secret:
+
+```bash
+npx wrangler secret put BOARD_PASSWORD
+# optional; falls back to HISTORY_SESSION_SECRET
+npx wrangler secret put BOARD_SESSION_SECRET
+```
+
+If `BOARD_PASSWORD` is missing, the board accepts the **history password**
+instead, so the gate can be enabled without a new secret. Set a separate
+`BOARD_PASSWORD` when you want the two passwords to differ. Changing the board
+password does **not** invalidate existing sessions; rotate
+`BOARD_SESSION_SECRET` to log out every board device at once.
+
+Telemetry must never sit behind the board gate. If `/api/track` starts
+returning a login redirect, ambulances stop reporting.
+
+---
+
 ## 💻 Local Development
 
 ```bash
@@ -374,6 +410,7 @@ npx wrangler deploy
 | Durable Object | `FleetHistory` / binding `FLEET_HUB` / name `fleet-history` (live + history + WebSocket) |
 | Wrangler | 4.162.0 |
 | History page | `https://fleet.mrps.in/history` (password-protected) |
+| Live board | `https://fleet.mrps.in` (board password or 1-year device link) |
 | History demo | `https://fleet.mrps.in/history-demo` (synthetic, no real data) |
 | Deployed branch | `testing` |
 | Storage | Durable Object SQLite only (no D1) |

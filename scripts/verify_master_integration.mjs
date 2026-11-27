@@ -8,6 +8,7 @@
 
 import worker from '../public/_worker.js';
 import QRCode from 'qrcode';
+import crypto from 'node:crypto';
 
 async function runTests() {
   console.log('--- 🧪 STARTING MASTER INTEGRATION TESTS ---\n');
@@ -58,7 +59,18 @@ async function runTests() {
     }
   });
 
-  const env = { ASSETS: { fetch: async () => new Response('Asset') } };
+  const boardSecret = 'test-board-secret';
+  const boardPayload = Buffer.from(
+    JSON.stringify({ v: 1, k: 'password', id: '', name: 'Password', iat: Date.now(), exp: Date.now() + 3600000 })
+  ).toString('base64url');
+  const boardSignature = crypto.createHmac('sha256', boardSecret).update(`board.${boardPayload}`).digest('base64url');
+  const boardCookie = `board_session=${encodeURIComponent(`${boardPayload}.${boardSignature}`)}`;
+
+  const env = {
+    ASSETS: { fetch: async () => new Response('Asset') },
+    BOARD_PASSWORD: 'test-board-password',
+    BOARD_SESSION_SECRET: boardSecret,
+  };
   const res = await worker.fetch(req, env);
 
   assert(res.status === 200, 'Server returns immediate HTTP 200 OK');
@@ -83,7 +95,7 @@ async function runTests() {
 
   // --- TEST 3: /api/vehicles RETRIEVAL ---
   console.log('\n📌 Test Suite 3: /api/vehicles Live Fleet Telemetry');
-  const getVehiclesReq = new Request('https://fleet.mrps.in/api/vehicles', { method: 'GET' });
+  const getVehiclesReq = new Request('https://fleet.mrps.in/api/vehicles', { method: 'GET', headers: { Cookie: boardCookie } });
   const getVehiclesRes = await worker.fetch(getVehiclesReq, env);
   assert(getVehiclesRes.status === 200, '/api/vehicles returns HTTP 200 OK');
 

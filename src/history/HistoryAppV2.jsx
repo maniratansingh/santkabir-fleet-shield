@@ -4,12 +4,16 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
+  Copy,
   Eye,
   EyeOff,
+  KeyRound,
   Lock,
   LogOut,
   Moon,
+  Plus,
   Sun,
   Play,
   Pause,
@@ -17,6 +21,7 @@ import {
   RefreshCw,
   Route,
   ShieldCheck,
+  Trash2,
   X,
 } from 'lucide-react';
 import AppleRangePicker from './AppleRangePicker';
@@ -403,6 +408,13 @@ export default function HistoryAppV2() {
   const [seeking, setSeeking] = useState(false);
   const [playRate, setPlayRate] = useState(1);
   const [speedOpen, setSpeedOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
+  const [devices, setDevices] = useState([]);
+  const [deviceName, setDeviceName] = useState('');
+  const [deviceLink, setDeviceLink] = useState('');
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  const [deviceError, setDeviceError] = useState('');
+  const [deviceCopied, setDeviceCopied] = useState(false);
   const [reportTab, setReportTab] = useState('map');
   const [reports, setReports] = useState({ summary: [], trips: [], stops: [] });
   const [selectedTrip, setSelectedTrip] = useState(null);
@@ -1107,6 +1119,81 @@ export default function HistoryAppV2() {
     URL.revokeObjectURL(a.href);
   };
 
+  const loadDevices = async () => {
+    setDeviceError('');
+    try {
+      const data = await api('/api/board/devices');
+      setDevices(Array.isArray(data.devices) ? data.devices : []);
+    } catch (err) {
+      if (err.status === 401) setAuthed(false);
+      else setDeviceError(err.message || 'Could not load devices');
+    }
+  };
+
+  const openDevices = () => {
+    setDevicesOpen(true);
+    setDeviceLink('');
+    setDeviceCopied(false);
+    setDeviceError('');
+    loadDevices();
+  };
+
+  const createDevice = async (event) => {
+    event.preventDefault();
+    const name = deviceName.trim();
+    if (!name || deviceBusy) return;
+    setDeviceBusy(true);
+    setDeviceError('');
+    try {
+      const data = await api('/api/board/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      setDeviceLink(data.url || '');
+      setDeviceName('');
+      await loadDevices();
+    } catch (err) {
+      if (err.status === 401) setAuthed(false);
+      else setDeviceError(err.message || 'Could not create the link');
+    } finally {
+      setDeviceBusy(false);
+    }
+  };
+
+  const revokeDevice = async (id) => {
+    if (!window.confirm('Revoke this device? It will need a new link to open the board again.')) return;
+    setDeviceError('');
+    try {
+      await api('/api/board/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      await loadDevices();
+    } catch (err) {
+      if (err.status === 401) setAuthed(false);
+      else setDeviceError(err.message || 'Could not revoke the device');
+    }
+  };
+
+  const copyDeviceLink = async () => {
+    if (!deviceLink) return;
+    try {
+      await navigator.clipboard.writeText(deviceLink);
+      setDeviceCopied(true);
+      setTimeout(() => setDeviceCopied(false), 1600);
+    } catch (err) {
+      setDeviceError('Could not copy. Select the link and copy it manually.');
+    }
+  };
+
+  const deviceStatus = (device) => {
+    if (device.revoked_at) return { label: 'Revoked', tone: 'text-rose-400' };
+    if (device.redeemed_at) return { label: 'Active', tone: 'text-emerald-400' };
+    return { label: 'Link not used', tone: 'text-amber-400' };
+  };
+
   if (authed === null) {
     return <div className="fh2 min-h-screen w-screen fh2-bg fh2-soft flex items-center justify-center text-sm"><ShieldCheck className="w-5 h-5 text-sky-500 mr-2" /> Checking history access…</div>;
   }
@@ -1264,6 +1351,7 @@ export default function HistoryAppV2() {
             <button onClick={toggleAdvanced} className={`h-10 sm:h-9 px-3 rounded-full border text-[11px] font-semibold ${advanced ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>{advanced ? 'Advanced on' : 'Advanced'}</button>
             {advanced && <button onClick={() => setQuality((v) => !v)} className={`h-10 sm:h-9 px-3 rounded-full border text-[11px] font-semibold ${quality ? 'bg-sky-500 text-white border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Quality</button>}
             {advanced && <button onClick={() => setSpeedColor((v) => !v)} className={`h-10 sm:h-9 px-3 rounded-full border text-[11px] font-semibold ${speedColor ? 'fh2-active border-transparent' : 'fh2-border fh2-panel fh2-soft'}`}>Speed</button>}
+            {advanced && <button onClick={openDevices} className="h-10 sm:h-9 px-3 rounded-full border text-[11px] font-semibold fh2-border fh2-panel fh2-soft">Devices</button>}
           </div>
         </div>
 
@@ -1437,6 +1525,79 @@ export default function HistoryAppV2() {
           <div className="fh2-pop absolute left-3 top-14 w-[320px] rounded-[18px] border fh2-border fh2-panel backdrop-blur-xl p-3 shadow-2xl z-30 max-h-[80vh] overflow-auto">
             <div className="flex items-center justify-between mb-2"><b className="text-xs">Range</b><button onClick={() => setRangeOpen(false)}><X className="w-3.5 h-3.5 fh2-muted" /></button></div>
             <AppleRangePicker preset={preset} rangeLabel={rangeLabel} fromValue={fromInput} toValue={toInput} minMs={Date.now() - MAX_RANGE_MS} maxMs={Date.now()} onFromChange={setFromInput} onToChange={setToInput} onPreset={applyPreset} onApply={applyCustom} error={error} inline />
+          </div>
+        )}
+
+        {devicesOpen && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6">
+            <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setDevicesOpen(false)} />
+            <div className="relative w-full sm:max-w-[460px] max-h-[88dvh] overflow-y-auto rounded-[24px] border fh2-border fh2-panel p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-9 w-9 place-items-center rounded-full bg-sky-500/15 text-sky-400"><KeyRound className="h-4 w-4" /></span>
+                  <div>
+                    <div className="text-sm font-semibold">Board access</div>
+                    <div className="text-[10px] fh2-muted">Named links for TVs and fixed phones</div>
+                  </div>
+                </div>
+                <button onClick={() => setDevicesOpen(false)} className="p-1.5 rounded-full fh2-hover fh2-muted" aria-label="Close"><X className="h-4 w-4" /></button>
+              </div>
+              <p className="mt-3 text-[11px] fh2-muted leading-relaxed">
+                Create a one-time link. Opening it on a device sets a one-year board session; the link itself cannot be reused.
+              </p>
+              <form onSubmit={createDevice} className="mt-3 flex gap-2">
+                <input
+                  value={deviceName}
+                  onChange={(e) => setDeviceName(e.target.value)}
+                  placeholder="Device name (e.g. TV Basti)"
+                  maxLength={40}
+                  className="min-w-0 flex-1 h-9 rounded-lg border fh2-border fh2-input px-2.5 text-[11px] outline-none focus:border-sky-400/60"
+                />
+                <button type="submit" disabled={deviceBusy || !deviceName.trim()} className="h-9 shrink-0 rounded-full bg-sky-500 px-3 text-[11px] font-semibold text-[var(--bg)] disabled:opacity-50 flex items-center gap-1.5">
+                  {deviceBusy ? 'Creating…' : <><Plus className="h-3.5 w-3.5" />Create</>}
+                </button>
+              </form>
+              {deviceError && <div className="mt-2 rounded-lg border border-rose-500/25 bg-rose-500/10 px-2.5 py-2 text-[10px] text-rose-300">{deviceError}</div>}
+              {deviceLink && (
+                <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2.5">
+                  <div className="text-[10px] font-semibold text-emerald-400">Link ready — open it once on the device</div>
+                  <div className="mt-1.5 flex gap-1.5">
+                    <input readOnly value={deviceLink} onFocus={(e) => e.currentTarget.select()} className="min-w-0 flex-1 h-8 rounded-lg border fh2-border fh2-input px-2 text-[10px] outline-none" />
+                    <button onClick={copyDeviceLink} className="h-8 shrink-0 rounded-full border fh2-border px-2.5 text-[10px] font-semibold fh2-hover flex items-center gap-1">
+                      {deviceCopied ? <><Check className="h-3 w-3" />Copied</> : <><Copy className="h-3 w-3" />Copy</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="mt-4 flex items-center justify-between">
+                <b className="text-[11px]">Devices</b>
+                <span className="text-[10px] fh2-muted">{devices.length}</span>
+              </div>
+              <div className="mt-2 space-y-1.5">
+                {devices.length === 0 ? (
+                  <div className="rounded-xl border fh2-border px-3 py-3 text-[10px] fh2-muted">No device links yet.</div>
+                ) : devices.map((d) => {
+                  const status = deviceStatus(d);
+                  return (
+                    <div key={d.id} className="flex items-center gap-2 rounded-xl border fh2-border px-2.5 py-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[11px] font-semibold">{d.name}</div>
+                        <div className="mt-0.5 text-[9px] fh2-muted">
+                          Created {fmtDate(d.created_at)} · Last seen {d.last_seen ? fmtDate(d.last_seen) : '—'}
+                        </div>
+                      </div>
+                      <span className={`text-[9px] font-semibold ${status.tone}`}>{status.label}</span>
+                      {!d.revoked_at && (
+                        <button onClick={() => revokeDevice(d.id)} className="p-1.5 rounded-full text-rose-400 hover:bg-rose-500/10" aria-label={`Revoke ${d.name}`} title="Revoke">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-3 text-[9px] fh2-muted">Revoking a device logs it out on its next request. Password sessions last 30 days; device links one year.</div>
+            </div>
           </div>
         )}
 

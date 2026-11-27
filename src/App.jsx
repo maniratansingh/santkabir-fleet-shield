@@ -280,6 +280,9 @@ export default function App() {
           if (!isDemoMode) {
             setConnectionState(wsConnectedRef.current ? 'live' : 'polling');
           }
+        } else if (vehRes && vehRes.status === 401 && !isDemoMode) {
+          window.location.assign('/login');
+          return;
         } else if (!isDemoMode && !wsConnectedRef.current) {
           setConnectionState('offline');
         }

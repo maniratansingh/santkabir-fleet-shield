@@ -139,7 +139,7 @@ Re-rendering markers on every telemetry tick causes flicker and wasted SVG work:
 - The link is `https://fleet.mrps.in/?vehicle=<ID>`; opening it filters the same live board to that vehicle, auto-selects it and disables the auto-tour.
 - Mobile uses the native share sheet (WhatsApp and others); desktop falls back to copying the link.
 - Not a time-limited token: no expiry, no server-side share store. Access is controlled by who receives the link, as decided for operational simplicity.
-- A shared view has no fleet-navigation escape: “Full fleet” / “All ambulances” is hidden, and closing the vehicle sheet keeps the single-vehicle filter. This prevents casual leakage through the UI. The live fleet HTTP/WebSocket endpoints remain public by design, so strict isolation would require a separate authenticated data path.
+- A shared view has no fleet-navigation escape: “Full fleet” / “All ambulances” is hidden, and closing the vehicle sheet keeps the single-vehicle filter. This prevents casual leakage through the UI. The live board itself is now gated by a board password or a named device link, and `/api/vehicles` / `/api/ws` require that session.
   - **Sheet-aware padding**: when the sheet is in its peek state, camera padding keeps vehicle markers centred on wide displays.
 - **North-up camera**: `focusVehicle` keeps `bearing: 0` and `pitch: 28`, so switching between vehicles heading in opposite directions does not spin the map.
 
@@ -235,6 +235,16 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - Required secret: `HISTORY_SESSION_SECRET`.
 - Live board updates about 1 second after a packet over WebSocket. History is written in the same `/ingest` call. The history page reads on load/range apply; Refresh pulls new points.
 
+**Board access**
+
+- `/` and `/index.html` redirect to `/login` unless a valid `board_session` cookie exists.
+- Shared board password (`BOARD_PASSWORD`): 30-day HMAC session.
+- Named device links: `POST /api/board/devices` from History → Advanced → Devices. The token is stored hashed in `board_devices`, is single-use, and sets a 1-year session on the first device that opens `/d/<token>`.
+- Revocation: `POST /api/board/revoke` marks the device; every board request checks the DO, so the device is logged out immediately. Password sessions are not individually revocable; rotate `BOARD_SESSION_SECRET` to revoke all.
+- Gated: `/`, `/index.html`, `/api/vehicles`, `/api/ws`.
+- Open: `/api/track`, `/api/location`, `/api/v1/telemetry`, `/api/route`, `/login`, `/d/<token>`, `/?demo`.
+- If `BOARD_PASSWORD` is unset, the board falls back to the history password.
+
 **Capacity (30 days)**
 
 - 30 s cadence: 86,400 rows/vehicle, ~13 MB/vehicle. 10 GB DO ≈ 790 vehicles; free 1 GB ≈ 79.
@@ -310,6 +320,15 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - `POST /api/history/delete` — authenticated; `{ "id": "..." }`, `{ "id": "...", "from": ..., "to": ... }`, or `{ "all": true }`.
 
 All history routes except login/logout require a valid session cookie. Unauthenticated calls return `401`.
+
+### 4.5 Board API
+
+- `POST /api/board/login` — `{ "password": "..." }`; sets a 30-day board session. Rate-limited.
+- `GET /api/board/devices` — history-authenticated; lists named device links and their status.
+- `POST /api/board/devices` — history-authenticated; `{ "name": "TV Basti" }`; returns `{ device, token, url }`.
+- `POST /api/board/revoke` — history-authenticated; `{ "id": "..." }` or `{ "all": true }`.
+- `GET /d/<token>` — public, single-use; redeems the link, sets a 1-year `board_session`, redirects to `/`.
+- `GET /api/vehicles` and `/api/ws` — require a valid board session.
 
 ---
 
