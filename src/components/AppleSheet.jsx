@@ -474,8 +474,11 @@ function AppleSheet({
               {/* Provisioning shortcut */}
               <button
                 type="button"
-                onClick={() => openProvision(selectedVehicle.id)}
-                className="ui-card-muted w-full my-1.5 py-2 px-3 flex items-center justify-between transition-colors cursor-pointer group"
+                disabled={readOnly}
+                aria-disabled={readOnly}
+                onClick={() => { if (!readOnly) openProvision(selectedVehicle.id); }}
+                title={readOnly ? 'Not available in a shared view' : 'Provision this device'}
+                className={`ui-card-muted w-full my-1.5 py-2 px-3 flex items-center justify-between transition-colors group ${readOnly ? 'opacity-45 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-[10px] bg-slate-500/10 dark:bg-white/10 flex items-center justify-center">
@@ -660,9 +663,11 @@ function AppleSheet({
 
                 <button
                   type="button"
-                  onClick={() => openProvision(selectedVehicle.id)}
-                  className="ui-press flex flex-col items-center gap-1.5 text-center cursor-pointer group"
-                  title="Generate Android app provisioning QR"
+                  disabled={readOnly}
+                  aria-disabled={readOnly}
+                  onClick={() => { if (!readOnly) openProvision(selectedVehicle.id); }}
+                  className={`ui-press flex flex-col items-center gap-1.5 text-center group ${readOnly ? 'opacity-45 cursor-not-allowed' : 'cursor-pointer'}`}
+                  title={readOnly ? 'Not available in a shared view' : 'Generate Android app provisioning QR'}
                 >
                   <span className="w-9 h-9 rounded-full bg-white dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 group-hover:scale-105 transition-transform">
                     <QrCode className="w-4 h-4" />
@@ -672,9 +677,11 @@ function AppleSheet({
 
                 <button
                   type="button"
-                  onClick={() => onShareVehicle?.(selectedVehicle.id)}
-                  className="ui-press flex flex-col items-center gap-1.5 text-center cursor-pointer group"
-                  title="Share this vehicle's live tracking link"
+                  disabled={readOnly}
+                  aria-disabled={readOnly}
+                  onClick={() => { if (!readOnly) onShareVehicle?.(selectedVehicle.id); }}
+                  className={`ui-press flex flex-col items-center gap-1.5 text-center group ${readOnly ? 'opacity-45 cursor-not-allowed' : 'cursor-pointer'}`}
+                  title={readOnly ? 'Not available in a shared view' : "Share this vehicle's live tracking link"}
                 >
                   <span className="w-9 h-9 rounded-full bg-white dark:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 group-hover:scale-105 transition-transform">
                     <Share2 className="w-4 h-4" />
