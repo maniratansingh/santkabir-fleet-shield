@@ -78,6 +78,15 @@ export default function App() {
   const [shareTarget, setShareTarget] = useState(null);
   const [shareHours, setShareHours] = useState(4);
   const [shareBusy, setShareBusy] = useState(false);
+  const [shareLink, setShareLink] = useState('');
+  const [shareQr, setShareQr] = useState('');
+  const [shareExp, setShareExp] = useState(0);
+  const [sharedAccess] = useState(() => {
+    if (typeof window === 'undefined') return { shared: false, exp: 0 };
+    const params = new URLSearchParams(window.location.search);
+    return { shared: params.get('shared') === '1', exp: Number(params.get('exp')) || 0 };
+  });
+  const [clockTick, setClockTick] = useState(Date.now());
   const [connectionState, setConnectionState] = useState('connecting'); // connecting | live | polling | offline | demo
   const fleetStoreRef = useRef(new Map(
     typeof window !== 'undefined' && (new URLSearchParams(window.location.search).has('dev') || new URLSearchParams(window.location.search).has('demo'))
@@ -646,11 +655,20 @@ export default function App() {
     }
   }, [sharedId, vehicles]);
 
+  useEffect(() => {
+    if (!sharedAccess.shared) return undefined;
+    const timer = setInterval(() => setClockTick(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, [sharedAccess.shared]);
+
   const handleShareVehicle = useCallback((id) => {
     const target = canonicalVehicleId(id);
     if (!target) return;
     setShareTarget(target);
     setShareHours(4);
+    setShareLink('');
+    setShareQr('');
+    setShareExp(0);
   }, []);
 
   const performShare = useCallback(async () => {
@@ -664,30 +682,22 @@ export default function App() {
         body: JSON.stringify({ vehicle: shareTarget, hours: shareHours }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        showToast(data.error || 'Could not create the share link', 'alert');
+      if (!response.ok || !data?.url) {
+        showToast(data?.error || 'Could not create the share link', 'alert');
         return;
       }
-      const shareData = {
-        title: `${shareTarget} — live tracking`,
-        text: `Track ${shareTarget} live for ${shareHours} hour${shareHours === 1 ? '' : 's'} — Sant Kabir Fleet Shield`,
-        url: data.url,
-      };
-      if (navigator.share) {
-        try {
-          await navigator.share(shareData);
-          setShareTarget(null);
-          return;
-        } catch (error) {
-          if (error?.name === 'AbortError') return;
-        }
-      }
+      setShareLink(data.url);
+      setShareExp(Number(data.expires_at) || 0);
       try {
-        await navigator.clipboard.writeText(data.url);
-        showToast(`Live link copied — valid for ${shareHours}h`, 'info');
-        setShareTarget(null);
+        const { default: QRCode } = await import('qrcode');
+        const qr = await QRCode.toDataURL(data.url, {
+          margin: 1,
+          width: 220,
+          color: { dark: '#0f172a', light: '#ffffff' },
+        });
+        setShareQr(qr);
       } catch (error) {
-        window.prompt('Copy this live link', data.url);
+        setShareQr('');
       }
     } catch (error) {
       showToast('Could not create the share link', 'alert');
@@ -695,6 +705,34 @@ export default function App() {
       setShareBusy(false);
     }
   }, [shareTarget, shareHours, shareBusy]);
+
+  const copyShareLink = useCallback(async () => {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      showToast('Live link copied', 'info');
+    } catch (error) {
+      window.prompt('Copy this live link', shareLink);
+    }
+  }, [shareLink]);
+
+  const shareNow = useCallback(async () => {
+    if (!shareLink) return;
+    const shareData = {
+      title: `${shareTarget || 'Fleet'} — live tracking`,
+      text: `Track ${shareTarget || 'the fleet'} live for ${shareHours} hour${shareHours === 1 ? '' : 's'} — Sant Kabir Fleet Shield`,
+      url: shareLink,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+    }
+    await copyShareLink();
+  }, [shareLink, shareTarget, shareHours, copyShareLink]);
 
   const handleToggleDistanceLines = useCallback(() => {
     setShowDistanceLines(prev => !prev);
@@ -805,6 +843,18 @@ export default function App() {
         isSheetMinimized={detent === 'peek'}
       />
 
+      {sharedAccess.shared && (
+        <div className="fixed top-[calc(4.7rem+var(--safe-top))] left-1/2 -translate-x-1/2 z-30 glass-panel flex items-center gap-1.5 rounded-full border border-sky-500/30 px-3 py-1.5 text-[10px] font-semibold text-slate-700 dark:text-slate-200 shadow-lg pointer-events-none">
+          <Share2 className="h-3 w-3 text-sky-500" />
+          Shared live view
+          {sharedAccess.exp > 0 && (
+            <span className="text-slate-500 dark:text-slate-400">
+              · {Math.max(0, Math.ceil((sharedAccess.exp - clockTick) / 60000))} min left
+            </span>
+          )}
+        </div>
+      )}
+
       {/* 2. Top-Center Dynamic Island Status Capsule */}
       <DynamicIsland
         vehicles={displayVehicles}
@@ -862,7 +912,7 @@ export default function App() {
         onFocusDistance={handleFocusDistance}
         onOpenProvisionModal={handleOpenProvisionModal}
         onRemoveVehicle={handleRemoveVehicle}
-        onShareVehicle={handleShareVehicle}
+        onShareVehicle={sharedAccess.shared ? null : handleShareVehicle}
         sharedView={Boolean(sharedId)}
         pinnedVehicleIds={pinnedVehicleIds}
         onTogglePin={handleTogglePin}
@@ -898,20 +948,24 @@ export default function App() {
       )}
 
       {shareTarget && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-3 sm:p-4">
           <div
             className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
             onClick={() => { if (!shareBusy) setShareTarget(null); }}
           />
-          <div className="relative w-full max-w-[380px] rounded-[24px] border border-slate-200/90 dark:border-white/10 bg-white dark:bg-slate-950 p-5 shadow-2xl">
+          <div className="relative w-full max-w-[400px] max-h-[90dvh] overflow-y-auto rounded-[24px] border border-slate-200/90 dark:border-white/10 bg-white dark:bg-slate-950 p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <span className="grid h-9 w-9 place-items-center rounded-full bg-sky-500/15 text-sky-500">
                   <Share2 className="h-4 w-4" />
                 </span>
                 <div>
-                  <div className="text-sm font-semibold text-slate-900 dark:text-white">Share live view</div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400">Live dashboard only · history stays locked</div>
+                  <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                    {shareLink ? 'Link ready' : 'Share live view'}
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                    {shareLink ? 'Send this to the person who needs it' : 'Live dashboard only · history stays locked'}
+                  </div>
                 </div>
               </div>
               <button
@@ -923,38 +977,94 @@ export default function App() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2">
-              <span className="text-[10px] uppercase tracking-wider text-slate-500">Vehicle</span>
-              <b className="text-xs text-slate-900 dark:text-white">{shareTarget}</b>
-            </div>
-            <div className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Access window</div>
-            <div className="mt-1.5 grid grid-cols-5 gap-1.5">
-              {[1, 2, 4, 8, 24].map((hours) => (
+
+            {!shareLink ? (
+              <>
+                <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500">Vehicle</span>
+                  <b className="text-xs text-slate-900 dark:text-white">{shareTarget}</b>
+                </div>
+                <div className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Access window</div>
+                <div className="mt-1.5 grid grid-cols-5 gap-1.5">
+                  {[1, 2, 4, 8, 24].map((hours) => (
+                    <button
+                      key={hours}
+                      type="button"
+                      onClick={() => setShareHours(hours)}
+                      className={`h-8 rounded-xl border text-[11px] font-semibold transition-colors ${
+                        shareHours === hours
+                          ? 'bg-sky-500 text-white border-transparent'
+                          : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {hours}h
+                    </button>
+                  ))}
+                </div>
                 <button
-                  key={hours}
                   type="button"
-                  onClick={() => setShareHours(hours)}
-                  className={`h-8 rounded-xl border text-[11px] font-semibold transition-colors ${
-                    shareHours === hours
-                      ? 'bg-sky-500 text-white border-transparent'
-                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                  }`}
+                  onClick={performShare}
+                  disabled={shareBusy}
+                  className="mt-4 w-full h-10 rounded-xl bg-sky-500 text-white text-xs font-bold disabled:opacity-50"
                 >
-                  {hours}h
+                  {shareBusy ? 'Creating…' : `Create ${shareHours}-hour link`}
                 </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={performShare}
-              disabled={shareBusy}
-              className="mt-4 w-full h-10 rounded-xl bg-sky-500 text-white text-xs font-bold disabled:opacity-50"
-            >
-              {shareBusy ? 'Creating…' : `Create ${shareHours}-hour link`}
-            </button>
-            <p className="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-              Anyone with the link can watch the live board until it expires. It cannot open history. After expiry they are sent back to the board login.
-            </p>
+                <p className="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  Anyone with the link can watch the live board until it expires. It cannot open history. After expiry they are sent back to the board login.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  Live link ready for {shareTarget}
+                </div>
+                {shareQr && (
+                  <div className="mx-auto mt-3 w-[176px] rounded-2xl bg-white p-2 shadow-lg">
+                    <img src={shareQr} alt="Share link QR code" className="block w-full" />
+                  </div>
+                )}
+                <div className="mt-3 flex gap-1.5">
+                  <input
+                    readOnly
+                    value={shareLink}
+                    onFocus={(event) => event.currentTarget.select()}
+                    className="min-w-0 flex-1 h-9 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-2.5 text-[10px] text-slate-700 dark:text-slate-200 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={copyShareLink}
+                    className="h-9 shrink-0 rounded-xl border border-slate-200 dark:border-slate-800 px-3 text-[10px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
+                  {shareExp
+                    ? `Valid until ${new Date(shareExp).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}`
+                    : 'Temporary access'}
+                  {' · '}live board only · cannot create more links
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={shareNow}
+                    className="h-10 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Share
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShareTarget(null)}
+                    className="h-10 rounded-xl bg-sky-500 text-white text-[11px] font-bold"
+                  >
+                    Done
+                  </button>
+                </div>
+                <p className="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  Anyone with this link can watch {shareTarget} live until it expires. History is not shared. They cannot create another link.
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -359,16 +359,19 @@ admin gate for creating device links.
 
 **Time-limited live share links** — press **Share** on a vehicle:
 1. Choose **1h, 2h, 4h, 8h or 24h**. The default is **4 hours**.
-2. The link is `/s/<signed-token>` and opens the live board focused on that
-   vehicle.
-3. It sets a temporary board session that expires automatically. After that,
+2. Press **Create**; the next step shows the link, a **QR code**, **Copy** and
+   **Share**. The link is not sent automatically, so it is never lost if the
+   native share sheet fails.
+3. The link is a short `/s/<12-char-token>` stored server-side (not a long URL)
+   and opens the live board focused on that vehicle.
+4. It sets a temporary board session that expires automatically. After that,
    the recipient is returned to the board login.
-4. **Live board only.** History is not shared and still requires the history
-   password.
-5. Anyone with the link can watch until it expires; a shared view cannot
-   create another share link.
-6. Rotating `BOARD_SESSION_SECRET` revokes every share, password and device
-   session at once.
+5. **Live board only.** History is not shared and still requires the history
+   password. The shared view shows **“Shared live view · N min left”**, hides
+   every Share control, and cannot create another share link.
+6. Anyone with the link can watch until it expires. Rotating
+   `BOARD_SESSION_SECRET` revokes every share, password and device session at
+   once.
 
 For a visit or a shift, **4 hours** is the practical default; use **24 hours**
 only when someone needs a full-day view. A plain `?vehicle=<ID>` link still

@@ -136,10 +136,13 @@ Re-rendering markers on every telemetry tick causes flicker and wasted SVG work:
 
 ### 3.6a. Per-vehicle live sharing
 - Each fleet row and selected-vehicle panel has a Share action.
-- The Share dialog offers **1, 2, 4, 8 or 24 hours** (default 4). It calls `POST /api/board/share`, which returns `https://fleet.mrps.in/s/<signed-token>`.
-- `/s/<token>` verifies the HMAC and expiry, sets a temporary `board_session` cookie for the remaining window and redirects to `/?vehicle=<ID>`. No server-side share store; expiry is in the signed token.
+- The Share dialog offers **1, 2, 4, 8 or 24 hours** (default 4). It calls `POST /api/board/share`, which stores a short 12-character token in `share_links` and returns `https://fleet.mrps.in/s/<token>`.
+- The second step shows the short link, a QR code, Copy and Share. The native share sheet is only opened on an explicit tap, so a failure cannot lose the link.
+- `/s/<token>` resolves the token in the DO, checks expiry/revocation, sets a temporary `board_session` cookie for the remaining window and redirects to `/?shared=1&exp=<ms>&vehicle=<ID>`.
+- The shared view shows a **“Shared live view · N min left”** badge and hides every Share control. A share session cannot call `/api/board/share` (403).
 - The share grants the **live board only**. `/history` and `/api/history/*` still require the history password.
-- A share session is accepted by `/`, `/api/vehicles` and `/api/ws`; it cannot call `/api/board/share` to create more links. A full board session (password or device link) is required to create a share.
+- A share session is accepted by `/`, `/api/vehicles` and `/api/ws`. A full board session (password or device link) is required to create a share.
+- Old long signed share links remain readable through the signed-token fallback.
 - Rotating `BOARD_SESSION_SECRET` revokes all share, password and device sessions.
 - Mobile uses the native share sheet; desktop falls back to clipboard.
 - A shared view has no fleet-navigation escape: “Full fleet” / “All ambulances” is hidden, and closing the vehicle sheet keeps the single-vehicle filter. The live board itself is gated by a board password or a named device link, and `/api/vehicles` / `/api/ws` require that session.
@@ -197,6 +200,7 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - Retention **30 days**; expired rows are pruned hourly by a Durable Object alarm using the `device_time` index.
 - `history_stats` keeps `last_seen` and a point count per vehicle, so the picker never runs a full `GROUP BY`.
 - `blocked_vehicles` holds IDs removed with **Delete forever**. `/ingest` drops blocked packets before live state or history is written, so a phone that keeps sending cannot resurrect the vehicle.
+- `share_links` stores the short live-share token, its vehicle scope and expiry. The URL carries only the token; expiry and scope are authoritative in the DO.
 - Columns: `device_time`, `received_at`, `lat`, `lon`, `raw_lat`, `raw_lon`, `speed`, `bearing`, `accuracy`, `battery`.
 - The old `history` slot table is empty after the one-time import. It is kept for old admin paths and is never scanned on boot.
 - The legacy import is guarded by a persisted flag. It used to run on every Durable Object start, re-reading the whole old table on each wake-up and burning the rows_read quota.
@@ -336,8 +340,8 @@ All history routes except login/logout require a valid session cookie. Unauthent
 - `GET /api/board/devices` — history-authenticated; lists named device links and their status.
 - `POST /api/board/devices` — history-authenticated; `{ "name": "TV Basti" }`; returns `{ device, token, url }`.
 - `POST /api/board/revoke` — history-authenticated; `{ "id": "..." }` or `{ "all": true }`.
-- `POST /api/board/share` — board-authenticated (password/device, not a share); `{ "vehicle": "...", "hours": 1|2|4|8|24 }`; returns `{ url, hours, expires_at }`.
-- `GET /s/<token>` — public; verifies the signed share token, sets a temporary `board_session` for the remaining window, redirects to `/?vehicle=<ID>`. Expired tokens return `410`.
+- `POST /api/board/share` — board-authenticated (password/device, not a share); `{ "vehicle": "...", "hours": 1|2|4|8|24 }`; stores a 12-character token and returns `{ url, hours, expires_at }`.
+- `GET /s/<token>` — public; resolves the short token in the DO, sets a temporary `board_session` for the remaining window, redirects to `/?shared=1&exp=<ms>&vehicle=<ID>`. Expired/unknown tokens return `410`.
 - `GET /d/<token>` — public, single-use; redeems the link, sets a 1-year `board_session`, redirects to `/`.
 - `GET /api/vehicles` and `/api/ws` — require a valid board session (password, device or time-limited share).
 

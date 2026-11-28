@@ -3006,25 +3006,49 @@ var worker_default = {
     }
     if (url.pathname.startsWith("/s/") && request.method === "GET") {
       const token = decodeURIComponent(url.pathname.slice(3)).trim();
-      const session = await verifyBoardToken(token, env);
-      if (!session || session.k !== "share") {
-        return boardNotice("Share link", "This live share link has expired or is not valid.", 410);
+      const stub = historyStub(env);
+      let vehicle = "";
+      let expires = 0;
+      if (stub) {
+        const resolved = await stub.fetch(`https://history/share/resolve?token=${encodeURIComponent(token)}`).catch(() => null);
+        const data = resolved ? await resolved.json().catch(() => ({})) : {};
+        if (resolved?.ok && data?.valid) {
+          vehicle = data.vehicle_id || "";
+          expires = Number(data.expires_at) || 0;
+        }
+      }
+      if (!expires) {
+        const legacy = await verifyBoardToken(token, env);
+        if (legacy?.k === "share" && legacy.exp > Date.now()) {
+          vehicle = legacy.id || "";
+          expires = legacy.exp;
+        } else {
+          return boardNotice("Share link", "This live share link has expired or is not valid.", 410);
+        }
       }
       const existing = await verifyBoardToken(getCookie(request, BOARD_COOKIE), env);
-      const hasFullAccess = existing && existing.k !== "share";
-      const target = session.id ? `/?vehicle=${encodeURIComponent(session.id)}` : "/";
-      if (hasFullAccess) {
+      if (existing && existing.k !== "share") {
+        const target = vehicle ? `/?vehicle=${encodeURIComponent(vehicle)}` : "/";
         return new Response(null, {
           status: 302,
           headers: { Location: target, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }
         });
       }
-      const remaining = Math.max(1, Math.ceil((session.exp - Date.now()) / 1e3));
+      const remaining = Math.max(1, Math.ceil((expires - Date.now()) / 1e3));
+      const session = await createBoardSession(env, {
+        kind: "share",
+        id: vehicle,
+        name: "Shared live view",
+        ttlSeconds: remaining
+      });
+      if (!session) return boardNotice("Share link", "Board sessions are not configured.", 503);
+      const params = new URLSearchParams({ shared: "1", exp: String(expires) });
+      if (vehicle) params.set("vehicle", vehicle);
       return new Response(null, {
         status: 302,
         headers: {
-          Location: target,
-          "Set-Cookie": boardCookie(token, url, remaining),
+          Location: `/?${params.toString()}`,
+          "Set-Cookie": boardCookie(session, url, remaining),
           "Cache-Control": "no-store",
           "Referrer-Policy": "no-referrer",
           "X-Robots-Tag": "noindex, nofollow"
@@ -3080,25 +3104,27 @@ var worker_default = {
       if (session.k === "share") {
         return historyJson({ error: "A shared view cannot create another share link" }, 403);
       }
+      const stub = historyStub(env);
+      if (!stub) return historyJson({ error: "History store is not configured" }, 503);
       const body = await request.json().catch(() => ({}));
-      const vehicle = canonicalVehicleId(body?.vehicle);
-      const hours = Number(body?.hours);
-      if (![1, 2, 4, 8, 24].includes(hours)) {
-        return historyJson({ error: "Choose 1, 2, 4, 8 or 24 hours" }, 400);
-      }
-      const token = await createBoardSession(env, {
-        kind: "share",
-        id: vehicle,
-        name: "Shared live view",
-        ttlSeconds: hours * 3600
+      const response = await stub.fetch("https://history/share/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicle: canonicalVehicleId(body?.vehicle) || "",
+          hours: Number(body?.hours)
+        })
       });
-      if (!token) return historyJson({ error: "Board sessions are not configured" }, 503);
+      const data = await response.json().catch(() => ({ error: "Share store error" }));
+      if (!response.ok || !data?.token) {
+        return historyJson({ error: data?.error || "Could not create the link" }, response.status || 500);
+      }
       const host = request.headers.get("host") || url.host;
       return historyJson({
         success: true,
-        url: `${url.protocol}//${host}/s/${token}`,
-        hours,
-        expires_at: Date.now() + hours * 3600 * 1e3
+        url: `${url.protocol}//${host}/s/${data.token}`,
+        hours: Number(body?.hours),
+        expires_at: data.expires_at
       });
     }
     if (url.pathname === "/api/board/devices") {
@@ -3683,6 +3709,15 @@ var FleetHistory = class {
           reason TEXT
         )
       `);
+      this.state.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS share_links (
+          token TEXT PRIMARY KEY,
+          vehicle_id TEXT,
+          created_at INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL,
+          revoked_at INTEGER
+        )
+      `);
       const legacy = this.state.storage.sql.exec("SELECT COUNT(*) AS n FROM history").toArray()[0]?.n || 0;
       if (legacy > 0) {
         this.state.storage.sql.exec(`
@@ -3767,6 +3802,12 @@ var FleetHistory = class {
     }
     if (url.pathname.endsWith("/audit") && request.method === "POST") {
       return this.audit(request);
+    }
+    if (url.pathname.endsWith("/share/create") && request.method === "POST") {
+      return this.shareCreate(request);
+    }
+    if (url.pathname.endsWith("/share/resolve")) {
+      return this.shareResolve(url);
     }
     if (url.pathname.endsWith("/purge") && request.method === "POST") {
       return this.purge(request);
@@ -3945,6 +3986,40 @@ var FleetHistory = class {
       now - 5 * 60 * 1e3
     );
     return historyJson({ valid: true });
+  }
+  async shareCreate(request) {
+    const body = await request.json().catch(() => ({}));
+    const vehicle = canonicalVehicleId(body?.vehicle) || "";
+    const hours = Number(body?.hours);
+    if (![1, 2, 4, 8, 24].includes(hours)) {
+      return historyJson({ error: "Choose 1, 2, 4, 8 or 24 hours" }, 400);
+    }
+    const now = Date.now();
+    const token = toBase64Url(crypto.getRandomValues(new Uint8Array(9)));
+    const expires = now + hours * 3600 * 1e3;
+    const sql = this.state.storage.sql;
+    sql.exec("DELETE FROM share_links WHERE expires_at < ?", now - 24 * 60 * 60 * 1e3);
+    sql.exec(
+      "INSERT OR REPLACE INTO share_links (token, vehicle_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+      token,
+      vehicle,
+      now,
+      expires
+    );
+    return historyJson({ success: true, token, vehicle, expires_at: expires });
+  }
+  shareResolve(url) {
+    const token = String(url.searchParams.get("token") || "").trim();
+    if (!token) return historyJson({ valid: false }, 404);
+    const row = this.state.storage.sql.exec("SELECT * FROM share_links WHERE token = ?", token).toArray()[0];
+    if (!row) return historyJson({ valid: false }, 404);
+    if (row.revoked_at) return historyJson({ valid: false, reason: "revoked" }, 410);
+    if (row.expires_at < Date.now()) return historyJson({ valid: false, reason: "expired" }, 410);
+    return historyJson({
+      valid: true,
+      vehicle_id: row.vehicle_id || "",
+      expires_at: row.expires_at
+    });
   }
   isBlocked(id) {
     return Boolean(
