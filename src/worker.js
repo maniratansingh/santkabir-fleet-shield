@@ -1482,7 +1482,23 @@ export default {
       return historyJson(data, response.status);
     }
 
-    if (url.pathname === '/history' || url.pathname === '/history/') {
+    if (url.pathname === '/history' || url.pathname === '/history/' || url.pathname === '/history.html') {
+      // A live share must not even present the history login/admin surface.
+      // A browser that also holds a real history session still gets in.
+      const historySession = await requireHistoryAuth(request, env);
+      if (historySession) {
+        const boardSession = await requireBoardSession(request, env);
+        if (boardSession?.k === 'share') {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              Location: '/',
+              'Cache-Control': 'no-store',
+              'X-Robots-Tag': 'noindex, nofollow',
+            },
+          });
+        }
+      }
       const assetUrl = new URL(request.url);
       assetUrl.pathname = '/history.html';
       const historyAsset = await env.ASSETS.fetch(new Request(assetUrl, request));
@@ -1526,7 +1542,12 @@ export default {
     }
 
     // 5. Fallback: Serve static assets with strict Zero-Cache for HTML & Live App
-    const assetResponse = await env.ASSETS.fetch(request);
+    // With html_handling = "none" the asset server does not map `/` to
+    // index.html, so make that mapping explicit here.
+    const assetRequest = url.pathname === '/' || url.pathname === '/index.html'
+      ? new Request(new URL('/index.html', request.url), request)
+      : request;
+    const assetResponse = await env.ASSETS.fetch(assetRequest);
     const contentType = assetResponse.headers.get('content-type') || '';
     const isHtml = contentType.includes('text/html') || url.pathname === '/' || url.pathname.endsWith('.html');
 

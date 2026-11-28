@@ -384,16 +384,20 @@ creation, `/api/remove` and `/api/clear` from a share session; history and
 A share is **server-scoped to one vehicle**. `/api/vehicles` returns only that
 vehicle and the WebSocket snapshot/deltas are filtered to it, even though the
 rest of the fleet is live. A share session also cannot open a tracker-role
-WebSocket. Opening a share link on a phone or TV that already has a full board
-session presents the same read-only shared view (the stronger cookie is kept,
-but the URL carries `shared=1&exp=...`).
+WebSocket. `/history`, `/history/` and `/history.html` are served by the Worker
+and redirect a share back to the live board instead of showing the history
+login; only a real history session gets the page. Opening a share link on a
+phone or TV that already has a full board session presents the same read-only
+shared view (the stronger cookie is kept, but the URL carries
+`shared=1&exp=...`).
 
 For a visit or a shift, **4 hours** is the practical default; use **24 hours**
 only when someone needs a full-day view. A plain `?vehicle=<ID>` link still
 exists, but it only opens for a device that already has a board session; the
 Share button now creates the expiring `/s/` link.
 
-What is gated: `/`, `/index.html`, `/api/vehicles`, `/api/ws`.
+What is gated: `/`, `/index.html`, `/history`, `/history/`, `/history.html`,
+`/api/vehicles`, `/api/ws`.
 What stays open: `/api/track`, `/api/location`, `/api/v1/telemetry` (devices),
 `/api/route`, and `/?demo` (simulated showcase only).
 

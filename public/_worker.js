@@ -3333,7 +3333,21 @@ var worker_default = {
       const data = await response.json().catch(() => ({ error: "History store error" }));
       return historyJson(data, response.status);
     }
-    if (url.pathname === "/history" || url.pathname === "/history/") {
+    if (url.pathname === "/history" || url.pathname === "/history/" || url.pathname === "/history.html") {
+      const historySession = await requireHistoryAuth(request, env);
+      if (historySession) {
+        const boardSession = await requireBoardSession(request, env);
+        if (boardSession?.k === "share") {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              Location: "/",
+              "Cache-Control": "no-store",
+              "X-Robots-Tag": "noindex, nofollow"
+            }
+          });
+        }
+      }
       const assetUrl = new URL(request.url);
       assetUrl.pathname = "/history.html";
       const historyAsset = await env.ASSETS.fetch(new Request(assetUrl, request));
@@ -3366,7 +3380,8 @@ var worker_default = {
         return Response.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, request.url), 302);
       }
     }
-    const assetResponse = await env.ASSETS.fetch(request);
+    const assetRequest = url.pathname === "/" || url.pathname === "/index.html" ? new Request(new URL("/index.html", request.url), request) : request;
+    const assetResponse = await env.ASSETS.fetch(assetRequest);
     const contentType = assetResponse.headers.get("content-type") || "";
     const isHtml = contentType.includes("text/html") || url.pathname === "/" || url.pathname.endsWith(".html");
     if (isHtml) {

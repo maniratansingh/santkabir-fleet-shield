@@ -11,9 +11,22 @@ routes = [
 [assets]
 directory = "./dist"
 binding = "ASSETS"
+# Keep `.html` paths literal. The Worker renders /history and /history-demo
+# itself, so the asset server must not 307 `/history.html` back to `/history`.
+html_handling = "none"
 # The board gate lives in the Worker, so the page entry points must reach it
-# before the static asset server answers.
-run_worker_first = ["/", "/index.html"]
+# before the static asset server answers. History is included because a share
+# must not be able to open the admin/login surface at all.
+run_worker_first = [
+  "/",
+  "/index.html",
+  "/history",
+  "/history/",
+  "/history.html",
+  "/history-demo",
+  "/history-demo/",
+  "/history-demo.html",
+]
 
 [[durable_objects.bindings]]
 name = "FLEET_HUB"

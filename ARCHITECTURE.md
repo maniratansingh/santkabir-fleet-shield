@@ -142,6 +142,7 @@ Re-rendering markers on every telemetry tick causes flicker and wasted SVG work:
 - The shared view shows a **“Shared live view · N min left”** badge. Share, Provision/QR and Remove driver record remain **visible but disabled**; Route, Locate, pan/zoom and map controls stay active. A share session cannot call `/api/board/share`, `/api/remove` or `/api/clear` (403), and `/api/history/*` returns 401.
 - The share grants the **live board only**. `/history` and `/api/history/*` still require the history password.
 - A share session is accepted by `/`, `/api/vehicles` and `/api/ws`, but is scoped to its one vehicle: `/api/vehicles` filters the snapshot, and the hub filters WebSocket snapshots/deltas per socket via `X-Board-Scope`. A share cannot open `role=tracker`, and the old dashboard `track` write message has been removed.
+- `/history`, `/history/` and `/history.html` are worker-first and redirect a share session to `/` (unless the browser also holds a valid history session), so the admin login surface is not presented to a shared link. `html_handling = "none"` keeps the asset server from 307-ing `/history.html` back into the Worker, and the root fallback maps `/` to `/index.html` explicitly.
 - If `/s/<token>` is opened on a browser that already holds a full session, the stronger cookie is kept but the redirect still carries `shared=1&exp=<ms>`, so the shared view is read-only on screen.
 - A full board session (password or device link) is required to create a share.
 - Old long signed share links remain readable through the signed-token fallback.
@@ -253,7 +254,7 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - Shared board password (`BOARD_PASSWORD`): 30-day HMAC session.
 - Named device links: `POST /api/board/devices` from History → Advanced → Devices. The token is stored hashed in `board_devices`, is single-use, and sets a 1-year session on the first device that opens `/d/<token>`.
 - Revocation: `POST /api/board/revoke` marks the device; every board request checks the DO, so the device is logged out immediately. Password sessions are not individually revocable; rotate `BOARD_SESSION_SECRET` to revoke all.
-- Gated: `/`, `/index.html`, `/api/vehicles`, `/api/ws`.
+- Gated: `/`, `/index.html`, `/history`, `/history/`, `/history.html`, `/api/vehicles`, `/api/ws`.
 - Open: `/api/track`, `/api/location`, `/api/v1/telemetry`, `/api/route`, `/login`, `/d/<token>`, `/?demo`.
 - If `BOARD_PASSWORD` is unset, the board falls back to the history password.
 
