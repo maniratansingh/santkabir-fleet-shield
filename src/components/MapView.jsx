@@ -252,7 +252,10 @@ function MapView({
   const snapStateRef = useRef(new Map());
   const currentStyleKeyRef = useRef(activeStyleKey);
   const vehiclesRef = useRef(vehicles);
+  const selectedIdRef = useRef(selectedVehicleId);
+  selectedIdRef.current = selectedVehicleId;
   const prevSelectedIdRef = useRef(null);
+  const tileWarmRef = useRef({ seen: new Set(), queue: [], inflight: 0, timer: null });
   const animFrameRef = useRef(null);
   const pendingDistanceRefreshRef = useRef(false);
   const updateMarkersRef = useRef(null);
@@ -387,6 +390,115 @@ function MapView({
     }
   };
 
+  // Raster tiles pop in with fade-duration 0, which is what makes a zoom look
+  // wobbly. A short cross-fade hides the swap without the cost of the old
+  // 300 ms default.
+  const applyRasterPolish = (map) => {
+    if (!map) return;
+    try {
+      if (typeof map.setRasterFadeDuration === 'function') map.setRasterFadeDuration(180);
+    } catch (e) {}
+    try {
+      const layers = map.getStyle()?.layers || [];
+      for (const layer of layers) {
+        if (layer.type === 'raster') map.setPaintProperty(layer.id, 'raster-fade-duration', 180);
+      }
+    } catch (e) {}
+  };
+
+  // GTA-style tile warming: fetch a tiny ring of tiles around the vehicle at
+  // the current, next and previous zoom into the browser cache. MapLibre still
+  // owns the render; this only removes the network wait when the camera lands.
+  const warmTilesAround = (map, lngLat, zoom, levels, force = false) => {
+    if (!map || !lngLat || typeof document === 'undefined' || document.hidden) return;
+    if (typeof navigator !== 'undefined') {
+      if (navigator.onLine === false) return;
+      if (navigator.connection && navigator.connection.saveData) return;
+    }
+    const state = tileWarmRef.current;
+    const now = Date.now();
+    // Backpressure: a TV tour can fire selection + moveend together. One small
+    // ring every 1.2 s is enough; more would compete with visible tiles.
+    if (!force && now - (state.lastAt || 0) < 1200) return;
+    let style = null;
+    try { style = map.getStyle(); } catch (e) { style = null; }
+    const baseSource = Object.values(style?.sources || {}).find(
+      (source) => source && source.type === 'raster' && Array.isArray(source.tiles) && source.tiles[0]
+    );
+    const templates = baseSource ? [baseSource.tiles[0]] : [];
+    if (!templates.length) return;
+    state.lastAt = now;
+
+    const lon = Number(lngLat[0]);
+    const lat = Number(lngLat[1]);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+
+    const queue = [];
+    for (const level of levels) {
+      const z = Math.round(level.z);
+      const radius = Number.isFinite(level.r) ? level.r : 1;
+      if (!Number.isFinite(z) || z < 0 || z > 19) continue;
+      const n = 2 ** z;
+      const x = Math.floor(((lon + 180) / 360) * n);
+      const latRad = (lat * Math.PI) / 180;
+      const y = Math.floor(
+        ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
+      );
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        for (let dy = -radius; dy <= radius; dy += 1) {
+          const tx = (((x + dx) % n) + n) % n;
+          const ty = Math.max(0, Math.min(n - 1, y + dy));
+          for (const template of templates) {
+            const url = template
+              .replace(/{z}/g, String(z))
+              .replace(/{x}/g, String(tx))
+              .replace(/{y}/g, String(ty))
+              .replace(/{s}/g, 'a');
+            if (!url.includes('{')) queue.push(url);
+          }
+        }
+      }
+    }
+
+    for (const url of queue) {
+      if (state.seen.has(url)) continue;
+      state.seen.add(url);
+      state.queue.push(url);
+    }
+    if (state.seen.size > 1200) state.seen.clear();
+
+    const drain = () => {
+      while (state.inflight < 2 && state.queue.length) {
+        const url = state.queue.shift();
+        state.inflight += 1;
+        const image = new Image();
+        image.decoding = 'async';
+        try { image.fetchPriority = 'low'; } catch (e) {}
+        const done = () => {
+          state.inflight = Math.max(0, state.inflight - 1);
+          drain();
+        };
+        image.onload = done;
+        image.onerror = done;
+        image.src = url;
+      }
+    };
+    drain();
+  };
+
+  const scheduleWarmTiles = (map, lngLat, zoom) => {
+    const state = tileWarmRef.current;
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = setTimeout(() => {
+      const base = Math.floor(Number(zoom) || 0);
+      warmTilesAround(map, lngLat, zoom, [
+        { z: base, r: 1 },
+        { z: base + 1, r: 1 },
+        { z: base - 1, r: 1 },
+      ]);
+    }, 280);
+  };
+
   // Helper to fit all active vehicles & hospital base in camera view
   const fitAll = (options = {}) => {
     const map = mapRef.current;
@@ -492,15 +604,23 @@ function MapView({
     if (!veh) return;
 
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+    const targetZoom = isDesktop ? 13.2 : 12.2;
+    const targetCenter = [Number(veh.lon || 0), Number(veh.lat || 0)];
+    // Warm the destination before the flyTo starts; the close-up then lands on
+    // decoded tiles instead of a grey patch.
+    warmTilesAround(map, targetCenter, targetZoom, [
+      { z: Math.floor(targetZoom), r: 1 },
+      { z: Math.floor(targetZoom) + 1, r: 1 },
+    ], true);
     map.flyTo({
-      center: [Number(veh.lon || 0), Number(veh.lat || 0)],
+      center: targetCenter,
       padding: {
         top: 60,
         bottom: isSheetMinimized ? 80 : (isDesktop ? 60 : 200),
         left: isSheetMinimized ? 60 : (isDesktop ? 400 : 24),
         right: 40,
       },
-      zoom: isDesktop ? 13.2 : 12.2,
+      zoom: targetZoom,
       pitch: 28,
       bearing: 0,
       speed: 1.1,
@@ -559,6 +679,14 @@ function MapView({
 
     // Wait strictly for style.load (never styledata, which causes 'Style is not done loading')
     map.once('style.load', () => {
+      applyRasterPolish(map);
+      const center = map.getCenter();
+      const selected = vehiclesRef.current.find((v) => v.id === selectedIdRef.current);
+      scheduleWarmTiles(
+        map,
+        selected ? [Number(selected.lon), Number(selected.lat)] : [center.lng, center.lat],
+        map.getZoom()
+      );
       addCustomLayers(map);
       updateBaseMarker(map);
       updateDistanceVectors(map);
@@ -1164,7 +1292,10 @@ function MapView({
       // tiles in memory, and cap the render resolution on 4K panels.
       fadeDuration: 0,
       refreshExpiredTiles: false,
-      maxTileCacheSize: deviceMemory >= 4 ? 256 : 128,
+      // Keep one more zoom level in memory so zooming back out reuses parent
+      // tiles instead of re-requesting them.
+      maxTileCacheSize: deviceMemory >= 4 ? 320 : 160,
+      maxTileCacheZoomLevels: 6,
       pixelRatio: Math.min(dpr, isLargeViewport ? 1.5 : 2),
     });
 
@@ -1232,6 +1363,13 @@ function MapView({
       }
       map.on('zoom', updateZoomLOD);
       map.on('zoomend', checkTieredZoom);
+      applyRasterPolish(map);
+      map.on('moveend', () => {
+        const selected = vehiclesRef.current.find((v) => v.id === selectedIdRef.current);
+        const center = map.getCenter();
+        const target = selected ? [Number(selected.lon), Number(selected.lat)] : [center.lng, center.lat];
+        scheduleWarmTiles(map, target, map.getZoom());
+      });
       // Do not re-layout vehicle cards on camera moves. Marker positions are
       // handled by MapLibre; shelf layout is refreshed on the telemetry tick.
       addCustomLayers(map);
@@ -2016,6 +2154,20 @@ function MapView({
       prevSelectedIdRef.current = null;
     }
   }, [vehicles, selectedVehicleId, theme]);
+
+  // While the TV tour follows a vehicle, keep the small ring around it warm as
+  // it moves. Once the vehicle leaves the ring, the next zoom is still snappy.
+  useEffect(() => {
+    if (!selectedVehicleId) return undefined;
+    const timer = setInterval(() => {
+      const map = mapRef.current;
+      if (!map) return;
+      const vehicle = vehiclesRef.current.find((v) => v.id === selectedVehicleId);
+      if (!vehicle) return;
+      scheduleWarmTiles(map, [Number(vehicle.lon), Number(vehicle.lat)], map.getZoom());
+    }, 18000);
+    return () => clearInterval(timer);
+  }, [selectedVehicleId]);
 
   // Keep the latest marker updater available to the map's moveend handler.
   updateMarkersRef.current = updateVehicleMarkers;
