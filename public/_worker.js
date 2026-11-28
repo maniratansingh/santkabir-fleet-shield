@@ -2356,7 +2356,9 @@ function boardLoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: document.getElementById('password').value })
       });
-      if (response.ok) { window.location.replace('/'); return; }
+      const nextParam = new URLSearchParams(location.search).get('next');
+      const nextUrl = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
+      if (response.ok) { window.location.replace(nextUrl); return; }
       const data = await response.json().catch(() => ({}));
       err.textContent = data.error || 'Could not open the board';
     } catch (e) {
@@ -2957,7 +2959,11 @@ var worker_default = {
     }
     if (url.pathname === "/login" && request.method === "GET") {
       const session = await requireBoardSession(request, env);
-      if (session) return Response.redirect(new URL("/", request.url), 302);
+      if (session) {
+        const next = url.searchParams.get("next");
+        const destination = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+        return Response.redirect(new URL(destination, request.url), 302);
+      }
       return new Response(boardLoginPage(), {
         status: 200,
         headers: {
@@ -3231,7 +3237,10 @@ var worker_default = {
     }
     if ((url.pathname === "/" || url.pathname === "/index.html") && request.method === "GET" && !url.searchParams.has("demo") && !url.searchParams.has("dev")) {
       const boardSession = await requireBoardSession(request, env);
-      if (!boardSession) return Response.redirect(new URL("/login", request.url), 302);
+      if (!boardSession) {
+        const next = `${url.pathname}${url.search}`;
+        return Response.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, request.url), 302);
+      }
     }
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get("content-type") || "";

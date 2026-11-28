@@ -234,6 +234,30 @@ function MapView({
   const mapRef = useRef(null);
   const [mapReady, setMapReady] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(true);
+  const [mapZoom, setMapZoom] = useState(0);
+
+  // Live tuning knobs, so a zoom can be judged on the real TV instead of by
+  // number. Example: /?closeZoom=14&closeZoomMobile=13&zoomHud=1
+  const zoomOverrides = (() => {
+    if (typeof window === 'undefined') return { desktop: null, mobile: null, hud: false };
+    const params = new URLSearchParams(window.location.search);
+    const read = (key) => {
+      const value = Number(params.get(key));
+      return Number.isFinite(value) && value >= 8 && value <= 17 ? value : null;
+    };
+    const desktop = read('closeZoom');
+    return {
+      desktop,
+      mobile: read('closeZoomMobile') ?? desktop,
+      hud: params.has('zoomHud'),
+    };
+  })();
+
+  const closeTarget = () => {
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
+    if (isDesktop) return zoomOverrides.desktop ?? 13.2;
+    return zoomOverrides.mobile ?? 12.2;
+  };
 
   // Crossfade: once the style and first tiles are in, fade the canvas in and
   // fade the preparation screen out instead of swapping them abruptly.
@@ -604,7 +628,7 @@ function MapView({
     if (!veh) return;
 
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
-    const targetZoom = isDesktop ? 13.2 : 12.2;
+    const targetZoom = closeTarget();
     const targetCenter = [Number(veh.lon || 0), Number(veh.lat || 0)];
     // Warm the destination before the flyTo starts; the close-up then lands on
     // decoded tiles instead of a grey patch.
@@ -1363,6 +1387,18 @@ function MapView({
       }
       map.on('zoom', updateZoomLOD);
       map.on('zoomend', checkTieredZoom);
+      if (zoomOverrides.hud) {
+        setMapZoom(map.getZoom());
+        let lastHudPaint = 0;
+        map.on('zoom', () => {
+          const now = performance.now();
+          if (now - lastHudPaint > 120) {
+            lastHudPaint = now;
+            setMapZoom(map.getZoom());
+          }
+        });
+        map.on('moveend', () => setMapZoom(map.getZoom()));
+      }
       applyRasterPolish(map);
       map.on('moveend', () => {
         const selected = vehiclesRef.current.find((v) => v.id === selectedIdRef.current);
@@ -2206,6 +2242,12 @@ function MapView({
         aria-hidden="true"
         className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-40 bg-gradient-to-t from-white/55 to-transparent dark:from-slate-950/65"
       />
+
+      {zoomOverrides.hud && (
+        <div className="pointer-events-none absolute left-3 top-20 z-30 rounded-full border border-white/15 bg-slate-950/85 px-3 py-1 font-mono text-[10px] font-semibold text-white shadow-xl">
+          zoom {mapZoom.toFixed(2)} · close {closeTarget().toFixed(1)}
+        </div>
+      )}
 
       {/* First-load state */}
       {overlayVisible && (

@@ -281,7 +281,7 @@ export default function App() {
             setConnectionState(wsConnectedRef.current ? 'live' : 'polling');
           }
         } else if (vehRes && vehRes.status === 401 && !isDemoMode) {
-          window.location.assign('/login');
+          window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
           return;
         } else if (!isDemoMode && !wsConnectedRef.current) {
           setConnectionState('offline');
