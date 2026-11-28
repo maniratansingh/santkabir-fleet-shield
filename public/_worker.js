@@ -3004,6 +3004,33 @@ var worker_default = {
         "Set-Cookie": boardCookie(token, url, BOARD_PASSWORD_SESSION_SECONDS)
       });
     }
+    if (url.pathname.startsWith("/s/") && request.method === "GET") {
+      const token = decodeURIComponent(url.pathname.slice(3)).trim();
+      const session = await verifyBoardToken(token, env);
+      if (!session || session.k !== "share") {
+        return boardNotice("Share link", "This live share link has expired or is not valid.", 410);
+      }
+      const existing = await verifyBoardToken(getCookie(request, BOARD_COOKIE), env);
+      const hasFullAccess = existing && existing.k !== "share";
+      const target = session.id ? `/?vehicle=${encodeURIComponent(session.id)}` : "/";
+      if (hasFullAccess) {
+        return new Response(null, {
+          status: 302,
+          headers: { Location: target, "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }
+        });
+      }
+      const remaining = Math.max(1, Math.ceil((session.exp - Date.now()) / 1e3));
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: target,
+          "Set-Cookie": boardCookie(token, url, remaining),
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Robots-Tag": "noindex, nofollow"
+        }
+      });
+    }
     if (url.pathname.startsWith("/d/") && request.method === "GET") {
       const token = decodeURIComponent(url.pathname.slice(3)).trim();
       if (!token) return boardNotice("Device link", "This link is missing its token.", 400);
@@ -3045,6 +3072,33 @@ var worker_default = {
           "Referrer-Policy": "no-referrer",
           "X-Robots-Tag": "noindex, nofollow"
         }
+      });
+    }
+    if (url.pathname === "/api/board/share" && request.method === "POST") {
+      const session = await requireBoardSession(request, env);
+      if (!session) return historyJson({ error: "Board access required" }, 401);
+      if (session.k === "share") {
+        return historyJson({ error: "A shared view cannot create another share link" }, 403);
+      }
+      const body = await request.json().catch(() => ({}));
+      const vehicle = canonicalVehicleId(body?.vehicle);
+      const hours = Number(body?.hours);
+      if (![1, 2, 4, 8, 24].includes(hours)) {
+        return historyJson({ error: "Choose 1, 2, 4, 8 or 24 hours" }, 400);
+      }
+      const token = await createBoardSession(env, {
+        kind: "share",
+        id: vehicle,
+        name: "Shared live view",
+        ttlSeconds: hours * 3600
+      });
+      if (!token) return historyJson({ error: "Board sessions are not configured" }, 503);
+      const host = request.headers.get("host") || url.host;
+      return historyJson({
+        success: true,
+        url: `${url.protocol}//${host}/s/${token}`,
+        hours,
+        expires_at: Date.now() + hours * 3600 * 1e3
       });
     }
     if (url.pathname === "/api/board/devices") {

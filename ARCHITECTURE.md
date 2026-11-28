@@ -136,10 +136,14 @@ Re-rendering markers on every telemetry tick causes flicker and wasted SVG work:
 
 ### 3.6a. Per-vehicle live sharing
 - Each fleet row and selected-vehicle panel has a Share action.
-- The link is `https://fleet.mrps.in/?vehicle=<ID>`; opening it filters the same live board to that vehicle, auto-selects it and disables the auto-tour.
-- Mobile uses the native share sheet (WhatsApp and others); desktop falls back to copying the link.
-- Not a time-limited token: no expiry, no server-side share store. Access is controlled by who receives the link, as decided for operational simplicity.
-- A shared view has no fleet-navigation escape: “Full fleet” / “All ambulances” is hidden, and closing the vehicle sheet keeps the single-vehicle filter. This prevents casual leakage through the UI. The live board itself is now gated by a board password or a named device link, and `/api/vehicles` / `/api/ws` require that session.
+- The Share dialog offers **1, 2, 4, 8 or 24 hours** (default 4). It calls `POST /api/board/share`, which returns `https://fleet.mrps.in/s/<signed-token>`.
+- `/s/<token>` verifies the HMAC and expiry, sets a temporary `board_session` cookie for the remaining window and redirects to `/?vehicle=<ID>`. No server-side share store; expiry is in the signed token.
+- The share grants the **live board only**. `/history` and `/api/history/*` still require the history password.
+- A share session is accepted by `/`, `/api/vehicles` and `/api/ws`; it cannot call `/api/board/share` to create more links. A full board session (password or device link) is required to create a share.
+- Rotating `BOARD_SESSION_SECRET` revokes all share, password and device sessions.
+- Mobile uses the native share sheet; desktop falls back to clipboard.
+- A shared view has no fleet-navigation escape: “Full fleet” / “All ambulances” is hidden, and closing the vehicle sheet keeps the single-vehicle filter. The live board itself is gated by a board password or a named device link, and `/api/vehicles` / `/api/ws` require that session.
+- The plain `?vehicle=<ID>` link remains for authenticated devices; it does not grant access by itself.
   - **Sheet-aware padding**: when the sheet is in its peek state, camera padding keeps vehicle markers centred on wide displays.
 - **North-up camera**: `focusVehicle` keeps `bearing: 0` and `pitch: 28`, so switching between vehicles heading in opposite directions does not spin the map.
 
@@ -235,6 +239,7 @@ Clustered vehicles around the base, Walterganj, Captain Ganj or Saunghat would o
 - Login sets an HMAC-signed HttpOnly SameSite=Strict cookie for 8 hours.
 - Required secret: `HISTORY_SESSION_SECRET`.
 - Live board updates about 1 second after a packet over WebSocket. History is written in the same `/ingest` call. The history page reads on load/range apply; Refresh pulls new points.
+- Close-up camera: **14.5 desktop / 13.0 mobile**. MapLibre has no predictive prefetch, so a 3×3 base-tile ring is warmed around the followed vehicle at current, next and previous zoom, raster tiles cross-fade over 180 ms, and the tile cache keeps six zoom levels. `?zoomHud=1` shows the live zoom; `?closeZoom=` / `?closeZoomMobile=` override the default for tuning.
 
 **Board access**
 
@@ -331,8 +336,10 @@ All history routes except login/logout require a valid session cookie. Unauthent
 - `GET /api/board/devices` — history-authenticated; lists named device links and their status.
 - `POST /api/board/devices` — history-authenticated; `{ "name": "TV Basti" }`; returns `{ device, token, url }`.
 - `POST /api/board/revoke` — history-authenticated; `{ "id": "..." }` or `{ "all": true }`.
+- `POST /api/board/share` — board-authenticated (password/device, not a share); `{ "vehicle": "...", "hours": 1|2|4|8|24 }`; returns `{ url, hours, expires_at }`.
+- `GET /s/<token>` — public; verifies the signed share token, sets a temporary `board_session` for the remaining window, redirects to `/?vehicle=<ID>`. Expired tokens return `410`.
 - `GET /d/<token>` — public, single-use; redeems the link, sets a 1-year `board_session`, redirects to `/`.
-- `GET /api/vehicles` and `/api/ws` — require a valid board session.
+- `GET /api/vehicles` and `/api/ws` — require a valid board session (password, device or time-limited share).
 
 ---
 

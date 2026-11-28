@@ -357,6 +357,24 @@ admin gate for creating device links.
 3. The link sets a **1-year** board session and cannot be reused.
 4. Revoke a device at any time; it is logged out on its next request.
 
+**Time-limited live share links** — press **Share** on a vehicle:
+1. Choose **1h, 2h, 4h, 8h or 24h**. The default is **4 hours**.
+2. The link is `/s/<signed-token>` and opens the live board focused on that
+   vehicle.
+3. It sets a temporary board session that expires automatically. After that,
+   the recipient is returned to the board login.
+4. **Live board only.** History is not shared and still requires the history
+   password.
+5. Anyone with the link can watch until it expires; a shared view cannot
+   create another share link.
+6. Rotating `BOARD_SESSION_SECRET` revokes every share, password and device
+   session at once.
+
+For a visit or a shift, **4 hours** is the practical default; use **24 hours**
+only when someone needs a full-day view. A plain `?vehicle=<ID>` link still
+exists, but it only opens for a device that already has a board session; the
+Share button now creates the expiring `/s/` link.
+
 What is gated: `/`, `/index.html`, `/api/vehicles`, `/api/ws`.
 What stays open: `/api/track`, `/api/location`, `/api/v1/telemetry` (devices),
 `/api/route`, and `/?demo` (simulated showcase only).
@@ -377,6 +395,13 @@ password does **not** invalidate existing sessions; rotate
 
 Telemetry must never sit behind the board gate. If `/api/track` starts
 returning a login redirect, ambulances stop reporting.
+
+**Map feel** — the vehicle close-up is **14.5** on desktop and **13.0** on
+narrow screens. A 3×3 ring of base tiles is warmed around the followed vehicle
+at the current, next and previous zoom, raster tiles cross-fade over 180 ms,
+and the tile cache retains six zoom levels. For live tuning, append
+`?zoomHud=1` to show the current and target zoom, and override the close-up
+with `?closeZoom=15` or `?closeZoomMobile=13`.
 
 ---
 

@@ -14,7 +14,7 @@ import { getNearestRuralLocation } from './utils/ruralLocator';
 import { getUniqueVehicleColor } from './utils/colors';
 import { withVehicleAgeState } from './utils/vehicleState';
 import { canonicalVehicleId } from './utils/vehicleId';
-import { CheckCircle2, AlertTriangle, X } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Share2, X } from 'lucide-react';
 
 // Demo fleet identity: one name only. The driver name is the device id.
 function toDriverFleet(fleet) {
@@ -75,6 +75,9 @@ export default function App() {
   const [actionTrigger, setActionTrigger] = useState(null);
   const [showDistanceLines, setShowDistanceLines] = useState(true);
   const [toast, setToast] = useState(null);
+  const [shareTarget, setShareTarget] = useState(null);
+  const [shareHours, setShareHours] = useState(4);
+  const [shareBusy, setShareBusy] = useState(false);
   const [connectionState, setConnectionState] = useState('connecting'); // connecting | live | polling | offline | demo
   const fleetStoreRef = useRef(new Map(
     typeof window !== 'undefined' && (new URLSearchParams(window.location.search).has('dev') || new URLSearchParams(window.location.search).has('demo'))
@@ -643,30 +646,55 @@ export default function App() {
     }
   }, [sharedId, vehicles]);
 
-  const handleShareVehicle = useCallback(async (id) => {
+  const handleShareVehicle = useCallback((id) => {
     const target = canonicalVehicleId(id);
     if (!target) return;
-    const url = `${window.location.origin}/?vehicle=${encodeURIComponent(target)}`;
-    const shareData = {
-      title: `${target} — live tracking`,
-      text: `Track ${target} live — Sant Kabir Fleet Shield`,
-      url,
-    };
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-        return;
-      } catch (error) {
-        if (error?.name === 'AbortError') return;
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(url);
-      showToast('Tracking link copied — paste it in WhatsApp', 'info');
-    } catch (error) {
-      window.prompt('Copy this tracking link', url);
-    }
+    setShareTarget(target);
+    setShareHours(4);
   }, []);
+
+  const performShare = useCallback(async () => {
+    if (!shareTarget || shareBusy) return;
+    setShareBusy(true);
+    try {
+      const response = await fetch('/api/board/share', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicle: shareTarget, hours: shareHours }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        showToast(data.error || 'Could not create the share link', 'alert');
+        return;
+      }
+      const shareData = {
+        title: `${shareTarget} — live tracking`,
+        text: `Track ${shareTarget} live for ${shareHours} hour${shareHours === 1 ? '' : 's'} — Sant Kabir Fleet Shield`,
+        url: data.url,
+      };
+      if (navigator.share) {
+        try {
+          await navigator.share(shareData);
+          setShareTarget(null);
+          return;
+        } catch (error) {
+          if (error?.name === 'AbortError') return;
+        }
+      }
+      try {
+        await navigator.clipboard.writeText(data.url);
+        showToast(`Live link copied — valid for ${shareHours}h`, 'info');
+        setShareTarget(null);
+      } catch (error) {
+        window.prompt('Copy this live link', data.url);
+      }
+    } catch (error) {
+      showToast('Could not create the share link', 'alert');
+    } finally {
+      setShareBusy(false);
+    }
+  }, [shareTarget, shareHours, shareBusy]);
 
   const handleToggleDistanceLines = useCallback(() => {
     setShowDistanceLines(prev => !prev);
@@ -866,6 +894,68 @@ export default function App() {
           >
             <X className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
+
+      {shareTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+            onClick={() => { if (!shareBusy) setShareTarget(null); }}
+          />
+          <div className="relative w-full max-w-[380px] rounded-[24px] border border-slate-200/90 dark:border-white/10 bg-white dark:bg-slate-950 p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-sky-500/15 text-sky-500">
+                  <Share2 className="h-4 w-4" />
+                </span>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900 dark:text-white">Share live view</div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400">Live dashboard only · history stays locked</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { if (!shareBusy) setShareTarget(null); }}
+                className="p-1.5 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2">
+              <span className="text-[10px] uppercase tracking-wider text-slate-500">Vehicle</span>
+              <b className="text-xs text-slate-900 dark:text-white">{shareTarget}</b>
+            </div>
+            <div className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Access window</div>
+            <div className="mt-1.5 grid grid-cols-5 gap-1.5">
+              {[1, 2, 4, 8, 24].map((hours) => (
+                <button
+                  key={hours}
+                  type="button"
+                  onClick={() => setShareHours(hours)}
+                  className={`h-8 rounded-xl border text-[11px] font-semibold transition-colors ${
+                    shareHours === hours
+                      ? 'bg-sky-500 text-white border-transparent'
+                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  {hours}h
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={performShare}
+              disabled={shareBusy}
+              className="mt-4 w-full h-10 rounded-xl bg-sky-500 text-white text-xs font-bold disabled:opacity-50"
+            >
+              {shareBusy ? 'Creating…' : `Create ${shareHours}-hour link`}
+            </button>
+            <p className="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+              Anyone with the link can watch the live board until it expires. It cannot open history. After expiry they are sent back to the board login.
+            </p>
+          </div>
         </div>
       )}
 

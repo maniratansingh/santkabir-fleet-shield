@@ -68,7 +68,8 @@ function isAllowed(method, url) {
     url.startsWith('/api/history/logout') ||
     url.startsWith('/api/board/login') ||
     url.startsWith('/api/board/devices') ||
-    url.startsWith('/api/board/revoke')
+    url.startsWith('/api/board/revoke') ||
+    url.startsWith('/api/board/share')
   );
 }
 
@@ -154,7 +155,8 @@ const server = http.createServer((req, res) => {
     req.url.startsWith('/api/') ||
     req.url === '/login' ||
     req.url.startsWith('/login?') ||
-    req.url.startsWith('/d/')
+    req.url.startsWith('/d/') ||
+    req.url.startsWith('/s/')
   ) {
     proxyApi(req, res);
     return;
