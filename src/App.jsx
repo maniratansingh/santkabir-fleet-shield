@@ -87,6 +87,9 @@ export default function App() {
     return { shared: params.get('shared') === '1', exp: Number(params.get('exp')) || 0 };
   });
   const [clockTick, setClockTick] = useState(Date.now());
+  const [sessionScope, setSessionScope] = useState(null);
+  const isReadOnly = sharedAccess.shared || sessionScope?.kind === 'share';
+  const sharedExp = sharedAccess.exp || Number(sessionScope?.exp) || 0;
   const [connectionState, setConnectionState] = useState('connecting'); // connecting | live | polling | offline | demo
   const fleetStoreRef = useRef(new Map(
     typeof window !== 'undefined' && (new URLSearchParams(window.location.search).has('dev') || new URLSearchParams(window.location.search).has('demo'))
@@ -656,10 +659,19 @@ export default function App() {
   }, [sharedId, vehicles]);
 
   useEffect(() => {
-    if (!sharedAccess.shared) return undefined;
+    let cancelled = false;
+    fetch('/api/board/session', { credentials: 'same-origin' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => { if (!cancelled) setSessionScope(data); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!isReadOnly) return undefined;
     const timer = setInterval(() => setClockTick(Date.now()), 30000);
     return () => clearInterval(timer);
-  }, [sharedAccess.shared]);
+  }, [isReadOnly]);
 
   const handleShareVehicle = useCallback((id) => {
     const target = canonicalVehicleId(id);
@@ -843,13 +855,13 @@ export default function App() {
         isSheetMinimized={detent === 'peek'}
       />
 
-      {sharedAccess.shared && (
+      {isReadOnly && (
         <div className="fixed top-[calc(4.7rem+var(--safe-top))] left-1/2 -translate-x-1/2 z-30 glass-panel flex items-center gap-1.5 rounded-full border border-sky-500/30 px-3 py-1.5 text-[10px] font-semibold text-slate-700 dark:text-slate-200 shadow-lg pointer-events-none">
           <Share2 className="h-3 w-3 text-sky-500" />
           Shared live view
-          {sharedAccess.exp > 0 && (
+          {sharedExp > 0 && (
             <span className="text-slate-500 dark:text-slate-400">
-              · {Math.max(0, Math.ceil((sharedAccess.exp - clockTick) / 60000))} min left
+              · {Math.max(0, Math.ceil((sharedExp - clockTick) / 60000))} min left
             </span>
           )}
         </div>
@@ -861,7 +873,7 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenDriverModal={() => setIsDriverModalOpen(true)}
-        readOnly={sharedAccess.shared}
+        readOnly={isReadOnly}
         onOpenFleet={handleOpenFleet}
         connectionState={connectionState}
       />
@@ -914,8 +926,8 @@ export default function App() {
         onOpenProvisionModal={handleOpenProvisionModal}
         onRemoveVehicle={handleRemoveVehicle}
         onShareVehicle={handleShareVehicle}
-        readOnly={sharedAccess.shared}
-        sharedView={Boolean(sharedId)}
+        readOnly={isReadOnly}
+        sharedView={Boolean(sharedId) || isReadOnly}
         pinnedVehicleIds={pinnedVehicleIds}
         onTogglePin={handleTogglePin}
         detent={detent}

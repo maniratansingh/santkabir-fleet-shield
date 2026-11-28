@@ -375,9 +375,11 @@ admin gate for creating device links.
 
 In a shared live view, **Share, Provision/QR and Remove driver record stay
 visible but disabled**, with a “Not available in a shared view” tooltip. Route,
-Locate, pan, zoom and the map controls still work. The Worker independently
-returns `403` for share creation, `/api/remove` and `/api/clear` from a share
-session; history remains `401`.
+Locate, pan, zoom and the map controls still work. The UI reads the session
+scope from `/api/board/session`, so removing the `?shared` parameter does not
+re-enable the controls. The Worker independently returns `403` for share
+creation, `/api/remove` and `/api/clear` from a share session; history remains
+`401`.
 
 For a visit or a shift, **4 hours** is the practical default; use **24 hours**
 only when someone needs a full-day view. A plain `?vehicle=<ID>` link still

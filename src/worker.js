@@ -1100,6 +1100,18 @@ export default {
       });
     }
 
+    if (url.pathname === '/api/board/session') {
+      const session = await requireBoardSession(request, env);
+      if (!session) return historyJson({ error: 'Board access required' }, 401);
+      return historyJson({
+        success: true,
+        kind: session.k,
+        name: session.name || '',
+        vehicle: session.id || '',
+        exp: session.exp,
+      });
+    }
+
     if (url.pathname === '/api/board/login' && request.method === 'POST') {
       const ip = request.headers.get('CF-Connecting-IP') || 'local';
       const now = Date.now();

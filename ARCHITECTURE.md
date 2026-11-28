@@ -340,6 +340,7 @@ All history routes except login/logout require a valid session cookie. Unauthent
 - `GET /api/board/devices` — history-authenticated; lists named device links and their status.
 - `POST /api/board/devices` — history-authenticated; `{ "name": "TV Basti" }`; returns `{ device, token, url }`.
 - `POST /api/board/revoke` — history-authenticated; `{ "id": "..." }` or `{ "all": true }`.
+- `GET /api/board/session` — board-authenticated; returns `{ kind, name, vehicle, exp }`. The board uses `kind === "share"` to lock Share, Provision/QR and Remove even if `?shared` is removed from the URL.
 - `POST /api/board/share` — board-authenticated (password/device, not a share); `{ "vehicle": "...", "hours": 1|2|4|8|24 }`; stores a 12-character token and returns `{ url, hours, expires_at }`.
 - `GET /s/<token>` — public; resolves the short token in the DO, sets a temporary `board_session` for the remaining window, redirects to `/?shared=1&exp=<ms>&vehicle=<ID>`. Expired/unknown tokens return `410`.
 - `GET /d/<token>` — public, single-use; redeems the link, sets a 1-year `board_session`, redirects to `/`.
