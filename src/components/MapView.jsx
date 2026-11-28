@@ -255,8 +255,8 @@ function MapView({
 
   const closeTarget = () => {
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 640;
-    if (isDesktop) return zoomOverrides.desktop ?? 13.2;
-    return zoomOverrides.mobile ?? 12.2;
+    if (isDesktop) return zoomOverrides.desktop ?? 14.5;
+    return zoomOverrides.mobile ?? 13.0;
   };
 
   // Crossfade: once the style and first tiles are in, fade the canvas in and
