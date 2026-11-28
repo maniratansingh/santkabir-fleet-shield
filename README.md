@@ -367,8 +367,8 @@ admin gate for creating device links.
 4. It sets a temporary board session that expires automatically. After that,
    the recipient is returned to the board login.
 5. **Live board only.** History is not shared and still requires the history
-   password. The shared view shows **“Shared live view · N min left”**, hides
-   every Share control, and cannot create another share link.
+   password. The shared view shows **“Shared live view · N min left”**, keeps
+   Share visible but disabled, and cannot create another share link.
 6. Anyone with the link can watch until it expires. Rotating
    `BOARD_SESSION_SECRET` revokes every share, password and device session at
    once.
@@ -378,8 +378,15 @@ visible but disabled**, with a “Not available in a shared view” tooltip. Rou
 Locate, pan, zoom and the map controls still work. The UI reads the session
 scope from `/api/board/session`, so removing the `?shared` parameter does not
 re-enable the controls. The Worker independently returns `403` for share
-creation, `/api/remove` and `/api/clear` from a share session; history remains
-`401`.
+creation, `/api/remove` and `/api/clear` from a share session; history and
+`/api/history/health` remain `401`.
+
+A share is **server-scoped to one vehicle**. `/api/vehicles` returns only that
+vehicle and the WebSocket snapshot/deltas are filtered to it, even though the
+rest of the fleet is live. A share session also cannot open a tracker-role
+WebSocket. Opening a share link on a phone or TV that already has a full board
+session presents the same read-only shared view (the stronger cookie is kept,
+but the URL carries `shared=1&exp=...`).
 
 For a visit or a shift, **4 hours** is the practical default; use **24 hours**
 only when someone needs a full-day view. A plain `?vehicle=<ID>` link still

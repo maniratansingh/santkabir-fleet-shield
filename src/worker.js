@@ -579,7 +579,19 @@ export default {
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         });
       }
+      if (boardSession.k === 'share' && url.searchParams.get('role') === 'tracker') {
+        return new Response(JSON.stringify({ error: 'Shared view is read-only' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
       const hub = env.FLEET_HUB.get(env.FLEET_HUB.idFromName(HUB_NAME));
+      if (boardSession.k === 'share') {
+        const headers = new Headers(request.headers);
+        const scope = canonicalVehicleId(boardSession.id);
+        if (scope) headers.set('X-Board-Scope', scope);
+        return hub.fetch(new Request(request, { headers }));
+      }
       return hub.fetch(request);
     }
 
@@ -967,6 +979,13 @@ export default {
         list = Array.from(liveVehicles.values()).map(vVal => ({ ...vVal, ...computeVehicleAgeState(vVal, now) }));
       }
 
+      // A share link is scoped to exactly one vehicle. The board UI already
+      // hides the rest, but the API must not hand the full fleet to a share.
+      if (boardSession.k === 'share') {
+        const scope = canonicalVehicleId(boardSession.id);
+        list = scope ? list.filter((vehicle) => canonicalVehicleId(vehicle?.id) === scope) : [];
+      }
+
       return new Response(JSON.stringify({
         success: true,
         vehicles: list,
@@ -1170,10 +1189,19 @@ export default {
       }
       const existing = await verifyBoardToken(getCookie(request, BOARD_COOKIE), env);
       if (existing && existing.k !== 'share') {
-        const target = vehicle ? `/?vehicle=${encodeURIComponent(vehicle)}` : '/';
+        // A full board session keeps its stronger cookie, but the share URL
+        // must still present the shared (read-only) view. Otherwise opening a
+        // share link on an already signed-in phone or TV looks like normal
+        // admin access and hides the read-only contract.
+        const params = new URLSearchParams({ shared: '1', exp: String(expires) });
+        if (vehicle) params.set('vehicle', vehicle);
         return new Response(null, {
           status: 302,
-          headers: { Location: target, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' },
+          headers: {
+            Location: `/?${params.toString()}`,
+            'Cache-Control': 'no-store',
+            'Referrer-Policy': 'no-referrer',
+          },
         });
       }
       const remaining = Math.max(1, Math.ceil((expires - Date.now()) / 1000));
@@ -1358,6 +1386,8 @@ export default {
     }
 
     if (url.pathname === '/api/history/health') {
+      const unauthorized = await requireHistoryAuth(request, env);
+      if (unauthorized) return unauthorized;
       const stub = historyStub(env);
       if (!stub) return historyJson({ error: 'History store is not configured' }, 503);
       const response = await stub.fetch('https://history/health');
@@ -2054,11 +2084,15 @@ export class FleetHistory {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     const role = new URL(request.url).searchParams.get('role') === 'tracker' ? 'tracker' : 'dashboard';
+    // A time-limited share gets a vehicle-scoped dashboard socket only.
+    const scope = role === 'dashboard'
+      ? canonicalVehicleId(request.headers.get('X-Board-Scope') || '') || ''
+      : '';
     this.ctx.acceptWebSocket(server);
-    try { server.serializeAttachment({ role }); } catch (e) {}
+    try { server.serializeAttachment({ role, scope }); } catch (e) {}
     try {
       if (role === 'dashboard') {
-        server.send(JSON.stringify({ type: 'snapshot', vehicles: this.getFleetSnapshot(), timestamp: Date.now() }));
+        server.send(JSON.stringify({ type: 'snapshot', vehicles: this.snapshotFor(scope), timestamp: Date.now() }));
       } else {
         server.send(JSON.stringify({ type: 'ready', role: 'tracker', timestamp: Date.now() }));
       }
@@ -2448,17 +2482,7 @@ export class FleetHistory {
       if (data?.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
       } else if (data?.type === 'subscribe') {
-        ws.send(JSON.stringify({ type: 'snapshot', vehicles: this.getFleetSnapshot(), timestamp: Date.now() }));
-      } else if (data?.type === 'track' && data.vehicle?.id) {
-        const id = canonicalVehicleId(data.vehicle.id);
-        if (!id) return;
-        const stored = { ...data.vehicle, id, name: id };
-        const previous = this.fleet.get(id);
-        if (previous && Number(previous.lastSeen) > Number(stored.lastSeen)) return;
-        this.fleet.set(id, stored);
-        this.writeRecord(stored);
-        this.broadcast({ type: 'delta', vehicle: { ...stored, ...computeVehicleAgeState(stored) } });
-        this.persistSnapshotIfDue();
+        ws.send(JSON.stringify({ type: 'snapshot', vehicles: this.snapshotFor(attachment.scope), timestamp: Date.now() }));
       }
     } catch (e) {
       if (message === 'ping') {
@@ -2478,12 +2502,28 @@ export class FleetHistory {
   }
 
   broadcast(message) {
-    const payload = JSON.stringify(message);
     for (const ws of this.state.getWebSockets()) {
-      const role = ws.deserializeAttachment?.()?.role;
-      if (role === 'tracker') continue;
-      try { ws.send(payload); } catch (e) {}
+      const attachment = ws.deserializeAttachment?.() || {};
+      if (attachment.role === 'tracker') continue;
+      let payload = message;
+      if (attachment.scope) {
+        const scope = canonicalVehicleId(attachment.scope);
+        if (message?.type === 'delta' && canonicalVehicleId(message.vehicle?.id) !== scope) continue;
+        if (message?.type === 'remove') {
+          const ids = Array.isArray(message.ids) ? message.ids : [];
+          const kept = ids.filter((id) => canonicalVehicleId(id) === scope);
+          if (!kept.length) continue;
+          payload = { ...message, ids: kept };
+        }
+      }
+      try { ws.send(JSON.stringify(payload)); } catch (e) {}
     }
+  }
+
+  snapshotFor(scope) {
+    const normalized = canonicalVehicleId(scope);
+    const all = this.getFleetSnapshot();
+    return normalized ? all.filter((vehicle) => canonicalVehicleId(vehicle?.id) === normalized) : all;
   }
 
   getFleetSnapshot() {

@@ -141,7 +141,9 @@ Re-rendering markers on every telemetry tick causes flicker and wasted SVG work:
 - `/s/<token>` resolves the token in the DO, checks expiry/revocation, sets a temporary `board_session` cookie for the remaining window and redirects to `/?shared=1&exp=<ms>&vehicle=<ID>`.
 - The shared view shows a **“Shared live view · N min left”** badge. Share, Provision/QR and Remove driver record remain **visible but disabled**; Route, Locate, pan/zoom and map controls stay active. A share session cannot call `/api/board/share`, `/api/remove` or `/api/clear` (403), and `/api/history/*` returns 401.
 - The share grants the **live board only**. `/history` and `/api/history/*` still require the history password.
-- A share session is accepted by `/`, `/api/vehicles` and `/api/ws`. A full board session (password or device link) is required to create a share.
+- A share session is accepted by `/`, `/api/vehicles` and `/api/ws`, but is scoped to its one vehicle: `/api/vehicles` filters the snapshot, and the hub filters WebSocket snapshots/deltas per socket via `X-Board-Scope`. A share cannot open `role=tracker`, and the old dashboard `track` write message has been removed.
+- If `/s/<token>` is opened on a browser that already holds a full session, the stronger cookie is kept but the redirect still carries `shared=1&exp=<ms>`, so the shared view is read-only on screen.
+- A full board session (password or device link) is required to create a share.
 - Old long signed share links remain readable through the signed-token fallback.
 - Rotating `BOARD_SESSION_SECRET` revokes all share, password and device sessions.
 - Mobile uses the native share sheet; desktop falls back to clipboard.
@@ -344,7 +346,8 @@ All history routes except login/logout require a valid session cookie. Unauthent
 - `POST /api/board/share` — board-authenticated (password/device, not a share); `{ "vehicle": "...", "hours": 1|2|4|8|24 }`; stores a 12-character token and returns `{ url, hours, expires_at }`.
 - `GET /s/<token>` — public; resolves the short token in the DO, sets a temporary `board_session` for the remaining window, redirects to `/?shared=1&exp=<ms>&vehicle=<ID>`. Expired/unknown tokens return `410`.
 - `GET /d/<token>` — public, single-use; redeems the link, sets a 1-year `board_session`, redirects to `/`.
-- `GET /api/vehicles` and `/api/ws` — require a valid board session (password, device or time-limited share).
+- `GET /api/vehicles` and `/api/ws` — require a valid board session (password, device or time-limited share). For a share session the response is filtered to the share's vehicle and cannot open a tracker socket.
+- `GET /api/history/health` — history-authenticated; returns the store counts and oldest/newest timestamps. It is no longer public.
 
 ---
 
