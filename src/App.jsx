@@ -861,6 +861,7 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenDriverModal={() => setIsDriverModalOpen(true)}
+        readOnly={sharedAccess.shared}
         onOpenFleet={handleOpenFleet}
         connectionState={connectionState}
       />
@@ -912,7 +913,8 @@ export default function App() {
         onFocusDistance={handleFocusDistance}
         onOpenProvisionModal={handleOpenProvisionModal}
         onRemoveVehicle={handleRemoveVehicle}
-        onShareVehicle={sharedAccess.shared ? null : handleShareVehicle}
+        onShareVehicle={handleShareVehicle}
+        readOnly={sharedAccess.shared}
         sharedView={Boolean(sharedId)}
         pinnedVehicleIds={pinnedVehicleIds}
         onTogglePin={handleTogglePin}

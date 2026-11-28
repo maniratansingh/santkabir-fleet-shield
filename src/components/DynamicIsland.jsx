@@ -26,6 +26,7 @@ function DynamicIsland({
   onToggleTheme,
   onOpenDriverModal,
   onOpenFleet,
+  readOnly = false,
   connectionState = 'connecting',
   arrivalAlert = null,
   onDismissArrivalAlert,
@@ -203,10 +204,12 @@ function DynamicIsland({
               <div className="flex items-center gap-0.5 pr-1.5 pl-1 border-l border-slate-200 dark:border-slate-700">
                 <button
                   type="button"
-                  onClick={onOpenDriverModal}
+                  disabled={readOnly}
+                  aria-disabled={readOnly}
+                  onClick={() => { if (!readOnly) onOpenDriverModal?.(); }}
                   aria-label="Open telemetry and tracker setup"
-                  title="Live telemetry & tracker stream"
-                  className="ui-press p-2.5 rounded-full text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title={readOnly ? 'Not available in a shared view' : 'Live telemetry & tracker stream'}
+                  className={`ui-press p-2.5 rounded-full transition-colors ${readOnly ? 'text-slate-400 dark:text-slate-500 opacity-45 cursor-not-allowed' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer'}`}
                 >
                   <Radio className="w-3.5 h-3.5 text-sky-600 dark:text-cyan-400" />
                 </button>

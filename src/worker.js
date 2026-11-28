@@ -244,6 +244,13 @@ async function requireBoardSession(request, env) {
   return session;
 }
 
+function shareReadOnlyResponse() {
+  return new Response(JSON.stringify({ error: 'Shared view is read-only' }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+  });
+}
+
 function boardCookie(token, url, maxAgeSeconds = BOARD_DEVICE_SESSION_SECONDS) {
   const secure = url.protocol === 'https:' ? '; Secure' : '';
   return `${BOARD_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${secure}`;
@@ -778,6 +785,9 @@ export default {
         });
       }
 
+      const clearBoardSession = await requireBoardSession(request, env);
+      if (clearBoardSession?.k === 'share') return shareReadOnlyResponse();
+
       // Fail closed if the deployment secret was never provisioned.
       if (!env.ADMIN_SECRET_KEY) {
         return new Response(JSON.stringify({ error: 'Admin endpoint not configured' }), {
@@ -841,6 +851,9 @@ export default {
           },
         });
       }
+
+      const removeBoardSession = await requireBoardSession(request, env);
+      if (removeBoardSession?.k === 'share') return shareReadOnlyResponse();
 
       if (!env.ADMIN_SECRET_KEY) {
         return new Response(JSON.stringify({ error: 'Admin endpoint not configured' }), {

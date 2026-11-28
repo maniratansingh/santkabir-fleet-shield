@@ -66,6 +66,7 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
   onShareVehicle,
   isPinned = false,
   onTogglePin,
+  readOnly = false,
 }) {
   const uniqueColors = getUniqueVehicleColor(v.id);
   const vColor = v.lineColor || uniqueColors.line;
@@ -156,25 +157,30 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
         {onShareVehicle && (
           <button
             type="button"
+            disabled={readOnly}
+            aria-disabled={readOnly}
             onClick={(e) => {
               e.stopPropagation();
-              onShareVehicle(v.id);
+              if (!readOnly) onShareVehicle(v.id);
             }}
             aria-label={`Share ${v.id} live tracking`}
-            title="Share live tracking link"
-            className="touch-target ui-press w-9 h-9 rounded-[10px] bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/50 dark:hover:bg-sky-900/70 text-sky-600 dark:text-sky-400 flex items-center justify-center transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70"
+            title={readOnly ? 'Not available in a shared view' : 'Share live tracking link'}
+            className={`touch-target ui-press w-9 h-9 rounded-[10px] flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/70 ${readOnly ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 opacity-45 cursor-not-allowed' : 'bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/50 dark:hover:bg-sky-900/70 text-sky-600 dark:text-sky-400 cursor-pointer'}`}
           >
             <Share2 className="w-3.5 h-3.5" />
           </button>
         )}
         <button
           type="button"
+          disabled={readOnly}
+          aria-disabled={readOnly}
           onClick={(e) => {
             e.stopPropagation();
-            openProvision(v.id);
+            if (!readOnly) openProvision(v.id);
           }}
           aria-label={`Provision ${v.id}`}
-          className="touch-target ui-press hidden sm:flex w-9 h-9 rounded-[10px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 items-center justify-center transition-colors cursor-pointer"
+          title={readOnly ? 'Not available in a shared view' : 'Provision this device'}
+          className={`touch-target ui-press ${readOnly ? 'flex' : 'hidden sm:flex'} w-9 h-9 rounded-[10px] items-center justify-center transition-colors ${readOnly ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 opacity-45 cursor-not-allowed' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer'}`}
         >
           <QrCode className="w-3.5 h-3.5" />
         </button>
@@ -182,13 +188,15 @@ const AmbulanceRow = React.memo(function AmbulanceRow({
         {isOffline && onRemoveVehicle && (
           <button
             type="button"
+            disabled={readOnly}
+            aria-disabled={readOnly}
             onClick={(e) => {
               e.stopPropagation();
-              onRemoveVehicle(v.id);
+              if (!readOnly) onRemoveVehicle(v.id);
             }}
             aria-label={`Remove ${v.id} from the fleet`}
-            title="Remove this driver record"
-            className="touch-target ui-press w-9 h-9 rounded-[10px] bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/70 text-rose-600 dark:text-rose-400 flex items-center justify-center transition-colors cursor-pointer"
+            title={readOnly ? 'Not available in a shared view' : 'Remove this driver record'}
+            className={`touch-target ui-press w-9 h-9 rounded-[10px] flex items-center justify-center transition-colors ${readOnly ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 opacity-45 cursor-not-allowed' : 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/70 text-rose-600 dark:text-rose-400 cursor-pointer'}`}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -236,6 +244,7 @@ function AppleSheet({
   pinnedVehicleIds = [],
   onTogglePin,
   sharedView = false,
+  readOnly = false,
   detent = 'peek', // 'peek', 'half', 'full'
   onChangeDetent,
   filter: controlledFilter,
@@ -341,13 +350,15 @@ function AppleSheet({
             {selectedVehicle && onShareVehicle && (
               <button
                 type="button"
+                disabled={readOnly}
+                aria-disabled={readOnly}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onShareVehicle(selectedVehicle.id);
+                  if (!readOnly) onShareVehicle(selectedVehicle.id);
                 }}
                 aria-label={`Share ${selectedVehicle.id} live tracking`}
-                title="Share live tracking link"
-                className="touch-target ui-press flex h-8 w-8 items-center justify-center rounded-full text-sky-600 hover:bg-sky-500/10 dark:text-cyan-400"
+                title={readOnly ? 'Not available in a shared view' : 'Share live tracking link'}
+                className={`touch-target ui-press flex h-8 w-8 items-center justify-center rounded-full ${readOnly ? 'text-slate-400 dark:text-slate-500 opacity-45 cursor-not-allowed' : 'text-sky-600 hover:bg-sky-500/10 dark:text-cyan-400'}`}
               >
                 <Share2 className="h-3.5 w-3.5" />
               </button>
@@ -702,8 +713,11 @@ function AppleSheet({
               {onRemoveVehicle && (
                 <button
                   type="button"
-                  onClick={() => onRemoveVehicle(selectedVehicle.id)}
-                  className="mt-2 w-full min-h-10 rounded-[12px] border border-rose-500/30 bg-rose-500/10 px-3 py-2 flex items-center justify-center gap-2 type-footnote font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-500/15 transition-colors cursor-pointer"
+                  disabled={readOnly}
+                  aria-disabled={readOnly}
+                  onClick={() => { if (!readOnly) onRemoveVehicle(selectedVehicle.id); }}
+                  title={readOnly ? 'Not available in a shared view' : 'Remove this driver record'}
+                  className={`mt-2 w-full min-h-10 rounded-[12px] border border-rose-500/30 px-3 py-2 flex items-center justify-center gap-2 type-footnote font-semibold transition-colors ${readOnly ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 opacity-45 cursor-not-allowed' : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 hover:bg-rose-500/15 cursor-pointer'}`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Remove driver record</span>
@@ -802,6 +816,7 @@ function AppleSheet({
                       onShareVehicle={onShareVehicle}
                       isPinned={pinnedVehicleIds.includes(v.id)}
                       onTogglePin={onTogglePin}
+                      readOnly={readOnly}
                     />
                   ))
                 )}

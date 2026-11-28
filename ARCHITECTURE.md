@@ -139,7 +139,7 @@ Re-rendering markers on every telemetry tick causes flicker and wasted SVG work:
 - The Share dialog offers **1, 2, 4, 8 or 24 hours** (default 4). It calls `POST /api/board/share`, which stores a short 12-character token in `share_links` and returns `https://fleet.mrps.in/s/<token>`.
 - The second step shows the short link, a QR code, Copy and Share. The native share sheet is only opened on an explicit tap, so a failure cannot lose the link.
 - `/s/<token>` resolves the token in the DO, checks expiry/revocation, sets a temporary `board_session` cookie for the remaining window and redirects to `/?shared=1&exp=<ms>&vehicle=<ID>`.
-- The shared view shows a **“Shared live view · N min left”** badge and hides every Share control. A share session cannot call `/api/board/share` (403).
+- The shared view shows a **“Shared live view · N min left”** badge. Share, Provision/QR and Remove driver record remain **visible but disabled**; Route, Locate, pan/zoom and map controls stay active. A share session cannot call `/api/board/share`, `/api/remove` or `/api/clear` (403), and `/api/history/*` returns 401.
 - The share grants the **live board only**. `/history` and `/api/history/*` still require the history password.
 - A share session is accepted by `/`, `/api/vehicles` and `/api/ws`. A full board session (password or device link) is required to create a share.
 - Old long signed share links remain readable through the signed-token fallback.
